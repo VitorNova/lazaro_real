@@ -4,12 +4,18 @@ Asaas Webhook Handler.
 Recebe notificacoes de pagamento do Asaas e atualiza o sistema.
 
 Eventos tratados:
+
+CUSTOMER:
 - CUSTOMER_CREATED         - Cliente criado (sincroniza em asaas_clientes + processa PDF)
 - CUSTOMER_UPDATED         - Cliente atualizado (sincroniza em asaas_clientes)
 - CUSTOMER_DELETED         - Cliente removido (soft delete em asaas_clientes + contratos + cobrancas)
+
+SUBSCRIPTION:
 - SUBSCRIPTION_CREATED     - Assinatura criada (sincroniza em asaas_contratos + processa PDF)
 - SUBSCRIPTION_UPDATED     - Assinatura atualizada (sincroniza em asaas_contratos)
 - SUBSCRIPTION_DELETED     - Assinatura removida (soft delete em asaas_contratos)
+
+PAYMENT - Criacao/Atualizacao:
 - PAYMENT_CREATED          - Cobranca criada (sincroniza em asaas_cobrancas)
 - PAYMENT_UPDATED          - Cobranca atualizada (sincroniza em asaas_cobrancas)
 - PAYMENT_CONFIRMED        - Pagamento confirmado, saldo ainda nao disponivel (status -> CONFIRMED)
@@ -17,6 +23,19 @@ Eventos tratados:
 - PAYMENT_OVERDUE          - Cobranca vencida (status -> OVERDUE)
 - PAYMENT_DELETED          - Cobranca removida (soft delete em asaas_cobrancas)
 - PAYMENT_CHECKOUT_VIEWED  - Cliente visualizou link de pagamento (apenas log para analytics)
+
+PAYMENT - Estornos e Chargebacks:
+- PAYMENT_REFUNDED                      - Cobranca estornada (devolucao total)
+- PAYMENT_PARTIALLY_REFUNDED            - Cobranca parcialmente estornada
+- PAYMENT_CHARGEBACK_REQUESTED          - CRITICO: Chargeback solicitado pelo cliente
+- PAYMENT_CHARGEBACK_DISPUTE            - Chargeback em processo de disputa
+- PAYMENT_AWAITING_CHARGEBACK_REVERSAL  - Aguardando reversao de chargeback
+
+PAYMENT - Outros:
+- PAYMENT_RESTORED                      - Cobranca restaurada (ex: apos reversao chargeback)
+- PAYMENT_RECEIVED_IN_CASH_UNDONE       - Confirmacao de dinheiro desfeita
+- PAYMENT_ANTICIPATED                   - Cobranca antecipada
+- PAYMENT_CREDIT_CARD_CAPTURE_REFUSED   - Captura do cartao recusada
 
 Identificacao do agente:
 - Via externalReference no formato "agentId:leadId"
@@ -324,6 +343,57 @@ async def asaas_webhook(request: Request, background_tasks: BackgroundTasks) -> 
             await _processar_cobranca_deletada(supabase, payment, agent_id or LAZARO_AGENT_ID)
             logger.info("[ASAAS WEBHOOK] PAYMENT_DELETED processado: %s", payment.get("id"))
 
+        # ========================================================================
+        # PAYMENT EVENTS - ESTORNOS E CHARGEBACKS (CRÍTICOS)
+        # ========================================================================
+        elif event == "PAYMENT_REFUNDED" and payment:
+            # Cobrança estornada (devolução total)
+            await _processar_pagamento_estornado(supabase, payment, agent_id)
+            logger.info("[ASAAS WEBHOOK] PAYMENT_REFUNDED processado: %s", payment.get("id"))
+
+        elif event == "PAYMENT_PARTIALLY_REFUNDED" and payment:
+            # Cobrança parcialmente estornada
+            await _processar_pagamento_estornado_parcial(supabase, payment, agent_id)
+            logger.info("[ASAAS WEBHOOK] PAYMENT_PARTIALLY_REFUNDED processado: %s", payment.get("id"))
+
+        elif event == "PAYMENT_CHARGEBACK_REQUESTED" and payment:
+            # CRÍTICO: Chargeback solicitado - requer ação imediata
+            await _processar_chargeback_solicitado(supabase, payment, agent_id)
+            logger.warning("[ASAAS WEBHOOK] PAYMENT_CHARGEBACK_REQUESTED processado: %s", payment.get("id"))
+
+        elif event == "PAYMENT_CHARGEBACK_DISPUTE" and payment:
+            # Chargeback em disputa
+            await _processar_chargeback_disputa(supabase, payment, agent_id)
+            logger.info("[ASAAS WEBHOOK] PAYMENT_CHARGEBACK_DISPUTE processado: %s", payment.get("id"))
+
+        elif event == "PAYMENT_AWAITING_CHARGEBACK_REVERSAL" and payment:
+            # Aguardando reversão de chargeback
+            await _processar_aguardando_reversao_chargeback(supabase, payment, agent_id)
+            logger.info("[ASAAS WEBHOOK] PAYMENT_AWAITING_CHARGEBACK_REVERSAL processado: %s", payment.get("id"))
+
+        # ========================================================================
+        # PAYMENT EVENTS - RESTAURAÇÃO E OUTROS
+        # ========================================================================
+        elif event == "PAYMENT_RESTORED" and payment:
+            # Cobrança restaurada (ex: após reversão de chargeback)
+            await _processar_pagamento_restaurado(supabase, payment, agent_id)
+            logger.info("[ASAAS WEBHOOK] PAYMENT_RESTORED processado: %s", payment.get("id"))
+
+        elif event == "PAYMENT_RECEIVED_IN_CASH_UNDONE" and payment:
+            # Confirmação de dinheiro desfeita
+            await _processar_pagamento_dinheiro_desfeito(supabase, payment, agent_id)
+            logger.info("[ASAAS WEBHOOK] PAYMENT_RECEIVED_IN_CASH_UNDONE processado: %s", payment.get("id"))
+
+        elif event == "PAYMENT_ANTICIPATED" and payment:
+            # Cobrança antecipada
+            await _processar_pagamento_antecipado(supabase, payment, agent_id)
+            logger.info("[ASAAS WEBHOOK] PAYMENT_ANTICIPATED processado: %s", payment.get("id"))
+
+        elif event == "PAYMENT_CREDIT_CARD_CAPTURE_REFUSED" and payment:
+            # Captura do cartão recusada
+            await _processar_captura_cartao_recusada(supabase, payment, agent_id)
+            logger.info("[ASAAS WEBHOOK] PAYMENT_CREDIT_CARD_CAPTURE_REFUSED processado: %s", payment.get("id"))
+
         logger.debug("[ASAAS WEBHOOK] Processado com sucesso")
         return JSONResponse(status_code=200, content={"status": "ok"})
 
@@ -518,6 +588,94 @@ async def _sincronizar_cliente(
 
 
 # ============================================================================
+# FUNÇÃO UTILITÁRIA: get_cached_customer
+# ============================================================================
+# Verifica se o cliente já está cacheado localmente com dados frescos.
+# Evita chamadas redundantes à API do Asaas quando o cliente já foi
+# sincronizado recentemente (dentro do TTL).
+# ============================================================================
+
+# TTL padrão para cache de cliente: 5 minutos
+CUSTOMER_CACHE_TTL_MINUTES = 5
+
+
+async def _get_cached_customer(
+    supabase: Any,
+    customer_id: str,
+    agent_id: str,
+    ttl_minutes: int = CUSTOMER_CACHE_TTL_MINUTES,
+) -> Optional[Dict[str, Any]]:
+    """
+    Busca cliente no cache local (asaas_clientes) se estiver fresco.
+
+    Args:
+        supabase: Cliente Supabase
+        customer_id: ID do cliente no Asaas
+        agent_id: ID do agente
+        ttl_minutes: Tempo máximo desde última atualização (minutos)
+
+    Returns:
+        Dict com dados do cliente se cacheado e fresco, None se não encontrado ou stale
+    """
+    if not customer_id:
+        return None
+
+    try:
+        result = (
+            supabase.client
+            .table("asaas_clientes")
+            .select("name, updated_at")
+            .eq("id", customer_id)
+            .eq("agent_id", agent_id)
+            .maybe_single()
+            .execute()
+        )
+
+        if not result.data:
+            return None
+
+        # Verificar se está dentro do TTL
+        updated_at = result.data.get("updated_at")
+        if updated_at:
+            try:
+                # Parse ISO format datetime
+                if isinstance(updated_at, str):
+                    last_update = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+                else:
+                    last_update = updated_at
+
+                # Verificar se está dentro do TTL
+                from datetime import timezone
+                now = datetime.now(timezone.utc)
+                if last_update.tzinfo is None:
+                    last_update = last_update.replace(tzinfo=timezone.utc)
+
+                age_minutes = (now - last_update).total_seconds() / 60
+
+                if age_minutes <= ttl_minutes:
+                    name = result.data.get("name")
+                    if name and not _is_invalid_customer_name(name):
+                        logger.debug(
+                            "[CACHE] Cliente %s encontrado no cache (%.1f min)",
+                            customer_id, age_minutes
+                        )
+                        return result.data
+                else:
+                    logger.debug(
+                        "[CACHE] Cliente %s stale (%.1f min > %d min TTL)",
+                        customer_id, age_minutes, ttl_minutes
+                    )
+            except Exception as e:
+                logger.debug("[CACHE] Erro ao parsear updated_at: %s", e)
+
+        return None
+
+    except Exception as e:
+        logger.debug("[CACHE] Erro ao buscar cliente %s no cache: %s", customer_id, e)
+        return None
+
+
+# ============================================================================
 # FUNÇÃO UTILITÁRIA: resolve_customer_name
 # ============================================================================
 # Resolve o nome do cliente usando hierarquia de fontes:
@@ -656,71 +814,83 @@ async def _sincronizar_contrato(
 
     try:
         # ========================================================================
-        # REGRA: API DO ASAAS É A FONTE DA VERDADE (igual _sincronizar_cobranca)
+        # OTIMIZAÇÃO: CACHE-FIRST, API COMO FALLBACK
         # ========================================================================
-        # Se o contrato tem customer_id, SEMPRE buscar dados atualizados do
-        # cliente via API Asaas e sincronizar em asaas_clientes.
-        # Isso garante que o cliente existe localmente e tem dados atualizados.
+        # Verifica se o cliente já está cacheado localmente com dados frescos.
+        # Evita chamadas redundantes à API do Asaas em processamento em lote.
+        # Se cache miss ou stale, busca via API e sincroniza.
         # ========================================================================
 
         customer_name = "Desconhecido"
 
         if customer_id:
-            logger.info(
-                "[SINCRONIZAR CONTRATO] Sincronizando cliente %s via API Asaas antes do contrato %s",
-                customer_id,
-                subscription_id
-            )
+            # 1. Verificar cache local primeiro (TTL: 5 minutos)
+            cached_customer = await _get_cached_customer(supabase, customer_id, agent_id)
 
-            # Buscar API key do agente
-            try:
-                result = (
-                    supabase.client
-                    .table("agents")
-                    .select("asaas_api_key")
-                    .eq("id", agent_id)
-                    .maybe_single()
-                    .execute()
+            if cached_customer:
+                # Cache hit - usar dados do cache
+                customer_name = cached_customer.get("name", "Desconhecido")
+                logger.debug(
+                    "[SINCRONIZAR CONTRATO] Cliente %s obtido do cache: %s",
+                    customer_id,
+                    customer_name
+                )
+            else:
+                # Cache miss ou stale - buscar via API
+                logger.debug(
+                    "[SINCRONIZAR CONTRATO] Cache miss para cliente %s, buscando via API",
+                    customer_id
                 )
 
-                if result.data and result.data.get("asaas_api_key"):
-                    asaas_api_key = result.data["asaas_api_key"]
-                    asaas = AsaasService(api_key=asaas_api_key)
-
-                    # Buscar dados completos do cliente via API Asaas
-                    customer_from_api = await asaas.get_customer(customer_id)
-
-                    if customer_from_api:
-                        # Sincronizar cliente em asaas_clientes
-                        await _sincronizar_cliente(supabase, customer_from_api, agent_id)
-
-                        # Usar nome do cliente da API
-                        customer_name = customer_from_api.get("name", "Desconhecido")
-
-                        logger.info(
-                            "[SINCRONIZAR CONTRATO] Cliente %s sincronizado via API: %s",
-                            customer_id,
-                            customer_name
-                        )
-                    else:
-                        logger.warning(
-                            "[SINCRONIZAR CONTRATO] Cliente %s nao encontrado na API Asaas",
-                            customer_id
-                        )
-
-                else:
-                    logger.warning(
-                        "[SINCRONIZAR CONTRATO] Agent %s nao tem asaas_api_key configurada",
-                        agent_id
+                # Buscar API key do agente
+                try:
+                    result = (
+                        supabase.client
+                        .table("agents")
+                        .select("asaas_api_key")
+                        .eq("id", agent_id)
+                        .maybe_single()
+                        .execute()
                     )
 
-            except Exception as e:
-                logger.error(
-                    "[SINCRONIZAR CONTRATO] Erro ao sincronizar cliente %s via API: %s",
-                    customer_id,
-                    e
-                )
-                # Continua o processamento mesmo se falhar a sincronizacao do cliente
+                    if result.data and result.data.get("asaas_api_key"):
+                        asaas_api_key = result.data["asaas_api_key"]
+                        asaas = AsaasService(api_key=asaas_api_key)
+
+                        # Buscar dados completos do cliente via API Asaas
+                        customer_from_api = await asaas.get_customer(customer_id)
+
+                        if customer_from_api:
+                            # Sincronizar cliente em asaas_clientes
+                            await _sincronizar_cliente(supabase, customer_from_api, agent_id)
+
+                            # Usar nome do cliente da API
+                            customer_name = customer_from_api.get("name", "Desconhecido")
+
+                            logger.info(
+                                "[SINCRONIZAR CONTRATO] Cliente %s sincronizado via API: %s",
+                                customer_id,
+                                customer_name
+                            )
+                        else:
+                            logger.warning(
+                                "[SINCRONIZAR CONTRATO] Cliente %s nao encontrado na API Asaas",
+                                customer_id
+                            )
+
+                    else:
+                        logger.warning(
+                            "[SINCRONIZAR CONTRATO] Agent %s nao tem asaas_api_key configurada",
+                            agent_id
+                        )
+
+                except Exception as e:
+                    logger.error(
+                        "[SINCRONIZAR CONTRATO] Erro ao sincronizar cliente %s via API: %s",
+                        customer_id,
+                        e
+                    )
+                    # Continua o processamento mesmo se falhar a sincronizacao do cliente
 
         # Fallback 1: Se não conseguiu nome via API, buscar do cache local
         if customer_name == "Desconhecido" and customer_id:
@@ -963,71 +1133,83 @@ async def _sincronizar_cobranca(
 
     try:
         # ========================================================================
-        # REGRA: API DO ASAAS E A FONTE DA VERDADE
+        # OTIMIZAÇÃO: CACHE-FIRST, API COMO FALLBACK
         # ========================================================================
-        # Se a cobranca tem customer_id, SEMPRE buscar dados atualizados do
-        # cliente via API Asaas e sincronizar em asaas_clientes.
-        # Isso garante que o cliente existe localmente e tem dados atualizados.
+        # Verifica se o cliente já está cacheado localmente com dados frescos.
+        # Evita chamadas redundantes à API do Asaas em processamento em lote.
+        # Se cache miss ou stale, busca via API e sincroniza.
         # ========================================================================
 
         customer_name = "Desconhecido"
 
         if customer_id:
-            logger.info(
-                "[SINCRONIZAR COBRANCA] Sincronizando cliente %s via API Asaas antes da cobranca %s",
-                customer_id,
-                payment_id
-            )
+            # 1. Verificar cache local primeiro (TTL: 5 minutos)
+            cached_customer = await _get_cached_customer(supabase, customer_id, agent_id)
 
-            # Buscar API key do agente
-            try:
-                result = (
-                    supabase.client
-                    .table("agents")
-                    .select("asaas_api_key")
-                    .eq("id", agent_id)
-                    .maybe_single()
-                    .execute()
+            if cached_customer:
+                # Cache hit - usar dados do cache
+                customer_name = cached_customer.get("name", "Desconhecido")
+                logger.debug(
+                    "[SINCRONIZAR COBRANCA] Cliente %s obtido do cache: %s",
+                    customer_id,
+                    customer_name
+                )
+            else:
+                # Cache miss ou stale - buscar via API
+                logger.debug(
+                    "[SINCRONIZAR COBRANCA] Cache miss para cliente %s, buscando via API",
+                    customer_id
                 )
 
-                if result.data and result.data.get("asaas_api_key"):
-                    asaas_api_key = result.data["asaas_api_key"]
-                    asaas = AsaasService(api_key=asaas_api_key)
-
-                    # Buscar dados completos do cliente via API Asaas
-                    customer_from_api = await asaas.get_customer(customer_id)
-
-                    if customer_from_api:
-                        # Sincronizar cliente em asaas_clientes
-                        await _sincronizar_cliente(supabase, customer_from_api, agent_id)
-
-                        # Usar nome do cliente da API
-                        customer_name = customer_from_api.get("name", "Desconhecido")
-
-                        logger.info(
-                            "[SINCRONIZAR COBRANCA] Cliente %s sincronizado via API: %s",
-                            customer_id,
-                            customer_name
-                        )
-                    else:
-                        logger.warning(
-                            "[SINCRONIZAR COBRANCA] Cliente %s nao encontrado na API Asaas",
-                            customer_id
-                        )
-
-                else:
-                    logger.warning(
-                        "[SINCRONIZAR COBRANCA] Agent %s nao tem asaas_api_key configurada",
-                        agent_id
+                # Buscar API key do agente
+                try:
+                    result = (
+                        supabase.client
+                        .table("agents")
+                        .select("asaas_api_key")
+                        .eq("id", agent_id)
+                        .maybe_single()
+                        .execute()
                     )
 
-            except Exception as e:
-                logger.error(
-                    "[SINCRONIZAR COBRANCA] Erro ao sincronizar cliente %s via API: %s",
-                    customer_id,
-                    e
-                )
-                # Continua o processamento mesmo se falhar a sincronizacao do cliente
+                    if result.data and result.data.get("asaas_api_key"):
+                        asaas_api_key = result.data["asaas_api_key"]
+                        asaas = AsaasService(api_key=asaas_api_key)
+
+                        # Buscar dados completos do cliente via API Asaas
+                        customer_from_api = await asaas.get_customer(customer_id)
+
+                        if customer_from_api:
+                            # Sincronizar cliente em asaas_clientes
+                            await _sincronizar_cliente(supabase, customer_from_api, agent_id)
+
+                            # Usar nome do cliente da API
+                            customer_name = customer_from_api.get("name", "Desconhecido")
+
+                            logger.info(
+                                "[SINCRONIZAR COBRANCA] Cliente %s sincronizado via API: %s",
+                                customer_id,
+                                customer_name
+                            )
+                        else:
+                            logger.warning(
+                                "[SINCRONIZAR COBRANCA] Cliente %s nao encontrado na API Asaas",
+                                customer_id
+                            )
+
+                    else:
+                        logger.warning(
+                            "[SINCRONIZAR COBRANCA] Agent %s nao tem asaas_api_key configurada",
+                            agent_id
+                        )
+
+                except Exception as e:
+                    logger.error(
+                        "[SINCRONIZAR COBRANCA] Erro ao sincronizar cliente %s via API: %s",
+                        customer_id,
+                        e
+                    )
+                    # Continua o processamento mesmo se falhar a sincronizacao do cliente
 
         # Fallback: Se nao conseguiu nome via API, buscar do cache local
         if customer_name == "Desconhecido" and customer_id:
@@ -2274,3 +2456,295 @@ async def _processar_pagamento_vencido(
         logger.debug("[ASAAS WEBHOOK] Erro ao atualizar billing_notifications: %s", e)
 
     logger.debug("[ASAAS WEBHOOK] Pagamento vencido: %s (R$ %.2f)", payment_id, value)
+
+
+# ============================================================================
+# HELPER: Atualizar status genérico de cobrança
+# ============================================================================
+
+async def _atualizar_status_cobranca(
+    supabase: Any,
+    payment: Dict[str, Any],
+    agent_id: Optional[str],
+    status: str,
+    extra_fields: Optional[Dict[str, Any]] = None,
+    billing_status: Optional[str] = None,
+) -> None:
+    """
+    Helper genérico para atualizar status de cobrança.
+
+    Usado pelos handlers de eventos que apenas mudam o status.
+
+    Args:
+        supabase: Cliente Supabase
+        payment: Dados do pagamento do webhook
+        agent_id: ID do agente (opcional)
+        status: Novo status para asaas_cobrancas
+        extra_fields: Campos extras para atualizar em asaas_cobrancas
+        billing_status: Status para billing_notifications (se diferente)
+    """
+    now = datetime.utcnow().isoformat()
+    payment_id = payment.get("id", "")
+    value = payment.get("value", 0)
+
+    # Atualizar asaas_cobrancas
+    if agent_id:
+        try:
+            update_data = {
+                "status": status,
+                "updated_at": now,
+            }
+            if extra_fields:
+                update_data.update(extra_fields)
+
+            supabase.client.table("asaas_cobrancas").update(
+                update_data
+            ).eq("id", payment_id).eq("agent_id", agent_id).execute()
+        except Exception as e:
+            logger.debug("[ASAAS WEBHOOK] Erro ao atualizar asaas_cobrancas: %s", e)
+
+    # Atualizar billing_notifications se billing_status especificado
+    if billing_status:
+        try:
+            supabase.client.table("billing_notifications").update({
+                "status": billing_status,
+                "updated_at": now,
+            }).eq("payment_id", payment_id).execute()
+        except Exception as e:
+            logger.debug("[ASAAS WEBHOOK] Erro ao atualizar billing_notifications: %s", e)
+
+    logger.debug("[ASAAS WEBHOOK] Status atualizado: %s -> %s (R$ %.2f)", payment_id, status, value)
+
+
+# ============================================================================
+# PAYMENT_REFUNDED - Cobrança estornada
+# ============================================================================
+
+async def _processar_pagamento_estornado(
+    supabase: Any,
+    payment: Dict[str, Any],
+    agent_id: Optional[str],
+) -> None:
+    """
+    Processa PAYMENT_REFUNDED.
+
+    Cobrança foi estornada (devolução total).
+    Atualiza status para REFUNDED.
+    Reverte ia_recebeu para não contar no dashboard como coletado pela IA.
+    """
+    extra_fields = {
+        "refund_date": datetime.utcnow().isoformat(),
+        "ia_recebeu": False,
+        "ia_recebeu_at": None,
+    }
+    await _atualizar_status_cobranca(
+        supabase, payment, agent_id,
+        status="REFUNDED",
+        extra_fields=extra_fields,
+        billing_status="refunded",
+    )
+
+
+# ============================================================================
+# PAYMENT_PARTIALLY_REFUNDED - Cobrança parcialmente estornada
+# ============================================================================
+
+async def _processar_pagamento_estornado_parcial(
+    supabase: Any,
+    payment: Dict[str, Any],
+    agent_id: Optional[str],
+) -> None:
+    """
+    Processa PAYMENT_PARTIALLY_REFUNDED.
+
+    Cobrança foi parcialmente estornada.
+    Atualiza status para PARTIALLY_REFUNDED para manter paridade com Asaas.
+    Reverte ia_recebeu para não contar no dashboard como coletado pela IA.
+    """
+    extra_fields = {
+        "refund_date": datetime.utcnow().isoformat(),
+        "ia_recebeu": False,
+        "ia_recebeu_at": None,
+    }
+    await _atualizar_status_cobranca(
+        supabase, payment, agent_id,
+        status="PARTIALLY_REFUNDED",
+        extra_fields=extra_fields,
+        billing_status="refunded",
+    )
+
+
+# ============================================================================
+# PAYMENT_CHARGEBACK_REQUESTED - Chargeback solicitado
+# ============================================================================
+
+async def _processar_chargeback_solicitado(
+    supabase: Any,
+    payment: Dict[str, Any],
+    agent_id: Optional[str],
+) -> None:
+    """
+    Processa PAYMENT_CHARGEBACK_REQUESTED.
+
+    Cliente solicitou chargeback (contestação no cartão).
+    CRÍTICO: Requer ação imediata do lojista.
+    Reverte ia_recebeu para não contar no dashboard como coletado pela IA.
+    """
+    extra_fields = {
+        "chargeback_requested_at": datetime.utcnow().isoformat(),
+        "ia_recebeu": False,
+        "ia_recebeu_at": None,
+    }
+    await _atualizar_status_cobranca(
+        supabase, payment, agent_id,
+        status="CHARGEBACK_REQUESTED",
+        extra_fields=extra_fields,
+        billing_status="chargeback",
+    )
+    logger.warning(
+        "[ASAAS WEBHOOK] CHARGEBACK SOLICITADO! Payment: %s | Valor: R$ %.2f",
+        payment.get("id"), payment.get("value", 0)
+    )
+
+
+# ============================================================================
+# PAYMENT_CHARGEBACK_DISPUTE - Chargeback em disputa
+# ============================================================================
+
+async def _processar_chargeback_disputa(
+    supabase: Any,
+    payment: Dict[str, Any],
+    agent_id: Optional[str],
+) -> None:
+    """
+    Processa PAYMENT_CHARGEBACK_DISPUTE.
+
+    Chargeback está em processo de disputa.
+    """
+    extra_fields = {
+        "chargeback_dispute_at": datetime.utcnow().isoformat(),
+    }
+    await _atualizar_status_cobranca(
+        supabase, payment, agent_id,
+        status="CHARGEBACK_DISPUTE",
+        extra_fields=extra_fields,
+        billing_status="chargeback",
+    )
+
+
+# ============================================================================
+# PAYMENT_AWAITING_CHARGEBACK_REVERSAL - Aguardando reversão de chargeback
+# ============================================================================
+
+async def _processar_aguardando_reversao_chargeback(
+    supabase: Any,
+    payment: Dict[str, Any],
+    agent_id: Optional[str],
+) -> None:
+    """
+    Processa PAYMENT_AWAITING_CHARGEBACK_REVERSAL.
+
+    Aguardando reversão do chargeback pela bandeira.
+    """
+    await _atualizar_status_cobranca(
+        supabase, payment, agent_id,
+        status="AWAITING_CHARGEBACK_REVERSAL",
+        billing_status="chargeback",
+    )
+
+
+# ============================================================================
+# PAYMENT_RESTORED - Cobrança restaurada
+# ============================================================================
+
+async def _processar_pagamento_restaurado(
+    supabase: Any,
+    payment: Dict[str, Any],
+    agent_id: Optional[str],
+) -> None:
+    """
+    Processa PAYMENT_RESTORED.
+
+    Cobrança restaurada (ex: após reversão de chargeback).
+    Volta ao status PENDING.
+    """
+    extra_fields = {
+        "restored_at": datetime.utcnow().isoformat(),
+        "chargeback_requested_at": None,
+        "chargeback_dispute_at": None,
+        "refund_date": None,
+    }
+    await _atualizar_status_cobranca(
+        supabase, payment, agent_id,
+        status="PENDING",
+        extra_fields=extra_fields,
+        billing_status="pending",
+    )
+
+
+# ============================================================================
+# PAYMENT_RECEIVED_IN_CASH_UNDONE - Confirmação de dinheiro desfeita
+# ============================================================================
+
+async def _processar_pagamento_dinheiro_desfeito(
+    supabase: Any,
+    payment: Dict[str, Any],
+    agent_id: Optional[str],
+) -> None:
+    """
+    Processa PAYMENT_RECEIVED_IN_CASH_UNDONE.
+
+    Confirmação de recebimento em dinheiro foi desfeita.
+    Volta ao status PENDING.
+    """
+    await _atualizar_status_cobranca(
+        supabase, payment, agent_id,
+        status="PENDING",
+        billing_status="pending",
+    )
+
+
+# ============================================================================
+# PAYMENT_ANTICIPATED - Cobrança antecipada
+# ============================================================================
+
+async def _processar_pagamento_antecipado(
+    supabase: Any,
+    payment: Dict[str, Any],
+    agent_id: Optional[str],
+) -> None:
+    """
+    Processa PAYMENT_ANTICIPATED.
+
+    Cobrança foi antecipada (recebimento antes do prazo normal).
+    """
+    extra_fields = {
+        "anticipated_at": datetime.utcnow().isoformat(),
+    }
+    await _atualizar_status_cobranca(
+        supabase, payment, agent_id,
+        status="RECEIVED",
+        extra_fields=extra_fields,
+        billing_status="paid",
+    )
+
+
+# ============================================================================
+# PAYMENT_CREDIT_CARD_CAPTURE_REFUSED - Captura do cartão recusada
+# ============================================================================
+
+async def _processar_captura_cartao_recusada(
+    supabase: Any,
+    payment: Dict[str, Any],
+    agent_id: Optional[str],
+) -> None:
+    """
+    Processa PAYMENT_CREDIT_CARD_CAPTURE_REFUSED.
+
+    Captura do cartão de crédito foi recusada após pré-autorização.
+    """
+    await _atualizar_status_cobranca(
+        supabase, payment, agent_id,
+        status="FAILED",
+        billing_status="failed",
+    )
