@@ -395,3 +395,28 @@ export function createDianaTablesSQL(): string {
     CREATE INDEX IF NOT EXISTS idx_diana_remotejid ON diana(remotejid);
   `;
 }
+
+/**
+ * Gera SQL para criar tabela de sessões de atendimento
+ * Rastreia cada "sessão" de conversa para contar atendimentos por cliente
+ * Uma nova sessão é criada quando o lead envia mensagem após 4h de inatividade
+ */
+export function createLeadSessionsTableSQL(): string {
+  return `
+    CREATE TABLE IF NOT EXISTS lead_sessions (
+      id SERIAL PRIMARY KEY,
+      agent_id UUID NOT NULL,
+      remotejid TEXT NOT NULL,
+      started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      ended_at TIMESTAMPTZ,
+      pipeline_step_start TEXT,
+      pipeline_step_end TEXT,
+
+      CONSTRAINT idx_session_unique UNIQUE (agent_id, remotejid, started_at)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sessions_remotejid ON lead_sessions(remotejid);
+    CREATE INDEX IF NOT EXISTS idx_sessions_agent ON lead_sessions(agent_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_started ON lead_sessions(started_at);
+  `;
+}

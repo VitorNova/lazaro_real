@@ -1223,11 +1223,16 @@ class WhatsAppWebhookHandler:
             image_url = context.get("image_url")  # URL direta (Leadbox)
 
             # Detectar qualquer variante de placeholder de imagem
-            image_placeholders = ["[Imagem recebida]", "[image recebido]", "[imageMessage recebido]"]
+            image_placeholders = [
+                "[Imagem recebida]", "[image recebido]", "[imageMessage recebido]",
+                "[document recebido]", "[documentMessage recebido]"
+            ]
             has_image_placeholder = any(p in combined_text for p in image_placeholders)
 
             if has_image_placeholder:
-                logger.info(f"[IMAGEM] Detectada imagem - url={image_url[:50] if image_url else None}, message_id={image_message_id}")
+                is_document = any("document" in p.lower() for p in image_placeholders if p in combined_text)
+                media_label = "documento" if is_document else "imagem"
+                logger.info(f"[MEDIA] Detectado {media_label} - url={image_url[:50] if image_url else None}, message_id={image_message_id}")
 
                 # PRIORIDADE 1: Usar URL direta (Leadbox envia URL completa)
                 if image_url:
@@ -1248,14 +1253,15 @@ class WhatsAppWebhookHandler:
                                     "base64": image_b64,
                                     "mimetype": content_type,
                                 }
-                                logger.info(f"[IMAGEM] Baixada via URL direta! mimetype={content_type}, size={len(image_b64)} chars")
+                                logger.info(f"[MEDIA] Baixada via URL direta! mimetype={content_type}, size={len(image_b64)} chars")
                                 # Substituir placeholders
                                 for placeholder in image_placeholders:
-                                    combined_text = combined_text.replace(placeholder, "[Cliente enviou uma imagem - analisando...]")
+                                    replacement = "[Cliente enviou um documento - analisando...]" if "document" in placeholder.lower() else "[Cliente enviou uma imagem - analisando...]"
+                                    combined_text = combined_text.replace(placeholder, replacement)
                             else:
-                                logger.warning(f"[IMAGEM] Falha ao baixar URL direta: status={resp.status_code}")
+                                logger.warning(f"[MEDIA] Falha ao baixar URL direta: status={resp.status_code}")
                     except Exception as e:
-                        logger.error(f"[IMAGEM] Erro ao baixar via URL direta: {e}")
+                        logger.error(f"[MEDIA] Erro ao baixar via URL direta: {e}")
 
                 # PRIORIDADE 2: Usar UAZAPI download (se nao tem URL direta)
                 elif image_message_id:
@@ -1271,16 +1277,17 @@ class WhatsAppWebhookHandler:
                                 "base64": media_result["base64Data"],
                                 "mimetype": media_result.get("mimetype", "image/jpeg"),
                             }
-                            logger.info(f"[IMAGEM] Baixada via UAZAPI! mimetype={image_data['mimetype']}, size={len(image_data['base64'])} chars")
+                            logger.info(f"[MEDIA] Baixada via UAZAPI! mimetype={image_data['mimetype']}, size={len(image_data['base64'])} chars")
                             # Substituir placeholders
                             for placeholder in image_placeholders:
-                                combined_text = combined_text.replace(placeholder, "[Cliente enviou uma imagem - analisando...]")
+                                replacement = "[Cliente enviou um documento - analisando...]" if "document" in placeholder.lower() else "[Cliente enviou uma imagem - analisando...]"
+                                combined_text = combined_text.replace(placeholder, replacement)
                         else:
-                            logger.warning(f"[IMAGEM] Falha ao baixar via UAZAPI: {media_result.get('error')}")
+                            logger.warning(f"[MEDIA] Falha ao baixar via UAZAPI: {media_result.get('error')}")
                     except Exception as e:
-                        logger.error(f"[IMAGEM] Erro ao baixar via UAZAPI: {e}")
+                        logger.error(f"[MEDIA] Erro ao baixar via UAZAPI: {e}")
                 else:
-                    logger.warning(f"[IMAGEM] Placeholder detectado mas sem URL nem message_id para download")
+                    logger.warning(f"[MEDIA] Placeholder detectado mas sem URL nem message_id para download")
 
             # Enviar typing indicator
             logger.debug(f"[DEBUG 4/6] ENVIANDO TYPING para {phone}...")
@@ -1370,6 +1377,21 @@ class WhatsAppWebhookHandler:
                             logger.warning(f"[CONTRACT] Falha ao buscar dados do contrato {contract_id} para {phone}")
                 else:
                     print(f"[PROMPT DEBUG] FALHA! get_context_prompt retornou None", flush=True)
+
+            # ================================================================
+            # INJETAR CONTEXTO DE ATENDIMENTOS ANTERIORES
+            # Se o cliente já teve mais de 1 atendimento, informar a IA
+            # ================================================================
+            total_atendimentos = context.get("total_atendimentos", 1)
+            lead_nome = context.get("lead_nome", "")
+            if total_atendimentos > 1:
+                atendimentos_prompt = f"""
+## HISTÓRICO DO CLIENTE
+Este cliente ({lead_nome or 'sem nome registrado'}) já teve {total_atendimentos - 1} atendimento(s) anterior(es) com você.
+Considere que ele já conhece o processo e pode estar retornando para acompanhamento ou nova demanda.
+"""
+                effective_system_prompt = effective_system_prompt + "\n" + atendimentos_prompt
+                logger.debug(f"[SESSION] Contexto de {total_atendimentos} atendimentos injetado para {phone}")
 
             # Atualizar context com o prompt efetivo
             context["system_prompt"] = effective_system_prompt
@@ -3584,6 +3606,18 @@ Observacoes: {description or 'Nenhuma'}
             except Exception as name_err:
                 logger.warning(f"[LEAD NAME] Erro ao atualizar nome do lead {phone}: {name_err}")
 
+        # ============================================================
+        # CONTAGEM DE SESSÕES DE ATENDIMENTO
+        # Verifica/cria sessão e obtém total de atendimentos do cliente
+        # ============================================================
+        try:
+            total_atendimentos = supabase.ensure_session(agent_id, remotejid)
+            lead["total_atendimentos"] = total_atendimentos
+            logger.debug(f"[SESSION] Lead {phone} tem {total_atendimentos} atendimentos")
+        except Exception as session_err:
+            logger.warning(f"[SESSION] Erro ao verificar sessão para {phone}: {session_err}")
+            lead["total_atendimentos"] = 1
+
         # Resetar follow-up quando lead responde
         try:
             from app.jobs.reengajar_leads import reset_follow_up_on_lead_response
@@ -3720,12 +3754,13 @@ Observacoes: {description or 'Nenhuma'}
         # Determinar se e mensagem de imagem e guardar message_id e/ou URL
         image_message_id = None
         image_url = None
-        if media_type in ["image", "imageMessage"]:
+        if media_type in ["image", "imageMessage", "document", "documentMessage"]:
             if message_id:
                 image_message_id = message_id
             if media_url:
                 image_url = media_url
-            logger.debug(f"[DEBUG 3/6] IMAGEM DETECTADA - message_id={image_message_id}, url={image_url[:50] if image_url else None}")
+            media_label = "DOCUMENTO" if media_type in ["document", "documentMessage"] else "IMAGEM"
+            logger.debug(f"[DEBUG 3/6] {media_label} DETECTADO - message_id={image_message_id}, url={image_url[:50] if image_url else None}")
 
         # Criar contexto de processamento
         context: ProcessingContext = {
@@ -3743,6 +3778,8 @@ Observacoes: {description or 'Nenhuma'}
             "image_message_id": image_message_id,  # ID da mensagem de imagem
             "image_url": image_url,  # URL direta da imagem (Leadbox)
             "context_prompts": agent.get("context_prompts"),  # Prompts dinamicos (RAG simplificado)
+            "total_atendimentos": lead.get("total_atendimentos", 1),  # Sessões de atendimento do cliente
+            "lead_nome": lead.get("nome", ""),  # Nome do lead para contexto
         }
 
         # Agendar processamento

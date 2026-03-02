@@ -568,6 +568,96 @@ class SupabaseService:
             return False
 
     # ========================================================================
+    # LEAD SESSIONS (tabela lead_sessions)
+    # ========================================================================
+
+    def ensure_session(
+        self,
+        agent_id: str,
+        remotejid: str,
+        inactivity_hours: int = 4
+    ) -> int:
+        """
+        Verifica/cria sessão de atendimento e retorna total de sessões do cliente.
+
+        Uma nova sessão é criada quando:
+        - Não existe sessão anterior para este lead
+        - A última sessão é mais antiga que inactivity_hours
+
+        Args:
+            agent_id: ID do agente
+            remotejid: ID WhatsApp do lead
+            inactivity_hours: Horas de inatividade para considerar nova sessão (default: 4)
+
+        Returns:
+            Total de sessões do cliente com este agente
+        """
+        try:
+            now = datetime.utcnow()
+            cutoff = now - timedelta(hours=inactivity_hours)
+
+            # Buscar última sessão
+            result = (
+                self.client
+                .table("lead_sessions")
+                .select("id, started_at, ended_at")
+                .eq("agent_id", agent_id)
+                .eq("remotejid", remotejid)
+                .order("started_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+
+            last_session = result.data[0] if result.data else None
+
+            # Verificar se precisa criar nova sessão
+            needs_new_session = False
+            if not last_session:
+                needs_new_session = True
+            else:
+                last_started = datetime.fromisoformat(
+                    last_session["started_at"].replace("Z", "+00:00")
+                ).replace(tzinfo=None)
+                if last_started < cutoff:
+                    needs_new_session = True
+
+            if needs_new_session:
+                # Fechar sessão anterior se estiver aberta
+                if last_session and not last_session.get("ended_at"):
+                    self.client.table("lead_sessions").update({
+                        "ended_at": now.isoformat()
+                    }).eq("id", last_session["id"]).execute()
+
+                # Criar nova sessão
+                self.client.table("lead_sessions").insert({
+                    "agent_id": agent_id,
+                    "remotejid": remotejid,
+                    "started_at": now.isoformat()
+                }).execute()
+
+                logger.info(f"[SESSION] Nova sessão criada para {remotejid} com agente {agent_id[:8]}")
+
+            # Contar total de sessões
+            count_result = (
+                self.client
+                .table("lead_sessions")
+                .select("id", count="exact")
+                .eq("agent_id", agent_id)
+                .eq("remotejid", remotejid)
+                .execute()
+            )
+
+            total = count_result.count if count_result.count else 1
+            logger.debug(f"[SESSION] Lead {remotejid} tem {total} sessões com agente {agent_id[:8]}")
+
+            return total
+
+        except Exception as e:
+            logger.error(f"Erro ao verificar/criar sessão: {e}")
+            # Em caso de erro, retornar 1 para não quebrar o fluxo
+            return 1
+
+    # ========================================================================
     # CONVERSATION HISTORY (tabelas leadbox_messages_*)
     # ========================================================================
 
@@ -1325,6 +1415,15 @@ def set_lead_paused(
 def is_lead_paused(table_name: str, remotejid: str) -> bool:
     """Wrapper para is_lead_paused."""
     return get_supabase_service().is_lead_paused(table_name, remotejid)
+
+
+def ensure_session(
+    agent_id: str,
+    remotejid: str,
+    inactivity_hours: int = 4
+) -> int:
+    """Wrapper para ensure_session."""
+    return get_supabase_service().ensure_session(agent_id, remotejid, inactivity_hours)
 
 
 def get_agent_google_credentials(agent_id: str) -> Optional[Dict[str, Any]]:
