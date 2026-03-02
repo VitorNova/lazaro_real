@@ -1,0 +1,103 @@
+# Lazaro V2 - Docker Compose
+# Stack completa (Web + API + IA + Redis)
+
+services:
+  # ==========================================================================
+  # LAZARO WEB - Frontend React/Vite
+  # ==========================================================================
+  lazaro-web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: lazaro-web-v2
+    restart: unless-stopped
+    ports:
+      - "3100:80"  # Host:Container (3100 para evitar conflito)
+    depends_on:
+      - lazaro-api
+    networks:
+      - lazaro-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ==========================================================================
+  # LAZARO API - Backend Fastify/TypeScript
+  # ==========================================================================
+  lazaro-api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: lazaro-api-v2
+    restart: unless-stopped
+    ports:
+      - "3112:3102"  # Host:Container (3112 para evitar conflito)
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - PORT=3102
+      - REDIS_URL=redis://lazaro-redis:6379
+    depends_on:
+      - lazaro-redis
+    networks:
+      - lazaro-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3102/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ==========================================================================
+  # LAZARO IA - Agente Python (imagem pré-construída)
+  # ==========================================================================
+  lazaro-ia:
+    image: lazaro-ia:v1.0
+    container_name: lazaro-ia-v2
+    restart: unless-stopped
+    ports:
+      - "3115:3105"  # Host:Container (3115 para evitar conflito)
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://lazaro-redis:6379
+    depends_on:
+      - lazaro-redis
+    networks:
+      - lazaro-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3105/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ==========================================================================
+  # LAZARO REDIS - Cache compartilhado
+  # ==========================================================================
+  lazaro-redis:
+    image: redis:7-alpine
+    container_name: lazaro-redis-v2
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - lazaro-redis-data:/data
+    networks:
+      - lazaro-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+networks:
+  lazaro-network:
+    driver: bridge
+
+volumes:
+  lazaro-redis-data:
