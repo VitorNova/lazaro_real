@@ -1323,6 +1323,7 @@ class WhatsAppWebhookHandler:
                             "manutencao_preventiva": "manutencao_preventiva",
                             "disparo_cobranca": "disparo_billing",
                             "disparo_manutencao": "disparo_manutencao",
+                            "billing_system": "disparo_billing",  # compatibilidade com leads antigos
                         }
                         if lead_origin in ORIGIN_TO_CONTEXT:
                             conversation_context = ORIGIN_TO_CONTEXT[lead_origin]
@@ -2488,20 +2489,91 @@ Observacoes: {description or 'Nenhuma'}
 
                     # Campos que SEMPRE existem em qualquer tabela de leads
                     now = datetime.utcnow().isoformat()
+                    # ================================================================
+                    # FALLBACK: Extrair CPF do histórico e determinar interest_type
+                    # Best-effort: não impede transferência se falhar
+                    # ================================================================
+                    extra_lead_data = {}
+
+                    # Determinar interest_type baseado no motivo
+                    motivo_lower = (motivo or "").lower()
+                    if any(p in motivo_lower for p in ["alugar", "aluguel", "locação", "locacao", "locar", "alugo"]):
+                        extra_lead_data["interest_type"] = "ALUGUEL"
+                    elif any(p in motivo_lower for p in ["manutenção", "manutencao", "defeito", "conserto", "reparo"]):
+                        extra_lead_data["interest_type"] = "MANUTENCAO"
+                    else:
+                        extra_lead_data["interest_type"] = "OUTRO"
+
+                    # Verificar se lead já tem CPF salvo
+                    try:
+                        lead_atual = supabase.get_lead_by_remotejid(table_leads, remotejid)
+                        cpf_existente = lead_atual.get("cpf_cnpj") if lead_atual else None
+
+                        if not cpf_existente:
+                            # Tentar extrair CPF do histórico de conversa
+                            table_messages = context.get("table_messages")
+                            if table_messages:
+                                history_record = supabase.get_conversation_history(table_messages, remotejid)
+                                if history_record and history_record.get("messages"):
+                                    messages = history_record.get("messages", [])
+                                    # Regex para CPF e CNPJ (apenas mensagens do user/lead)
+                                    cpf_pattern = r'\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b'
+                                    cnpj_pattern = r'\b\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}\b'
+                                    digits_11_pattern = r'\b\d{11}\b'
+                                    digits_14_pattern = r'\b\d{14}\b'
+
+                                    import re
+                                    for msg in reversed(messages):  # Mais recente primeiro
+                                        role = msg.get("role", "")
+                                        if role != "user":
+                                            continue  # Só mensagens do lead
+                                        text = ""
+                                        parts = msg.get("parts", [])
+                                        for part in parts:
+                                            if isinstance(part, dict) and part.get("text"):
+                                                text += part["text"] + " "
+                                            elif isinstance(part, str):
+                                                text += part + " "
+
+                                        # Tentar CNPJ primeiro (mais longo)
+                                        match = re.search(cnpj_pattern, text)
+                                        if not match:
+                                            match = re.search(digits_14_pattern, text)
+                                        if not match:
+                                            match = re.search(cpf_pattern, text)
+                                        if not match:
+                                            match = re.search(digits_11_pattern, text)
+
+                                        if match:
+                                            cpf_extraido = re.sub(r'\D', '', match.group())
+                                            if len(cpf_extraido) in [11, 14]:
+                                                extra_lead_data["cpf_cnpj"] = cpf_extraido
+                                                logger.info(f"[HANDOFF] CPF extraído do histórico e salvo: {cpf_extraido}")
+                                                break
+                    except Exception as e:
+                        logger.warning(f"[HANDOFF] Erro ao extrair CPF do histórico (best-effort): {e}")
+
+                    # Update principal do lead
+                    update_data = {
+                        "Atendimento_Finalizado": "true",
+                        "current_state": "human",
+                        "paused_at": now,
+                        "handoff_at": now,
+                        "transfer_reason": transfer_reason,
+                        "ticket_id": result.get("ticket_id"),
+                        "current_queue_id": result.get("queue_id"),
+                        "current_user_id": result.get("user_id"),
+                    }
+                    update_data.update(extra_lead_data)
+
                     supabase.update_lead_by_remotejid(
                         table_leads,
                         remotejid,
-                        {
-                            "Atendimento_Finalizado": "true",
-                            "current_state": "human",
-                            "paused_at": now,
-                            "handoff_at": now,
-                            "transfer_reason": transfer_reason,
-                            "ticket_id": result.get("ticket_id"),
-                            "current_queue_id": result.get("queue_id"),
-                            "current_user_id": result.get("user_id"),
-                        }
+                        update_data
                     )
+
+                    if extra_lead_data.get("interest_type"):
+                        logger.info(f"[HANDOFF] interest_type={extra_lead_data.get('interest_type')}, cpf={extra_lead_data.get('cpf_cnpj', 'não extraído')}")
 
                     # ================================================================
                     # DETECÇÃO DE MANUTENÇÃO CORRETIVA (cliente relatou defeito)
@@ -3014,9 +3086,88 @@ Observacoes: {description or 'Nenhuma'}
                 verificar_pagamento=verificar_pagamento
             )
 
+        # ====================================================================
+        # HANDLER: SALVAR DADOS LEAD (CPF/Nome coletados durante conversa)
+        # ====================================================================
+        async def salvar_dados_lead_handler(
+            cpf: str = None,
+            nome: str = None,
+            **kwargs
+        ):
+            """
+            Salva CPF e nome do lead na base quando ele fornece durante a conversa.
+            Usado para rastreamento de conversão Lead → Cliente Asaas.
+
+            Args:
+                cpf: CPF ou CNPJ do lead (será limpo e validado)
+                nome: Nome do lead (opcional)
+            """
+            import re
+
+            logger.info(f"[SALVAR_DADOS_LEAD] cpf={cpf}, nome={nome}")
+
+            if not cpf:
+                return {
+                    "sucesso": False,
+                    "mensagem": "CPF não informado"
+                }
+
+            # Limpar CPF (remover pontos, traços, barras)
+            cpf_limpo = re.sub(r'\D', '', cpf)
+
+            # Validar formato
+            if len(cpf_limpo) == 11:
+                tipo_doc = "CPF"
+            elif len(cpf_limpo) == 14:
+                tipo_doc = "CNPJ"
+            else:
+                return {
+                    "sucesso": False,
+                    "mensagem": f"Documento inválido. CPF deve ter 11 dígitos, CNPJ 14. Informado: {len(cpf_limpo)} dígitos."
+                }
+
+            # Buscar dados do contexto
+            table_leads = context.get("table_leads")
+            remotejid = context.get("remotejid")
+
+            if not table_leads or not remotejid:
+                logger.error("[SALVAR_DADOS_LEAD] Contexto incompleto: table_leads ou remotejid ausente")
+                return {
+                    "sucesso": False,
+                    "mensagem": "Erro interno ao salvar dados"
+                }
+
+            # Montar dados para atualização
+            update_data = {
+                "cpf_cnpj": cpf_limpo,
+                "updated_date": datetime.utcnow().isoformat(),
+            }
+
+            if nome:
+                update_data["nome"] = nome
+
+            # Salvar na tabela de leads
+            try:
+                supabase.update_lead_by_remotejid(table_leads, remotejid, update_data)
+                logger.info(f"[SALVAR_DADOS_LEAD] {tipo_doc} salvo para {remotejid}: {cpf_limpo}")
+
+                return {
+                    "sucesso": True,
+                    "cpf": cpf_limpo,
+                    "tipo": tipo_doc,
+                    "mensagem": f"{tipo_doc} salvo com sucesso"
+                }
+            except Exception as e:
+                logger.error(f"[SALVAR_DADOS_LEAD] Erro ao salvar: {e}")
+                return {
+                    "sucesso": False,
+                    "mensagem": f"Erro ao salvar {tipo_doc}: {str(e)}"
+                }
+
         return {
             # Tools ativas (v2)
             "consultar_cliente": consultar_cliente_handler,
+            "salvar_dados_lead": salvar_dados_lead_handler,
             "transferir_departamento": transferir_departamento_handler,
             # Tools legadas (mantidas para fallback)
             "consulta_agenda": consulta_agenda_handler,
@@ -3397,7 +3548,31 @@ Observacoes: {description or 'Nenhuma'}
             queue_ia = handoff_config.get("queue_ia")
             queue_ia_user_id = handoff_config.get("queue_ia_user_id")
 
-            if handoff_config.get("enabled") and queue_ia and queue_ia_user_id:
+            # ============================================================
+            # PROTEÇÃO: Não reatribuir se lead já está em fila de dispatch
+            # Fix: billing routing - leads de cobrança devem permanecer na fila 544
+            # ============================================================
+            dispatch_queues = set()
+            dispatch_depts = handoff_config.get("dispatch_departments") or {}
+            for dept_config in dispatch_depts.values():
+                q = dept_config.get("queueId")
+                if q:
+                    try:
+                        dispatch_queues.add(int(q))
+                    except (ValueError, TypeError):
+                        pass
+
+            existing_queue = lead.get("current_queue_id")
+            skip_auto_assign = False
+            if existing_queue:
+                try:
+                    if int(existing_queue) in dispatch_queues:
+                        logger.info(f"[AUTO ASSIGN] Lead {phone} já em fila dispatch {existing_queue}, mantendo")
+                        skip_auto_assign = True
+                except (ValueError, TypeError):
+                    pass
+
+            if handoff_config.get("enabled") and queue_ia and queue_ia_user_id and not skip_auto_assign:
                 try:
                     queue_ia_int = int(queue_ia)
                     user_id_int = int(queue_ia_user_id)

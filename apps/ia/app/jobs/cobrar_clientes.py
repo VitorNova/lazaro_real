@@ -560,15 +560,10 @@ def should_skip_payment(
 ) -> bool:
     """
     Verifica se o pagamento deve ser ignorado.
-    - Assinaturas PENDING: pular (Asaas cuida)
-    - Assinaturas OVERDUE: processar (Asaas falhou)
     - Cartao PENDING: pular (cobrado automaticamente)
     - Cartao OVERDUE: processar (falhou)
+    - Assinaturas: processar normalmente (boleto/pix)
     """
-    # Assinaturas: PENDING -> pular, OVERDUE -> processar
-    if payment.get("subscription_id") and not is_overdue:
-        return True
-
     # Cartao de credito/debito: PENDING -> pular, OVERDUE -> processar
     billing_type = payment.get("billing_type", "")
     if billing_type in CARD_BILLING_TYPES and not is_overdue:
@@ -1068,6 +1063,14 @@ async def ensure_lead_exists(
         if response.data:
             lead_id = response.data[0]["id"]
             _log(f"Lead existente encontrado: {lead_id}")
+            # Atualizar lead_origin para contexto de cobrança (fix: billing routing)
+            try:
+                supabase.client.table(table_leads).update({
+                    "lead_origin": "disparo_cobranca",
+                    "updated_date": now,
+                }).eq("id", lead_id).execute()
+            except Exception as e:
+                _log_warn(f"Erro ao atualizar lead_origin: {e}")
             return lead_id
 
         # Lead nao existe, criar novo
@@ -1080,7 +1083,7 @@ async def ensure_lead_exists(
             "asaas_customer_id": customer_id,
             "pipeline_step": "cliente",
             "status": "ativo",
-            "lead_origin": "billing_system",
+            "lead_origin": "disparo_cobranca",
             "current_state": "active",
             "created_date": now,
             "updated_date": now,
