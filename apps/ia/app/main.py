@@ -893,10 +893,14 @@ async def leadbox_webhook(request: Request, background_tasks: BackgroundTasks) -
 
                 try:
                     supabase_svc.client.table(table_leads) \
-                        .update({"ticket_id": None}) \
+                        .update({
+                            "ticket_id": None,
+                            "current_queue_id": None,
+                            "current_user_id": None,
+                        }) \
                         .eq("remotejid", remotejid) \
                         .execute()
-                    logger.info("[LEADBOX WEBHOOK] Ticket fechado - ticket_id limpo para lead %s em %s", phone, table_leads)
+                    logger.info("[LEADBOX WEBHOOK] Ticket fechado - ticket_id, queue e user limpos para lead %s em %s", phone, table_leads)
                 except Exception as e:
                     logger.debug("[LEADBOX WEBHOOK] Erro ao limpar ticket_id em %s: %s", table_leads, e)
 
