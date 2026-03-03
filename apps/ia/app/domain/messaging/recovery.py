@@ -7,9 +7,9 @@ This module handles recovery of:
 """
 
 import asyncio
-import structlog
+import logging
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 async def recover_orphan_buffers():
