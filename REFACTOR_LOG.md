@@ -1,10 +1,36 @@
 # Lazaro-v2 Refactor Log
 
 ## Status Atual
-**Fase**: 1 - Quebrar main.py ✅ COMPLETA (com pendências resolvidas)
+**Fase**: 2 - Quebrar mensagens.py (EM PROGRESSO)
 **Última Atualização**: 2026-03-03
 **Responsável**: Claude Code
-**Próxima Fase**: 2 - Quebrar mensagens.py
+**Próximo Passo**: 2.2 - Extrair context builders
+
+---
+
+## Fase 2: Quebrar mensagens.py (EM PROGRESSO)
+
+### Objetivo
+- **mensagens.py original**: 4438 linhas
+- **Meta**: Módulos de 200-400 linhas
+
+### Checklist
+- [x] 2.1 domain/messaging/models/message.py <- ExtractedMessage, ProcessingContext (42L)
+- [ ] 2.2 domain/messaging/context/context_detector.py <- get_context_prompt, detect_conversation_context, prepare_system_prompt
+- [ ] 2.3 domain/messaging/context/maintenance_context.py <- get_contract_data_for_maintenance, build_maintenance_context_prompt
+- [ ] 2.4 domain/messaging/context/billing_context.py <- get_billing_data_for_context, build_billing_context_prompt
+- [ ] 2.5 domain/messaging/handlers/incoming_message_handler.py
+- [ ] 2.6 domain/messaging/services/message_processor.py
+- [ ] 2.7 domain/messaging/services/conversation_manager.py
+- [ ] 2.8 domain/messaging/handlers/outgoing_message_handler.py
+- [ ] 2.9-2.14 ai/tools/* (scheduling, transfer, maintenance, billing, customer, registry)
+- [ ] 2.15 domain/messaging/message_orchestrator.py (<200 linhas)
+- [ ] 2.16 api/routes/webhook_whatsapp.py
+
+### Módulos Extraídos
+| Módulo | Linhas | Descrição |
+|--------|--------|-----------|
+| domain/messaging/models/message.py | 42 | ExtractedMessage, ProcessingContext |
 
 ---
 
@@ -70,6 +96,7 @@
 | 2026-03-03 | 033a2bd | refactor(fase-1.13): leadbox_handler.py |
 | 2026-03-03 | afa7941 | refactor(fase-1.14): leadbox.py reduzido 130L |
 | 2026-03-03 | 3409138 | refactor(fase-1.15): main_refactored.py 51L |
+| 2026-03-03 | 3268430 | refactor(fase-2.1): ExtractedMessage, ProcessingContext |
 
 ---
 
