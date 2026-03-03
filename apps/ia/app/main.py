@@ -1100,7 +1100,8 @@ async def leadbox_webhook(request: Request, background_tasks: BackgroundTasks) -
                                 update_data["Atendimento_Finalizado"] = "false"
                                 update_data["current_user_id"] = target_user_str
                                 try:
-                                    redis_svc = await get_redis_service()
+                                    from app.services.redis import get_redis_service as get_redis
+                                    redis_svc = await get_redis()
                                     await redis_svc.pause_clear(agent_id, clean_phone)
                                 except Exception as re:
                                     logger.warning("[LEADBOX WEBHOOK] Erro ao limpar Redis pause: %s", re)
