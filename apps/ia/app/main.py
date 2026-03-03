@@ -912,10 +912,10 @@ async def leadbox_webhook(request: Request, background_tasks: BackgroundTasks) -
                         redis_svc = await get_redis_service()
                         agent_id = ag.get("id")
                         if agent_id:
-                            await redis_svc.pause_remove(agent_id, clean_phone)
-                            logger.debug("[LEADBOX WEBHOOK] Pausa Redis removida para %s", phone)
+                            await redis_svc.pause_clear(agent_id, clean_phone)
+                            logger.info("[LEADBOX WEBHOOK] Pausa Redis removida para %s (agent=%s)", phone, agent_id[:8])
                     except Exception as redis_err:
-                        logger.debug("[LEADBOX WEBHOOK] Erro ao remover pausa Redis: %s", redis_err)
+                        logger.warning("[LEADBOX WEBHOOK] Erro ao remover pausa Redis: %s", redis_err)
 
                     logger.info("[LEADBOX WEBHOOK] Ticket fechado - lead %s resetado para IA em %s", phone, table_leads)
                 except Exception as e:
