@@ -54,3 +54,16 @@ VERIFICADO | ALTA CONFIANCA | SUPOSICAO | ESPECULACAO
 YOU MUST usar sequential thinking (mcp sequentialthinking) ANTES de qualquer tarefa com mais de 1 passo. Isso inclui: refatoracao, debugging, criar novo arquivo, mover codigo. Pense em etapas ANTES de agir.
 
 YOU MUST usar context7 para consultar documentacao atualizada ANTES de usar APIs de: FastAPI, LangChain, Supabase, Redis, APScheduler, Gemini. Nunca assuma a API de memoria - consulte primeiro.
+
+## Git
+IMPORTANT: NUNCA use git add -A durante refatoracao. Sempre adicione apenas os arquivos que voce modificou naquele passo. Use git add <arquivo> explicitamente.
+
+## Ambiente Python
+O Python da aplicacao roda via PM2. Para testar imports use:
+cd /var/www/lazaro-v2/apps/ia && python3 -m py_compile app/<arquivo>.py
+NAO existe virtualenv separado. O python3 do sistema tem as dependencias.
+
+## Regras de Contexto
+IMPORTANT: Para arquivos com mais de 500 linhas, use o subagente explorer-lazaro (context: fork) para mapear funcoes e dependencias. NUNCA leia arquivos grandes direto no contexto principal.
+IMPORTANT: NUNCA agrupe multiplos passos num unico commit. Um passo = um commit. Se a skill diz 1.6, 1.7, 1.8 sao passos separados, commite cada um separadamente.
+IMPORTANT: Se a skill define meta de linhas para um modulo (ex: 200-400 linhas) e o resultado passou, quebre mais antes de seguir.

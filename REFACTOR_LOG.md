@@ -1,7 +1,7 @@
 # Lazaro-v2 Refactor Log
 
 ## Status Atual
-**Fase**: 1 - Quebrar main.py ✅ COMPLETA
+**Fase**: 1 - Quebrar main.py ✅ COMPLETA (com pendências resolvidas)
 **Última Atualização**: 2026-03-03
 **Responsável**: Claude Code
 **Próxima Fase**: 2 - Quebrar mensagens.py
@@ -10,27 +10,32 @@
 
 ## Fase 1: Quebrar main.py ✅ COMPLETA
 
-### Resultado
+### Resultado Final
 - **main.py original**: 2068 linhas
-- **main_refactored.py**: 193 linhas (~91% redução)
+- **main_refactored.py**: 51 linhas (97.5% redução) ✅ Meta 50-80 atingida
 
 ### Checklist
 - [x] 1.1 core/config/app_state.py <- AppState
 - [x] 1.2 domain/messaging/recovery.py <- recover_orphan_buffers, recover_failed_sends
 - [x] 1.3 jobs/scheduler.py <- APScheduler config e jobs
 - [x] 1.4 api/routes/webhooks.py <- webhooks dinâmicos
-- [x] 1.5 api/routes/leadbox.py <- webhook Leadbox (~760 linhas)
+- [x] 1.5 api/routes/leadbox.py <- webhook Leadbox
 - [x] 1.6 api/routes/uploads.py <- upload/list/delete
 - [x] 1.7 api/routes/jobs_control.py <- endpoints jobs
 - [x] 1.8 api/routes/maintenance_slots.py <- slots manutencao
 - [x] 1.9 api/routes/leads_analysis.py <- reanalyze Observer
 - [x] 1.10 api/routes/health.py <- health endpoints
 - [x] 1.11 main_refactored.py <- main limpo
+- [x] 1.12 api/services/lead_intake_service.py <- processamento leads (445L)
+- [x] 1.13 api/handlers/leadbox_handler.py <- handlers leadbox (438L)
+- [x] 1.14 api/routes/leadbox.py <- reduzido para 130L
+- [x] 1.15 core/logging.py + core/lifespan.py + register_routes()
 
 ### Notas
 - main_refactored.py criado mas NÃO substitui main.py ainda
 - Precisa deploy/teste em produção antes da troca
 - Todos os módulos passaram verificação de sintaxe
+- leadbox.py quebrado em 3 módulos (handler + service + rota)
 
 ---
 
@@ -61,6 +66,10 @@
 | 2026-03-03 | 928c823 | refactor(fase-1.5): leadbox (~760L) |
 | 2026-03-03 | f2bb43d | refactor(fase-1.6-1.10): rotas restantes |
 | 2026-03-03 | a126c4c | refactor(fase-1.11): main_refactored |
+| 2026-03-03 | 38d5cfb | refactor(fase-1.12): lead_intake_service.py |
+| 2026-03-03 | 033a2bd | refactor(fase-1.13): leadbox_handler.py |
+| 2026-03-03 | afa7941 | refactor(fase-1.14): leadbox.py reduzido 130L |
+| 2026-03-03 | 3409138 | refactor(fase-1.15): main_refactored.py 51L |
 
 ---
 
@@ -68,7 +77,7 @@
 
 | Arquivo | Linhas | Status |
 |---------|--------|--------|
-| main.py | 2068 → 193 | ✅ Fase 1 (91% redução) |
+| main.py | 2068 → 51 | ✅ Fase 1 (97.5% redução) |
 | mensagens.py | 4438 | Pendente (Fase 2) |
 | pagamentos.py | 2983 | Pendente (Fase 3) |
 | cobrar_clientes.py | 1839 | Pendente (Fase 4) |
@@ -82,15 +91,22 @@
 | Módulo | Linhas | Descrição |
 |--------|--------|-----------|
 | core/config/app_state.py | 25 | Classe AppState singleton |
+| core/logging.py | 47 | Configuração de logging |
+| core/lifespan.py | 75 | Startup/shutdown lifecycle |
 | domain/messaging/recovery.py | 243 | Recovery de buffers e envios |
 | jobs/scheduler.py | 137 | APScheduler configuração |
+| api/routes/__init__.py | 79 | register_routes() centralizado |
 | api/routes/webhooks.py | 73 | Webhooks dinâmicos |
-| api/routes/leadbox.py | 870 | Webhook Leadbox completo |
+| api/routes/leadbox.py | 130 | Rota Leadbox (orquestrador) |
 | api/routes/uploads.py | 90 | Upload de arquivos |
 | api/routes/jobs_control.py | 200 | Controle de jobs |
 | api/routes/maintenance_slots.py | 90 | Slots manutenção |
 | api/routes/leads_analysis.py | 190 | Observer batch |
 | api/routes/health.py | 100 | Health checks |
+| api/handlers/leadbox_handler.py | 438 | Handlers Leadbox |
+| api/services/lead_intake_service.py | 445 | Processamento de leads |
+
+**Total extraído**: ~2362 linhas em 15 módulos
 
 ---
 
