@@ -4,7 +4,7 @@
 **Fase**: 2 - Quebrar mensagens.py (EM PROGRESSO)
 **Última Atualização**: 2026-03-03
 **Responsável**: Claude Code
-**Próximo Passo**: 2.10 - Extrair ai/tools/transfer_tools.py
+**Próximo Passo**: 2.11 - Extrair ai/tools/maintenance_tools.py
 
 ---
 
@@ -24,7 +24,8 @@
 - [x] 2.7 domain/messaging/services/conversation_manager.py <- _save_conversation_history (245L)
 - [x] 2.8 domain/messaging/handlers/outgoing_message_handler.py <- _split_response, _queue_failed_send (251L)
 - [x] 2.9 ai/tools/scheduling_tools.py <- consulta_agenda, agendar, cancelar, reagendar (589L)
-- [ ] 2.10-2.14 ai/tools/* (transfer, maintenance, billing, customer, registry)
+- [x] 2.10 ai/tools/transfer_tools.py <- transferir_departamento, detectar_fuso (603L)
+- [ ] 2.11-2.14 ai/tools/* (maintenance, billing, customer, registry)
 - [ ] 2.15 domain/messaging/message_orchestrator.py (<200 linhas)
 - [ ] 2.16 api/routes/webhook_whatsapp.py
 
@@ -40,6 +41,7 @@
 | domain/messaging/services/conversation_manager.py | 245 | ConversationManager, save_conversation_history |
 | domain/messaging/handlers/outgoing_message_handler.py | 251 | OutgoingMessageHandler, split_response, queue_failed_send |
 | ai/tools/scheduling_tools.py | 589 | SchedulingTools: consulta_agenda, agendar, cancelar, reagendar |
+| ai/tools/transfer_tools.py | 603 | TransferTools: transferir_departamento, detectar_fuso_horario |
 
 ---
 
@@ -114,6 +116,7 @@
 | 2026-03-03 | 78d9b33 | refactor(fase-2.7): conversation_manager.py (245L) |
 | 2026-03-03 | dfbcc29 | refactor(fase-2.8): outgoing_message_handler.py (251L) |
 | 2026-03-03 | 6a93a81 | refactor(fase-2.9): scheduling_tools.py (589L) |
+| 2026-03-03 | 8520195 | refactor(fase-2.10): transfer_tools.py (603L) |
 
 ---
 
