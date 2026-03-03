@@ -898,9 +898,25 @@ async def leadbox_webhook(request: Request, background_tasks: BackgroundTasks) -
                             "current_queue_id": None,
                             "current_user_id": None,
                             "Atendimento_Finalizado": "false",
+                            "current_state": "ai",
+                            "paused_at": None,
+                            "paused_by": None,
+                            "responsavel": "AI",
                         }) \
                         .eq("remotejid", remotejid) \
                         .execute()
+
+                    # Também remover pausa do Redis
+                    from app.services.redis import get_redis_service
+                    try:
+                        redis_svc = await get_redis_service()
+                        agent_id = ag.get("id")
+                        if agent_id:
+                            await redis_svc.pause_remove(agent_id, clean_phone)
+                            logger.debug("[LEADBOX WEBHOOK] Pausa Redis removida para %s", phone)
+                    except Exception as redis_err:
+                        logger.debug("[LEADBOX WEBHOOK] Erro ao remover pausa Redis: %s", redis_err)
+
                     logger.info("[LEADBOX WEBHOOK] Ticket fechado - lead %s resetado para IA em %s", phone, table_leads)
                 except Exception as e:
                     logger.debug("[LEADBOX WEBHOOK] Erro ao limpar ticket_id em %s: %s", table_leads, e)
