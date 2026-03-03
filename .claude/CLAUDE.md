@@ -67,3 +67,6 @@ NAO existe virtualenv separado. O python3 do sistema tem as dependencias.
 IMPORTANT: Para arquivos com mais de 500 linhas, use o subagente explorer-lazaro (context: fork) para mapear funcoes e dependencias. NUNCA leia arquivos grandes direto no contexto principal.
 IMPORTANT: NUNCA agrupe multiplos passos num unico commit. Um passo = um commit. Se a skill diz 1.6, 1.7, 1.8 sao passos separados, commite cada um separadamente.
 IMPORTANT: Se a skill define meta de linhas para um modulo (ex: 200-400 linhas) e o resultado passou, quebre mais antes de seguir.
+
+## Estado do Refactoring
+ALWAYS leia REFACTOR_LOG.md ANTES de qualquer tarefa de refatoracao. Ele contem: fase atual, checklist do que ja foi feito, hashes dos commits, e proximos passos. NUNCA assuma o estado - consulte o log.
