@@ -90,3 +90,20 @@ NUNCA altere imports de producao (ex: trocar structlog por logging) para "corrig
 Cada comando do usuario = UMA sub-fase (ex: 2.2, NAO 2.2+2.3+2.4). Se o usuario pedir "faca a fase 2.2", faca SOMENTE 2.2. Crie o modulo, valide sintaxe, commite, atualize REFACTOR_LOG.md. PARE e reporte.
 
 Se o usuario pedir "faca as fases 2.2 a 2.4", faca uma por vez com commit separado entre cada uma. NUNCA comece 2.3 sem ter commitado 2.2.
+
+## Infraestrutura de Producao
+IMPORTANTE: O codigo em producao NAO e /var/www/lazaro-v2/. Producao roda em /var/www/phant/.
+- agente-ia (Python/FastAPI porta 3005): /var/www/phant/agente-ia/
+- agnes-agent (TypeScript/Fastify porta 3000): /var/www/phant/agnes-agent/
+
+## Logs e Debugging
+- Todos os logs: pm2 logs agente-ia --lines 200 --nostream
+- Webhook UAZAPI: pm2 logs agnes-agent --lines 200 --nostream | grep -i "uazapi\|webhook"
+- Webhook Leadbox: pm2 logs agnes-agent --lines 200 --nostream | grep -i "leadbox\|NewMessage\|QueueChange"
+- Webhook Asaas (pagamentos): pm2 logs agente-ia --lines 200 --nostream | grep -i "asaas\|payment\|webhook"
+- Job Cobranca: pm2 logs agente-ia --lines 200 --nostream | grep -i "billing\|cobran\|charge"
+- Job Manutencao: pm2 logs agente-ia --lines 200 --nostream | grep -i "maintenance\|manut\|preventiva"
+- Job Follow-up: pm2 logs agente-ia --lines 200 --nostream | grep -i "follow.up\|salvador"
+- Arquivos de log: /root/.pm2/logs/agente-ia-out.log e /root/.pm2/logs/agente-ia-error.log
+
+SEMPRE consulte os logs ANTES de propor solucao para bugs. Nunca assuma a causa.
