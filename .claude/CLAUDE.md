@@ -70,3 +70,23 @@ IMPORTANT: Se a skill define meta de linhas para um modulo (ex: 200-400 linhas) 
 
 ## Estado do Refactoring
 ALWAYS leia REFACTOR_LOG.md ANTES de qualquer tarefa de refatoracao. Ele contem: fase atual, checklist do que ja foi feito, hashes dos commits, e proximos passos. NUNCA assuma o estado - consulte o log.
+
+## Estrategia de Extracao (CRITICO)
+NUNCA edite o arquivo monolito (mensagens.py, pagamentos.py, cobrar_clientes.py, reengajar_leads.py) durante a extracao. A estrategia e:
+1. Criar o modulo novo com o codigo copiado do monolito
+2. py_compile no modulo novo
+3. Commitar SOMENTE o modulo novo
+4. NAO adicione imports no monolito. NAO remova codigo do monolito. NAO toque no monolito.
+5. A integracao (imports + remocao do codigo duplicado) sera feita em uma fase separada APOS teste em producao.
+
+Se voce sentir vontade de editar o monolito durante uma extracao, PARE e releia esta regra.
+
+## Validacao de Sintaxe
+Use SOMENTE py_compile para validar sintaxe. NUNCA use "python3 -c import" porque o ambiente do Claude Code NAO tem as dependencias instaladas (fastapi, structlog, etc). Se py_compile passar, esta OK. Se um import falhar por ModuleNotFoundError, isso NAO e um bug - e limitacao do ambiente.
+
+NUNCA altere imports de producao (ex: trocar structlog por logging) para "corrigir" erros que so existem no ambiente de teste.
+
+## Escopo por Sessao
+Cada comando do usuario = UMA sub-fase (ex: 2.2, NAO 2.2+2.3+2.4). Se o usuario pedir "faca a fase 2.2", faca SOMENTE 2.2. Crie o modulo, valide sintaxe, commite, atualize REFACTOR_LOG.md. PARE e reporte.
+
+Se o usuario pedir "faca as fases 2.2 a 2.4", faca uma por vez com commit separado entre cada uma. NUNCA comece 2.3 sem ter commitado 2.2.
