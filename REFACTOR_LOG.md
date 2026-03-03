@@ -4,7 +4,7 @@
 **Fase**: 2 - Quebrar mensagens.py (EM PROGRESSO)
 **Última Atualização**: 2026-03-03
 **Responsável**: Claude Code
-**Próximo Passo**: 2.5 - Extrair incoming_message_handler.py
+**Próximo Passo**: 2.6 - Extrair message_processor.py
 
 ---
 
@@ -19,7 +19,7 @@
 - [x] 2.2 domain/messaging/context/context_detector.py <- get_context_prompt, detect_conversation_context, prepare_system_prompt (236L)
 - [x] 2.3 domain/messaging/context/maintenance_context.py <- get_contract_data_for_maintenance, build_maintenance_context_prompt (177L)
 - [x] 2.4 domain/messaging/context/billing_context.py <- get_billing_data_for_context, build_billing_context_prompt (328L)
-- [ ] 2.5 domain/messaging/handlers/incoming_message_handler.py
+- [x] 2.5 domain/messaging/handlers/incoming_message_handler.py <- extract_message_data, handle_control_command (231L)
 - [ ] 2.6 domain/messaging/services/message_processor.py
 - [ ] 2.7 domain/messaging/services/conversation_manager.py
 - [ ] 2.8 domain/messaging/handlers/outgoing_message_handler.py
@@ -34,6 +34,7 @@
 | domain/messaging/context/context_detector.py | 236 | get_context_prompt, detect_conversation_context, prepare_system_prompt |
 | domain/messaging/context/maintenance_context.py | 177 | get_contract_data_for_maintenance, build_maintenance_context_prompt |
 | domain/messaging/context/billing_context.py | 328 | get_billing_data_for_context, build_billing_context_prompt |
+| domain/messaging/handlers/incoming_message_handler.py | 231 | extract_message_data, handle_control_command |
 
 ---
 
@@ -103,6 +104,7 @@
 | 2026-03-03 | feb1ce3 | refactor(fase-2.2): context_detector.py (236L) |
 | 2026-03-03 | e3c3d6a | refactor(fase-2.3): maintenance_context.py (177L) |
 | 2026-03-03 | 2ccf11a | refactor(fase-2.4): billing_context.py (328L) |
+| 2026-03-03 | 8c38249 | refactor(fase-2.5): incoming_message_handler.py (231L) |
 
 ---
 
