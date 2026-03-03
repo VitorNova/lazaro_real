@@ -1,24 +1,26 @@
 # Lazaro-v2 Refactor Log
 
 ## Status Atual
-**Fase**: 0 - Preparação
+**Fase**: 0 - Preparação ✅ COMPLETA
 **Última Atualização**: 2026-03-03
 **Responsável**: Claude Code
+**Próxima Fase**: 1 - Quebrar main.py
 
 ---
 
-## Fase 0: Preparação (Em Progresso)
+## Fase 0: Preparação ✅ COMPLETA
 
 ### Checklist
 - [x] Criar REFACTOR_LOG.md
-- [ ] Remover arquivos .bak
-- [ ] Mover scripts one-time para scripts/
-- [ ] Criar estrutura de pastas vazia
-- [ ] Criar __init__.py em todas as pastas Python
+- [x] Remover arquivos .bak
+- [x] Mover scripts one-time para scripts/
+- [x] Criar estrutura de pastas vazia
+- [x] Criar __init__.py em todas as pastas Python
 
 ### Notas
 - Início da refatoração do projeto Lazaro-v2
 - Objetivo: quebrar monolitos em módulos de 200-500 linhas
+- Estrutura DDD preparada em apps/ia/app/
 
 ---
 
@@ -26,7 +28,10 @@
 
 | Data | Commit | Descrição |
 |------|--------|-----------|
-| 2026-03-03 | - | Início Fase 0 |
+| 2026-03-03 | b092bb5 | refactor(fase-0.1): criar REFACTOR_LOG.md |
+| 2026-03-03 | 75c0ae6 | refactor(fase-0.2): remover arquivos .bak |
+| 2026-03-03 | d3d9262 | refactor(fase-0.3): mover scripts one-time para scripts/ |
+| 2026-03-03 | 9071c8d | refactor(fase-0.4): criar estrutura de pastas e __init__.py |
 
 ---
 
