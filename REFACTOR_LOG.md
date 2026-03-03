@@ -1,10 +1,48 @@
 # Lazaro-v2 Refactor Log
 
 ## Status Atual
-**Fase**: 4 - Quebrar cobrar_clientes.py ✅ COMPLETA
+**Fase**: 5 - Quebrar reengajar_leads.py ✅ COMPLETA
 **Última Atualização**: 2026-03-03
 **Responsável**: Claude Code
-**Próximo Passo**: Fase 5 - Quebrar reengajar_leads.py
+**Próximo Passo**: Fase 6 - Quebrar asaas.handler.ts
+
+---
+
+## Fase 5: Quebrar reengajar_leads.py ✅ COMPLETA
+
+### Objetivo
+- **reengajar_leads.py original**: 1466 linhas
+- **Meta**: Módulos de 200-400 linhas
+
+### Checklist
+- [x] 5.1 domain/leads/services/opt_out_detector.py <- OPT_OUT_PATTERNS, detect_opt_out (49L)
+- [x] 5.2 domain/leads/services/salvador_config.py <- FALLBACK_*, DEFAULT_*, get_salvador_config, is_within_schedule (209L)
+- [x] 5.3 domain/leads/services/follow_up_eligibility.py <- get_agents_with_follow_up, get_eligible_leads (282L)
+- [x] 5.4 domain/leads/services/follow_up_throttle.py <- can_send_follow_up, record_follow_up, clear_lead_cooldown (125L)
+- [x] 5.5 domain/leads/services/lead_classifier.py <- load_conversation_history, classify_lead_for_follow_up (231L)
+- [x] 5.6 domain/leads/services/follow_up_message_generator.py <- generate_follow_up_message (136L)
+- [x] 5.7 domain/leads/services/follow_up_recorder.py <- record_*, log_*, update_*, save_* (213L)
+- [x] 5.8 domain/leads/services/follow_up_reset.py <- reset_follow_up_on_lead_response (112L)
+- [x] 5.9 jobs/follow_up_job.py <- run_follow_up_job, force_run_follow_up (386L)
+
+### Módulos Extraídos
+| Módulo | Linhas | Descrição |
+|--------|--------|-----------|
+| domain/leads/services/opt_out_detector.py | 49 | OPT_OUT_PATTERNS, detect_opt_out |
+| domain/leads/services/salvador_config.py | 209 | FALLBACK_MESSAGES, DEFAULT_*, get_salvador_config, is_within_schedule |
+| domain/leads/services/follow_up_eligibility.py | 282 | resolve_shared_whatsapp, get_agents_with_follow_up, get_eligible_leads |
+| domain/leads/services/follow_up_throttle.py | 125 | Redis rate limiting: can_send_follow_up, record_follow_up |
+| domain/leads/services/lead_classifier.py | 231 | load_conversation_history, classify_lead_for_follow_up (Gemini) |
+| domain/leads/services/follow_up_message_generator.py | 136 | generate_follow_up_message (Gemini) |
+| domain/leads/services/follow_up_recorder.py | 213 | record_follow_up_notification, log_follow_up_history, update_lead_follow_up |
+| domain/leads/services/follow_up_reset.py | 112 | reset_follow_up_on_lead_response (importado por mensagens.py) |
+| jobs/follow_up_job.py | 386 | run_follow_up_job, is_follow_up_running, force_run_follow_up |
+
+### Resumo Fase 5
+- **Total de módulos extraídos**: 9
+- **Total de linhas extraídas**: ~1743 linhas
+- **reengajar_leads.py original**: 1466 linhas (não modificado - estratégia de extração)
+- **Próximo**: Integração futura após testes em produção
 
 ---
 
@@ -232,6 +270,15 @@
 | 2026-03-03 | 7d75411 | refactor(fase-4.6): billing_rules.py (103L) |
 | 2026-03-03 | 3597cfb | refactor(fase-4.7): phone.py (134L) |
 | 2026-03-03 | 128d95d | refactor(fase-4.8): billing_job.py (614L) |
+| 2026-03-03 | b106582 | refactor(fase-5.1): opt_out_detector.py (49L) |
+| 2026-03-03 | 1997a22 | refactor(fase-5.2): salvador_config.py (209L) |
+| 2026-03-03 | 10b5184 | refactor(fase-5.3): follow_up_eligibility.py (282L) |
+| 2026-03-03 | b390fda | refactor(fase-5.4): follow_up_throttle.py (125L) |
+| 2026-03-03 | 582a844 | refactor(fase-5.5): lead_classifier.py (231L) |
+| 2026-03-03 | 4db9b4f | refactor(fase-5.6): follow_up_message_generator.py (136L) |
+| 2026-03-03 | cbf4e1c | refactor(fase-5.7): follow_up_recorder.py (213L) |
+| 2026-03-03 | 167b0eb | refactor(fase-5.8): follow_up_reset.py (112L) |
+| 2026-03-03 | c3ca41a | refactor(fase-5.9): follow_up_job.py (386L) |
 
 ---
 
@@ -243,7 +290,7 @@
 | mensagens.py | 4438 | ✅ Fase 2 (16 módulos extraídos, integração pendente) |
 | pagamentos.py | 2984 | ✅ Fase 3 (10 módulos extraídos, integração pendente) |
 | cobrar_clientes.py | 1840 | ✅ Fase 4 (8 módulos extraídos, integração pendente) |
-| reengajar_leads.py | 1465 | Pendente (Fase 5) |
+| reengajar_leads.py | 1466 | ✅ Fase 5 (9 módulos extraídos, integração pendente) |
 | asaas.handler.ts | 2401 | Pendente (Fase 6) |
 
 ---
@@ -278,5 +325,6 @@
 3. ✅ Fase 2 completa - 16 módulos extraídos de mensagens.py
 4. ✅ Fase 3 completa - 10 módulos extraídos de pagamentos.py
 5. ✅ Fase 4 completa - 8 módulos extraídos de cobrar_clientes.py
-6. Integrar módulos extraídos nos monolitos (após testes em produção)
-7. Iniciar Fase 5 (Quebrar reengajar_leads.py - 1465 linhas)
+6. ✅ Fase 5 completa - 9 módulos extraídos de reengajar_leads.py
+7. Integrar módulos extraídos nos monolitos (após testes em produção)
+8. Iniciar Fase 6 (Quebrar asaas.handler.ts - 2401 linhas)
