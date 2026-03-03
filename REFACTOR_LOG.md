@@ -4,7 +4,7 @@
 **Fase**: 7 - Extrair integrações compartilhadas (EM PROGRESSO)
 **Última Atualização**: 2026-03-03
 **Responsável**: Claude Code
-**Próximo Passo**: Fase 7.2 - Extrair integração UAZAPI
+**Próximo Passo**: Fase 7.3 - Extrair integração Google Calendar
 
 ---
 
@@ -16,7 +16,7 @@ Usar a implementação mais madura como base.
 
 ### Checklist
 - [x] 7.1 integrations/asaas/ <- AsaasClient + types + rate_limiter (1271L)
-- [ ] 7.2 integrations/uazapi/ <- UazapiClient + types
+- [x] 7.2 integrations/uazapi/ <- UazapiClient + types (1660L)
 - [ ] 7.3 integrations/calendar/ <- GoogleCalendarClient + types
 - [ ] 7.4 integrations/supabase/ <- SupabaseClient + repositories
 - [ ] 7.5 integrations/leadbox/ <- LeadboxClient + types
@@ -29,6 +29,13 @@ Usar a implementação mais madura como base.
 | integrations/asaas/rate_limiter.py | 122 | Rate limiter 30 req/min (portado do TS) |
 | integrations/asaas/client.py | 527 | AsaasClient com rate limiting + retry |
 | integrations/asaas/__init__.py | 139 | Barrel file com re-exports |
+
+### Módulos Extraídos - Fase 7.2 (UAZAPI)
+| Módulo | Linhas | Descrição |
+|--------|--------|-----------|
+| integrations/uazapi/types.py | 506 | Enums, TypedDicts (webhook, campanhas, payloads) |
+| integrations/uazapi/client.py | 999 | UazapiClient com retry + chunking + typing indicator |
+| integrations/uazapi/__init__.py | 155 | Barrel file com re-exports |
 
 ### Análise de Maturidade
 | Integração | Python | TypeScript | Vencedor | Motivo |
@@ -349,6 +356,7 @@ Usar a implementação mais madura como base.
 | 2026-03-03 | c81c960 | refactor(fase-6.4): customers.handler.ts (288L) |
 | 2026-03-03 | c2bbdba | refactor(fase-6.5): index.ts (barrel file) |
 | 2026-03-03 | 88d58a3 | refactor(fase-7.1): integrations/asaas/ (1271L) |
+| 2026-03-03 | 57c012c | refactor(fase-7.2): integrations/uazapi/ (1660L) |
 
 ---
 
