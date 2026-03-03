@@ -1,10 +1,44 @@
 # Lazaro-v2 Refactor Log
 
 ## Status Atual
-**Fase**: 6 - Quebrar asaas.handler.ts ✅ COMPLETA
+**Fase**: 7 - Extrair integrações compartilhadas (EM PROGRESSO)
 **Última Atualização**: 2026-03-03
 **Responsável**: Claude Code
-**Próximo Passo**: Fase 7 - Extrair integrações compartilhadas
+**Próximo Passo**: Fase 7.2 - Extrair integração UAZAPI
+
+---
+
+## Fase 7: Extrair Integrações Compartilhadas (EM PROGRESSO)
+
+### Objetivo
+Extrair integrações duplicadas (Python + TypeScript) para módulos reutilizáveis.
+Usar a implementação mais madura como base.
+
+### Checklist
+- [x] 7.1 integrations/asaas/ <- AsaasClient + types + rate_limiter (1271L)
+- [ ] 7.2 integrations/uazapi/ <- UazapiClient + types
+- [ ] 7.3 integrations/calendar/ <- GoogleCalendarClient + types
+- [ ] 7.4 integrations/supabase/ <- SupabaseClient + repositories
+- [ ] 7.5 integrations/leadbox/ <- LeadboxClient + types
+- [ ] 7.6 integrations/redis/ <- RedisClient + buffer + lock
+
+### Módulos Extraídos - Fase 7.1 (Asaas)
+| Módulo | Linhas | Descrição |
+|--------|--------|-----------|
+| integrations/asaas/types.py | 471 | Enums, TypedDicts, constantes (baseado no TS) |
+| integrations/asaas/rate_limiter.py | 122 | Rate limiter 30 req/min (portado do TS) |
+| integrations/asaas/client.py | 527 | AsaasClient com rate limiting + retry |
+| integrations/asaas/__init__.py | 139 | Barrel file com re-exports |
+
+### Análise de Maturidade
+| Integração | Python | TypeScript | Vencedor | Motivo |
+|------------|--------|------------|----------|--------|
+| **Asaas** | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | **TS** | Rate limiter robusto + retry exponencial |
+| **UAZAPI** | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | **EMPATE** | Ambos completos |
+| **Calendar** | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | **TS** | Multi-calendar support |
+| **Supabase** | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | **TS** | Repository pattern |
+| **Leadbox** | ⭐⭐⭐⭐ | ⭐⭐ | **Python** | Só Python tem cliente HTTP |
+| **Redis** | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | **TS** | Separação de concerns |
 
 ---
 
@@ -314,6 +348,7 @@
 | 2026-03-03 | 0b2c3aa | refactor(fase-6.3): sync.handler.ts (637L) |
 | 2026-03-03 | c81c960 | refactor(fase-6.4): customers.handler.ts (288L) |
 | 2026-03-03 | c2bbdba | refactor(fase-6.5): index.ts (barrel file) |
+| 2026-03-03 | 88d58a3 | refactor(fase-7.1): integrations/asaas/ (1271L) |
 
 ---
 
