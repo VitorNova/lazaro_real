@@ -1,14 +1,54 @@
 # Lazaro-v2 Refactor Log
 
 ## Status Atual
-**Fase**: 2 - Quebrar mensagens.py ✅ COMPLETA
+**Fase**: 3 - Quebrar pagamentos.py ✅ COMPLETA
 **Última Atualização**: 2026-03-03
 **Responsável**: Claude Code
-**Próximo Passo**: Fase 3 - Quebrar pagamentos.py
+**Próximo Passo**: Fase 4 - Quebrar cobrar_clientes.py
 
 ---
 
-## Fase 2: Quebrar mensagens.py (EM PROGRESSO)
+## Fase 3: Quebrar pagamentos.py ✅ COMPLETA
+
+### Objetivo
+- **pagamentos.py original**: 2984 linhas
+- **Meta**: Módulos de 200-400 linhas
+
+### Checklist
+- [x] 3.1 domain/billing/models/payment.py <- constantes, TypedDicts (57L)
+- [x] 3.2 core/utils/retry.py <- async_retry decorator (52L)
+- [x] 3.3 domain/billing/services/customer_sync_service.py <- sincronizar_cliente, match_lead, cache, resolve_name (412L)
+- [x] 3.4 domain/billing/services/contract_sync_service.py <- sincronizar_contrato, processar_contrato_deletado (233L)
+- [x] 3.5 domain/billing/services/customer_deletion_service.py <- processar_cliente_deletado (79L)
+- [x] 3.6 domain/billing/services/payment_sync_service.py <- sincronizar_cobranca, processar_cobranca_deletada (269L)
+- [x] 3.7 domain/billing/services/contract_extraction_service.py <- PDF/Gemini extraction (798L)
+- [x] 3.8 domain/billing/services/payment_confirmed_service.py <- CONFIRMED, RECEIVED, lead update (380L)
+- [x] 3.9 domain/billing/services/payment_events_service.py <- OVERDUE, estornos, chargebacks (308L)
+- [x] 3.10 api/routes/webhook_asaas.py <- rotas FastAPI + roteador de eventos (425L)
+
+### Módulos Extraídos
+| Módulo | Linhas | Descrição |
+|--------|--------|-----------|
+| domain/billing/models/payment.py | 57 | LAZARO_AGENT_ID, SUPPORTED_EXTENSIONS, MIME_TYPES, TypedDicts |
+| core/utils/retry.py | 52 | async_retry com backoff exponencial |
+| domain/billing/services/customer_sync_service.py | 412 | sincronizar_cliente, match_lead_to_customer, get_cached_customer, resolve_customer_name |
+| domain/billing/services/contract_sync_service.py | 233 | sincronizar_contrato, processar_contrato_deletado |
+| domain/billing/services/customer_deletion_service.py | 79 | processar_cliente_deletado (soft delete em cascata) |
+| domain/billing/services/payment_sync_service.py | 269 | sincronizar_cobranca, processar_cobranca_deletada |
+| domain/billing/services/contract_extraction_service.py | 798 | processar_customer/subscription_created_background, extract PDF/image, Gemini |
+| domain/billing/services/payment_confirmed_service.py | 380 | processar_pagamento_confirmado/recebido, atualizar_lead_pagamento |
+| domain/billing/services/payment_events_service.py | 308 | processar_pagamento_vencido/estornado/chargeback/restaurado/etc |
+| api/routes/webhook_asaas.py | 425 | asaas_webhook, reprocess_contract, _processar_evento |
+
+### Resumo Fase 3
+- **Total de módulos extraídos**: 10
+- **Total de linhas extraídas**: ~3013 linhas
+- **pagamentos.py original**: 2984 linhas (não modificado - estratégia de extração)
+- **Próximo**: Integração futura após testes em produção
+
+---
+
+## Fase 2: Quebrar mensagens.py ✅ COMPLETA
 
 ### Objetivo
 - **mensagens.py original**: 4438 linhas
@@ -57,10 +97,6 @@
 - **Total de linhas extraídas**: ~5066 linhas
 - **mensagens.py original**: 4438 linhas (não modificado - estratégia de extração)
 - **Próximo**: Integração futura após testes em produção
-
----
-
-## Fase 2: Quebrar mensagens.py ✅ COMPLETA
 
 ---
 
@@ -142,6 +178,16 @@
 | 2026-03-03 | aa4cd73 | refactor(fase-2.14): tool_registry.py (159L) |
 | 2026-03-03 | 90bc86b | refactor(fase-2.15): message_orchestrator.py (362L) |
 | 2026-03-03 | 4637a6c | refactor(fase-2.16): webhook_whatsapp.py (157L) |
+| 2026-03-03 | 3553d31 | refactor(fase-3.1): payment.py (57L) |
+| 2026-03-03 | ae889d5 | refactor(fase-3.2): retry.py (52L) |
+| 2026-03-03 | 67b18de | refactor(fase-3.3): customer_sync_service.py (412L) |
+| 2026-03-03 | e9d603b | refactor(fase-3.4): contract_sync_service.py (233L) |
+| 2026-03-03 | 4ae1f09 | refactor(fase-3.5): customer_deletion_service.py (79L) |
+| 2026-03-03 | 8e4e1f1 | refactor(fase-3.6): payment_sync_service.py (269L) |
+| 2026-03-03 | f5195a7 | refactor(fase-3.7): contract_extraction_service.py (798L) |
+| 2026-03-03 | c94cf99 | refactor(fase-3.8): payment_confirmed_service.py (380L) |
+| 2026-03-03 | 2015085 | refactor(fase-3.9): payment_events_service.py (308L) |
+| 2026-03-03 | 658f79b | refactor(fase-3.10): webhook_asaas.py (425L) |
 
 ---
 
@@ -151,7 +197,7 @@
 |---------|--------|--------|
 | main.py | 2068 → 51 | ✅ Fase 1 (97.5% redução) |
 | mensagens.py | 4438 | ✅ Fase 2 (16 módulos extraídos, integração pendente) |
-| pagamentos.py | 2983 | Pendente (Fase 3) |
+| pagamentos.py | 2984 | ✅ Fase 3 (10 módulos extraídos, integração pendente) |
 | cobrar_clientes.py | 1839 | Pendente (Fase 4) |
 | reengajar_leads.py | 1465 | Pendente (Fase 5) |
 | asaas.handler.ts | 2401 | Pendente (Fase 6) |
@@ -186,5 +232,6 @@
 1. Testar main_refactored.py em staging/produção
 2. Substituir main.py por main_refactored.py
 3. ✅ Fase 2 completa - 16 módulos extraídos de mensagens.py
-4. Integrar módulos extraídos no mensagens.py (após testes)
-5. Iniciar Fase 3 (Quebrar pagamentos.py - 2983 linhas)
+4. ✅ Fase 3 completa - 10 módulos extraídos de pagamentos.py
+5. Integrar módulos extraídos nos monolitos (após testes em produção)
+6. Iniciar Fase 4 (Quebrar cobrar_clientes.py - 1839 linhas)
