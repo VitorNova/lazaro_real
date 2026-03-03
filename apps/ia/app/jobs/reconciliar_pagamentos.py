@@ -195,10 +195,10 @@ async def upsert_payment_to_cache(
     customer_id = payment.get("customer", "")
 
     try:
-        # Buscar existente no cache (incluindo customer_name para preservar)
+        # Buscar existente no cache (incluindo customer_name e ia_* para preservar/verificar)
         result = (
             supabase.client.table("asaas_cobrancas")
-            .select("id, status, value, due_date, customer_name")
+            .select("id, status, value, due_date, customer_name, ia_cobrou, ia_recebeu")
             .eq("id", payment_id)
             .eq("agent_id", agent_id)
             .execute()
@@ -251,6 +251,40 @@ async def upsert_payment_to_cache(
             data["customer_name"] = resolved_name
 
         supabase.client.table("asaas_cobrancas").upsert(data, on_conflict="id").execute()
+
+        # SAFETY NET: Marcar ia_recebeu se IA cobrou e pagamento foi confirmado
+        # Isso garante que mesmo se o webhook falhar, a reconciliação corrige
+        new_status = payment.get("status", "")
+        if new_status in ("RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"):
+            if existing:
+                ia_cobrou = existing.get("ia_cobrou", False)
+                ia_recebeu = existing.get("ia_recebeu", False)
+
+                if ia_cobrou and not ia_recebeu:
+                    # Buscar último step da notificação
+                    try:
+                        notif_res = (
+                            supabase.client.table("billing_notifications")
+                            .select("notification_type, days_from_due")
+                            .eq("payment_id", payment_id)
+                            .eq("status", "sent")
+                            .order("sent_at", desc=True)
+                            .limit(1)
+                            .execute()
+                        )
+
+                        ia_update = {
+                            "ia_recebeu": True,
+                            "ia_recebeu_at": now,
+                        }
+                        if notif_res.data:
+                            ia_update["ia_recebeu_step"] = notif_res.data[0].get("notification_type")
+                            ia_update["ia_recebeu_days_from_due"] = notif_res.data[0].get("days_from_due")
+
+                        supabase.client.table("asaas_cobrancas").update(ia_update).eq("id", payment_id).execute()
+                        _log(f"[SAFETY NET] ia_recebeu marcado para {payment_id}")
+                    except Exception as e:
+                        _log_warn(f"Erro ao marcar ia_recebeu (safety net) para {payment_id}: {e}")
 
         return divergence
 

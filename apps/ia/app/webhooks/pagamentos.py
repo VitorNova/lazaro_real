@@ -583,8 +583,146 @@ async def _sincronizar_cliente(
 
         logger.info("[SINCRONIZAR CLIENTE] Cliente %s sincronizado: %s", customer_id, customer_data.get("name"))
 
+        # ================================================================
+        # MATCH LEAD → CLIENTE ASAAS (Rastreamento de conversão)
+        # Tenta vincular o cliente recém-criado a um lead existente
+        # ================================================================
+        try:
+            await _match_lead_to_customer(
+                supabase=supabase,
+                agent_id=agent_id,
+                customer_id=customer_id,
+                cpf_cnpj=customer_data.get("cpfCnpj"),
+                mobile_phone=customer_data.get("mobilePhone"),
+            )
+        except Exception as match_err:
+            logger.warning("[SINCRONIZAR CLIENTE] Erro no match lead→cliente (best-effort): %s", match_err)
+
     except Exception as e:
         logger.error("[SINCRONIZAR CLIENTE] Erro ao sincronizar cliente %s: %s", customer_id, e)
+
+
+# ============================================================================
+# MATCH LEAD → CLIENTE ASAAS
+# ============================================================================
+
+async def _match_lead_to_customer(
+    supabase: Any,
+    agent_id: str,
+    customer_id: str,
+    cpf_cnpj: Optional[str],
+    mobile_phone: Optional[str],
+) -> bool:
+    """
+    Tenta vincular um cliente Asaas recém-criado a um lead existente.
+
+    Prioridade de match:
+    1. CPF/CNPJ exato (mais confiável)
+    2. Telefone (últimos 11 dígitos do remotejid)
+
+    Se encontrar, atualiza o lead com:
+    - asaas_customer_id
+    - converted_at
+    - pipeline_step = 'cliente'
+
+    Returns:
+        True se encontrou e vinculou, False caso contrário
+    """
+    import re
+
+    if not agent_id:
+        return False
+
+    # Buscar table_leads do agente
+    agent_result = (
+        supabase.client.table("agents")
+        .select("table_leads")
+        .eq("id", agent_id)
+        .maybe_single()
+        .execute()
+    )
+
+    if not agent_result.data or not agent_result.data.get("table_leads"):
+        logger.debug("[CONVERSÃO] Agente %s não tem table_leads configurado", agent_id[:8])
+        return False
+
+    table_leads = agent_result.data["table_leads"]
+    now = datetime.utcnow().isoformat()
+
+    # ================================================================
+    # PRIORIDADE 1: Match por CPF/CNPJ
+    # ================================================================
+    if cpf_cnpj:
+        cpf_limpo = re.sub(r'\D', '', cpf_cnpj)
+        if len(cpf_limpo) in [11, 14]:
+            try:
+                lead_result = (
+                    supabase.client.table(table_leads)
+                    .select("id, nome, remotejid, asaas_customer_id")
+                    .eq("cpf_cnpj", cpf_limpo)
+                    .is_("asaas_customer_id", "null")  # Só leads não vinculados
+                    .limit(1)
+                    .execute()
+                )
+
+                if lead_result.data:
+                    lead = lead_result.data[0]
+                    supabase.client.table(table_leads).update({
+                        "asaas_customer_id": customer_id,
+                        "converted_at": now,
+                        "pipeline_step": "cliente",
+                        "journey_stage": "cliente",
+                        "updated_date": now,
+                    }).eq("id", lead["id"]).execute()
+
+                    logger.info(
+                        "[CONVERSÃO] Lead %s convertido! CPF: %s → Cliente Asaas: %s",
+                        lead.get("remotejid", "")[-11:], cpf_limpo, customer_id
+                    )
+                    return True
+            except Exception as e:
+                logger.warning("[CONVERSÃO] Erro no match por CPF: %s", e)
+
+    # ================================================================
+    # PRIORIDADE 2: Match por telefone (fallback)
+    # ================================================================
+    if mobile_phone:
+        phone_limpo = re.sub(r'\D', '', mobile_phone)
+        if len(phone_limpo) >= 10:
+            # Extrair últimos 11 dígitos para comparar
+            phone_suffix = phone_limpo[-11:] if len(phone_limpo) >= 11 else phone_limpo
+
+            try:
+                # Buscar lead pelo telefone no remotejid
+                lead_result = (
+                    supabase.client.table(table_leads)
+                    .select("id, nome, remotejid, asaas_customer_id")
+                    .ilike("remotejid", f"%{phone_suffix}%")
+                    .is_("asaas_customer_id", "null")  # Só leads não vinculados
+                    .limit(1)
+                    .execute()
+                )
+
+                if lead_result.data:
+                    lead = lead_result.data[0]
+                    supabase.client.table(table_leads).update({
+                        "asaas_customer_id": customer_id,
+                        "converted_at": now,
+                        "pipeline_step": "cliente",
+                        "journey_stage": "cliente",
+                        "updated_date": now,
+                    }).eq("id", lead["id"]).execute()
+
+                    logger.info(
+                        "[CONVERSÃO] Lead %s convertido via telefone! Tel: %s → Cliente Asaas: %s",
+                        lead.get("remotejid", "")[-11:], phone_suffix, customer_id
+                    )
+                    return True
+            except Exception as e:
+                logger.warning("[CONVERSÃO] Erro no match por telefone: %s", e)
+
+    logger.debug("[CONVERSÃO] Nenhum lead encontrado para customer_id=%s", customer_id)
+    return False
 
 
 # ============================================================================
@@ -2250,15 +2388,25 @@ async def _atualizar_lead_pagamento(
     agent_id: str,
     customer_id: str,
     payment_id: str,
+    payment_value: float = 0,
 ) -> None:
     """
     Atualiza lead quando pagamento é recebido.
 
-    - Vincula asaas_customer_id ao lead
+    - Vincula asaas_customer_id ao lead (se ainda não vinculado)
     - Move para pipeline_step = 'cliente'
     - Marca venda_realizada = 'true'
     - Atualiza journey_stage = 'cliente'
+    - Registra first_payment_at no primeiro pagamento
+    - Registra converted_at se ainda não definido
+
+    Estratégia de match:
+    1. Se lead já tem asaas_customer_id == customer_id, atualiza direto
+    2. Senão, tenta match por CPF/CNPJ do cliente
+    3. Senão, tenta match por telefone
     """
+    import re
+
     # Validação inicial
     if not agent_id or not customer_id:
         logger.debug("[ASAAS WEBHOOK] agent_id ou customer_id não informado, pulando atualização de lead")
@@ -2283,47 +2431,123 @@ async def _atualizar_lead_pagamento(
         logger.error("[ASAAS WEBHOOK] Erro ao buscar table_leads: %s", e)
         return
 
-    # 2. Buscar telefone do cliente
-    telefone = await _buscar_telefone_cliente(supabase, customer_id, payment_id)
-    if not telefone:
-        logger.warning("[ASAAS WEBHOOK] Não foi possível encontrar telefone para atualizar lead")
-        return
+    # 2. Tentar encontrar lead por múltiplas estratégias
+    lead = None
 
-    # 3. Buscar lead na tabela dinâmica pelo telefone
+    # 2.1 - Buscar lead já vinculado ao customer_id
     try:
-        # Busca flexível: telefone pode estar com ou sem código do país
         lead_result = (
             supabase.client.table(table_leads)
-            .select("id, nome, pipeline_step, asaas_customer_id")
-            .ilike("telefone", f"%{telefone}%")
-            .maybe_single()
+            .select("id, nome, pipeline_step, asaas_customer_id, converted_at, first_payment_at")
+            .eq("asaas_customer_id", customer_id)
+            .limit(1)
             .execute()
         )
-
-        if not lead_result.data:
-            logger.warning(
-                "[ASAAS WEBHOOK] Lead não encontrado com telefone %s na tabela %s",
-                telefone[-4:], table_leads
-            )
-            return
-
-        lead_id = lead_result.data["id"]
-        lead_nome = lead_result.data.get("nome", "Desconhecido")
-        pipeline_atual = lead_result.data.get("pipeline_step", "")
-
+        if lead_result.data:
+            lead = lead_result.data[0]
+            logger.debug("[ASAAS WEBHOOK] Lead encontrado por asaas_customer_id: %s", customer_id)
     except Exception as e:
-        logger.error("[ASAAS WEBHOOK] Erro ao buscar lead pelo telefone: %s", e)
+        logger.debug("[ASAAS WEBHOOK] Erro ao buscar lead por asaas_customer_id: %s", e)
+
+    # 2.2 - Se não encontrou, buscar cliente para pegar CPF e telefone
+    if not lead:
+        try:
+            cliente_result = (
+                supabase.client.table("asaas_clientes")
+                .select("cpf_cnpj, mobile_phone")
+                .eq("id", customer_id)
+                .eq("agent_id", agent_id)
+                .maybe_single()
+                .execute()
+            )
+
+            if cliente_result.data:
+                cpf_cnpj = cliente_result.data.get("cpf_cnpj")
+                mobile_phone = cliente_result.data.get("mobile_phone")
+
+                # 2.2.1 - Tentar match por CPF/CNPJ
+                if cpf_cnpj and not lead:
+                    cpf_limpo = re.sub(r'\D', '', cpf_cnpj)
+                    if len(cpf_limpo) in [11, 14]:
+                        lead_result = (
+                            supabase.client.table(table_leads)
+                            .select("id, nome, pipeline_step, asaas_customer_id, converted_at, first_payment_at")
+                            .eq("cpf_cnpj", cpf_limpo)
+                            .limit(1)
+                            .execute()
+                        )
+                        if lead_result.data:
+                            lead = lead_result.data[0]
+                            logger.debug("[ASAAS WEBHOOK] Lead encontrado por CPF: %s", cpf_limpo)
+
+                # 2.2.2 - Tentar match por telefone
+                if mobile_phone and not lead:
+                    phone_limpo = re.sub(r'\D', '', mobile_phone)
+                    if len(phone_limpo) >= 10:
+                        phone_suffix = phone_limpo[-11:] if len(phone_limpo) >= 11 else phone_limpo
+                        lead_result = (
+                            supabase.client.table(table_leads)
+                            .select("id, nome, pipeline_step, asaas_customer_id, converted_at, first_payment_at")
+                            .ilike("remotejid", f"%{phone_suffix}%")
+                            .limit(1)
+                            .execute()
+                        )
+                        if lead_result.data:
+                            lead = lead_result.data[0]
+                            logger.debug("[ASAAS WEBHOOK] Lead encontrado por telefone: %s", phone_suffix)
+        except Exception as e:
+            logger.warning("[ASAAS WEBHOOK] Erro ao buscar cliente/lead para match: %s", e)
+
+    # 2.3 - Fallback: buscar telefone via função existente
+    if not lead:
+        telefone = await _buscar_telefone_cliente(supabase, customer_id, payment_id)
+        if telefone:
+            try:
+                lead_result = (
+                    supabase.client.table(table_leads)
+                    .select("id, nome, pipeline_step, asaas_customer_id, converted_at, first_payment_at")
+                    .ilike("telefone", f"%{telefone}%")
+                    .maybe_single()
+                    .execute()
+                )
+                if lead_result.data:
+                    lead = lead_result.data[0]
+                    logger.debug("[ASAAS WEBHOOK] Lead encontrado por telefone (fallback): %s", telefone[-4:])
+            except Exception as e:
+                logger.debug("[ASAAS WEBHOOK] Erro no fallback por telefone: %s", e)
+
+    if not lead:
+        logger.warning("[ASAAS WEBHOOK] Nenhum lead encontrado para customer_id=%s", customer_id)
         return
+
+    # 3. Montar dados de atualização
+    lead_id = lead["id"]
+    lead_nome = lead.get("nome", "Desconhecido")
+    pipeline_atual = lead.get("pipeline_step", "")
+
+    update_data = {
+        "asaas_customer_id": customer_id,
+        "pipeline_step": "cliente",
+        "venda_realizada": "true",
+        "journey_stage": "cliente",
+        "updated_date": now,
+    }
+
+    # Se ainda não tem converted_at, definir agora
+    if not lead.get("converted_at"):
+        update_data["converted_at"] = now
+
+    # Se é o primeiro pagamento, registrar first_payment_at
+    if not lead.get("first_payment_at"):
+        update_data["first_payment_at"] = now
+        logger.info(
+            "[CONVERSÃO] Primeiro pagamento! Lead %s → R$ %.2f",
+            lead.get("id"), payment_value
+        )
 
     # 4. Atualizar lead
     try:
-        supabase.client.table(table_leads).update({
-            "asaas_customer_id": customer_id,
-            "pipeline_step": "cliente",
-            "venda_realizada": "true",
-            "journey_stage": "cliente",
-            "updated_date": now,
-        }).eq("id", lead_id).execute()
+        supabase.client.table(table_leads).update(update_data).eq("id", lead_id).execute()
 
         logger.info(
             "[ASAAS WEBHOOK] Lead atualizado após pagamento: id=%s, nome=%s, pipeline: %s -> cliente",
@@ -2421,7 +2645,10 @@ async def _processar_pagamento_recebido(
     customer_id = payment.get("customer", "")
     if agent_id and customer_id:
         try:
-            await _atualizar_lead_pagamento(supabase, agent_id, customer_id, payment_id)
+            await _atualizar_lead_pagamento(
+                supabase, agent_id, customer_id, payment_id,
+                payment_value=value
+            )
         except Exception as e:
             logger.error("[ASAAS WEBHOOK] Erro ao atualizar lead após pagamento: %s", e)
 
@@ -2536,6 +2763,8 @@ async def _processar_pagamento_estornado(
         "refund_date": datetime.utcnow().isoformat(),
         "ia_recebeu": False,
         "ia_recebeu_at": None,
+        "ia_recebeu_step": None,
+        "ia_recebeu_days_from_due": None,
     }
     await _atualizar_status_cobranca(
         supabase, payment, agent_id,
@@ -2565,6 +2794,8 @@ async def _processar_pagamento_estornado_parcial(
         "refund_date": datetime.utcnow().isoformat(),
         "ia_recebeu": False,
         "ia_recebeu_at": None,
+        "ia_recebeu_step": None,
+        "ia_recebeu_days_from_due": None,
     }
     await _atualizar_status_cobranca(
         supabase, payment, agent_id,
@@ -2594,6 +2825,8 @@ async def _processar_chargeback_solicitado(
         "chargeback_requested_at": datetime.utcnow().isoformat(),
         "ia_recebeu": False,
         "ia_recebeu_at": None,
+        "ia_recebeu_step": None,
+        "ia_recebeu_days_from_due": None,
     }
     await _atualizar_status_cobranca(
         supabase, payment, agent_id,
