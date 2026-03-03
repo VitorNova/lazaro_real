@@ -5,6 +5,7 @@ from .reengajar_leads import run_follow_up_job
 from .sync_billing import run_sync_billing_job, sync_billing_notifications
 from .deduplicate_contracts import deduplicate_contracts
 from .notificar_manutencoes import run_maintenance_notifier_job
+from .scheduler import create_scheduler, start_scheduler, stop_scheduler
 
 __all__ = [
     "run_billing_charge_job",
@@ -13,4 +14,7 @@ __all__ = [
     "sync_billing_notifications",
     "deduplicate_contracts",
     "run_maintenance_notifier_job",
+    "create_scheduler",
+    "start_scheduler",
+    "stop_scheduler",
 ]
