@@ -269,19 +269,27 @@ class GeminiService:
                 {"text": f"O usuário enviou um áudio. Transcreva e responda. Contexto: {user_text}" if user_text else "O usuário enviou um áudio. Transcreva e responda de forma natural."},
             ]
             logger.info("Processando mensagem com áudio multimodal")
-        # Se tiver imagem, cria conteúdo multimodal
+        # Se tiver imagem ou documento, cria conteúdo multimodal
         elif image_data and image_data.get("base64"):
             user_text = self._extract_content(last_message)
+            mime = image_data.get("mimetype", "image/jpeg")
+            # Determinar se é documento ou imagem
+            if mime.startswith("application/") or mime == "application/pdf":
+                base_prompt = "O cliente enviou este documento. Analise o conteúdo e responda apropriadamente."
+            else:
+                base_prompt = "O cliente enviou esta imagem. Analise o conteúdo e responda apropriadamente."
+            prompt_text = f"{base_prompt} Contexto: {user_text}" if user_text else base_prompt.replace("responda apropriadamente.", "descreva o que você vê e responda apropriadamente.")
             user_content = [
                 {
                     "inline_data": {
-                        "mime_type": image_data.get("mimetype", "image/jpeg"),
+                        "mime_type": mime,
                         "data": image_data["base64"],
                     }
                 },
-                {"text": f"O cliente enviou esta imagem. Analise o conteúdo e responda apropriadamente. Contexto: {user_text}" if user_text else "O cliente enviou esta imagem. Descreva o que você vê e responda apropriadamente."},
+                {"text": prompt_text},
             ]
-            logger.info("Processando mensagem com imagem multimodal")
+            media_type_label = "documento" if mime.startswith("application/") else "imagem"
+            logger.info(f"Processando mensagem com {media_type_label} multimodal")
         else:
             user_content = self._extract_content(last_message)
 

@@ -78,6 +78,27 @@ class ChunkedSendResult(TypedDict):
 
 
 # ============================================================================
+# MESSAGE SIGNING UTILITY
+# ============================================================================
+
+def sign_message(message: str, agent_name: str = "Ana") -> str:
+    """
+    Assina uma mensagem com o nome do agente em negrito.
+
+    Formato: *NomeAgente:*
+             Mensagem aqui
+
+    Args:
+        message: Texto da mensagem (sem assinatura)
+        agent_name: Nome do agente para assinar (default: "Ana")
+
+    Returns:
+        Mensagem assinada com formato WhatsApp bold
+    """
+    return f"*{agent_name.title()}:*\n{message}"
+
+
+# ============================================================================
 # UAZAPI SERVICE
 # ============================================================================
 
@@ -399,6 +420,33 @@ class UazapiService:
             "error": last_error or "Esgotou tentativas de envio"
         }
 
+    async def send_signed_message(
+        self,
+        phone: str,
+        message: str,
+        agent_name: str = "Ana",
+        delay: Optional[int] = None,
+        link_preview: bool = True
+    ) -> MessageResponse:
+        """
+        Envia uma mensagem assinada com o nome do agente em negrito.
+
+        Formato: *NomeAgente:*
+                 Mensagem aqui
+
+        Args:
+            phone: Numero de telefone do destinatario
+            message: Texto da mensagem (sem assinatura)
+            agent_name: Nome do agente para assinar (default: "Ana")
+            delay: Delay em milissegundos antes de enviar
+            link_preview: Se deve mostrar preview de links (default: True)
+
+        Returns:
+            MessageResponse com status do envio
+        """
+        signed = sign_message(message, agent_name)
+        return await self.send_text_message(phone, signed, delay, link_preview)
+
     async def send_ai_response(
         self,
         phone: str,
@@ -431,16 +479,12 @@ class UazapiService:
             if i > 0:
                 await asyncio.sleep(delay)
 
-            # Adiciona assinatura do agente em CADA chunk (negrito no WhatsApp)
-            # .title() formata "ANA" -> "Ana"
-            signed_chunk = f"*{agent_name.title()}:*\n{chunk}"
-
             # Enviar typing antes de cada mensagem
             await self.send_typing(phone, duration=1500)
             await asyncio.sleep(1.0)
 
-            # Enviar texto com assinatura
-            result = await self.send_text_message(phone, signed_chunk)
+            # Enviar texto com assinatura usando metodo padronizado
+            result = await self.send_signed_message(phone, chunk, agent_name)
             results.append(result)
 
             if not result["success"]:

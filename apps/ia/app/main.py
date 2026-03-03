@@ -43,7 +43,7 @@ from app.jobs.cobrar_clientes import run_billing_charge_job, is_billing_charge_r
 from app.jobs.reconciliar_pagamentos import run_billing_reconciliation_job, is_billing_reconciliation_running, _force_run_billing_reconciliation
 from app.jobs.confirmar_agendamentos import run_calendar_confirmation_job, is_calendar_confirmation_running, _force_run_calendar_confirmation
 from app.jobs.reengajar_leads import run_follow_up_job, is_follow_up_running, _force_run_follow_up
-from app.jobs.notificar_manutencoes import run_maintenance_notifier_job, is_maintenance_notifier_running, _force_run_maintenance_notifier
+from app.jobs.notificar_manutencoes import run_maintenance_notifier_job, is_maintenance_notifier_running, _force_run_maintenance_notifier, test_maintenance_notification
 
 # Configure structlog
 structlog.configure(
@@ -1628,6 +1628,19 @@ async def maintenance_notifier_status() -> Dict[str, Any]:
         "running": is_maintenance_notifier_running(),
         "scheduler_active": app_state.scheduler is not None,
     }
+
+
+@app.post("/api/jobs/maintenance-notifier/test", tags=["jobs"])
+async def test_maintenance_notifier(phone: str = "556697194084") -> Dict[str, Any]:
+    """
+    Envia notificacao de TESTE para um numero especifico.
+    APENAS PARA DEBUG/TESTES.
+
+    Args:
+        phone: Numero de telefone (ex: 556697194084)
+    """
+    result = await test_maintenance_notification(phone)
+    return result
 
 
 # =============================================================================

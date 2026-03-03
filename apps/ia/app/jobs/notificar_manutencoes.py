@@ -26,9 +26,10 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from dateutil.relativedelta import relativedelta
 
+from app.services.dispatch_logger import get_dispatch_logger
 from app.services.leadbox_push import QUEUE_MAINTENANCE, leadbox_push_silent
 from app.services.supabase import get_supabase_service
-from app.services.whatsapp_api import UazapiService
+from app.services.whatsapp_api import UazapiService, sign_message
 from app.utils.dias_uteis import (
     format_date_br,
     get_today_brasilia,
@@ -480,16 +481,16 @@ async def process_maintenance_notifications(agent_id: str, agent: Dict[str, Any]
 
         # Enviar via WhatsApp com dispatch inteligente
         try:
-            signed_message = f"*{agent_name.title()}:*\n{message}"
+            signed = sign_message(message, agent_name)
 
             # DISPATCH INTELIGENTE: PUSH decide se cria ticket ou move
             push_result = await leadbox_push_silent(
-                phone, QUEUE_MAINTENANCE, AGENT_ID_LAZARO, message=signed_message
+                phone, QUEUE_MAINTENANCE, AGENT_ID_LAZARO, message=signed
             )
 
-            if not push_result.get("message_sent_via_push"):
-                # Ticket já existia — PUSH só moveu de fila, enviar via UAZAPI
-                result = await uazapi.send_text_message(phone, signed_message)
+            if push_result.get("ticket_check_failed") or not push_result.get("message_sent_via_push"):
+                # Ticket check falhou ou ticket já existia — enviar via UAZAPI
+                result = await uazapi.send_text_message(phone, signed)
                 if not result.get("success"):
                     raise ValueError(result.get("error", "Erro desconhecido"))
             else:
@@ -509,14 +510,76 @@ async def process_maintenance_notifications(agent_id: str, agent: Dict[str, Any]
                     customer_phone=phone,
                     message_sent=message,
                 )
+
+                # Log dispatch in unified dispatch_log table
+                dispatch_logger = get_dispatch_logger()
+                await dispatch_logger.log_dispatch(
+                    job_type="maintenance",
+                    agent_id=agent_id,
+                    reference_id=contract_id,
+                    phone=phone,
+                    notification_type="reminder_7d",
+                    message_text=message,
+                    status="sent",
+                    reference_table="contract_details",
+                    customer_id=contract.get("customer_id"),
+                    customer_name=customer_name,
+                    days_from_due=-NOTIFY_DAYS_BEFORE,
+                    metadata={
+                        "proxima_manutencao": proxima_manutencao.isoformat(),
+                        "data_inicio": str(data_inicio),
+                        "marca": marca,
+                        "btus": btus,
+                        "endereco": endereco,
+                    },
+                )
+
                 stats["sent"] += 1
             else:
                 error_msg = result.get("error", "Erro desconhecido")
                 _log_error(f"Falha ao enviar para {customer_name}: {error_msg}")
+
+                # Log failure in unified dispatch_log table
+                dispatch_logger = get_dispatch_logger()
+                await dispatch_logger.log_failure(
+                    job_type="maintenance",
+                    agent_id=agent_id,
+                    reference_id=contract_id,
+                    phone=phone,
+                    notification_type="reminder_7d",
+                    error_message=error_msg,
+                    message_text=message,
+                    reference_table="contract_details",
+                    customer_id=contract.get("customer_id"),
+                    customer_name=customer_name,
+                    days_from_due=-NOTIFY_DAYS_BEFORE,
+                    metadata={
+                        "proxima_manutencao": proxima_manutencao.isoformat(),
+                        "data_inicio": str(data_inicio),
+                    },
+                )
+
                 stats["errors"] += 1
 
         except Exception as e:
             _log_error(f"Excecao ao enviar para {customer_name} ({contract_id}): {e}")
+
+            # Log failure in unified dispatch_log table
+            dispatch_logger = get_dispatch_logger()
+            await dispatch_logger.log_failure(
+                job_type="maintenance",
+                agent_id=agent_id,
+                reference_id=contract_id,
+                phone=phone,
+                notification_type="reminder_7d",
+                error_message=str(e),
+                message_text=message,
+                reference_table="contract_details",
+                customer_id=contract.get("customer_id"),
+                customer_name=customer_name,
+                days_from_due=-NOTIFY_DAYS_BEFORE,
+            )
+
             stats["errors"] += 1
 
     return stats
@@ -540,7 +603,7 @@ async def get_maintenance_agent() -> Optional[Dict[str, Any]]:
     try:
         response = (
             supabase.client.table("agents")
-            .select("id, name, uazapi_base_url, uazapi_token, uazapi_instance_id")
+            .select("id, name, uazapi_base_url, uazapi_token, uazapi_instance_id, table_leads, table_messages")
             .eq("id", AGENT_ID_LAZARO)
             .eq("status", "active")
             .limit(1)
@@ -670,3 +733,131 @@ async def _force_run_maintenance_notifier() -> Dict[str, Any]:
 def is_maintenance_notifier_running() -> bool:
     """Verifica se o job esta rodando."""
     return _is_running
+
+
+async def test_maintenance_notification(phone: str = "556697194084") -> Dict[str, Any]:
+    """
+    Envia notificacao de teste para um numero especifico.
+    APENAS PARA DEBUG/TESTES.
+
+    Tambem salva no conversation_history para testar injecao de prompt.
+
+    Args:
+        phone: Numero de telefone (sem @s.whatsapp.net)
+
+    Returns:
+        Dict com resultado do envio
+    """
+    # Remover sufixo se presente
+    phone = phone.replace("@s.whatsapp.net", "")
+
+    _log(f"=== TESTE DE MANUTENCAO para {phone} ===")
+
+    try:
+        agent = await get_maintenance_agent()
+        if not agent:
+            return {"success": False, "error": "Agente nao encontrado"}
+
+        agent_name = agent.get("name", "Ana")
+        uazapi_base_url = agent.get("uazapi_base_url")
+        uazapi_token = agent.get("uazapi_token")
+
+        if not uazapi_base_url or not uazapi_token:
+            return {"success": False, "error": "Config UAZAPI incompleta"}
+
+        uazapi = UazapiService(base_url=uazapi_base_url, api_key=uazapi_token)
+
+        # Mensagem de teste
+        message = _format_maintenance_message(
+            template=DEFAULT_MAINTENANCE_MESSAGE,
+            nome="TESTE",
+            marca="Teste Marca",
+            btus="12000",
+            endereco="Endereco de Teste, 123",
+        )
+
+        signed = sign_message(message, agent_name)
+        _log(f"Mensagem completa:\n{signed}")
+
+        # Enviar via PUSH + fallback UAZAPI
+        push_result = await leadbox_push_silent(
+            phone, QUEUE_MAINTENANCE, AGENT_ID_LAZARO, message=signed
+        )
+
+        _log(f"Push result: {push_result}")
+
+        if push_result.get("ticket_check_failed"):
+            _log("PUSH falhou na verificacao de ticket, usando UAZAPI direto...")
+            result = await uazapi.send_text_message(phone, signed)
+            if not result.get("success"):
+                return {"success": False, "error": result.get("error")}
+            result["via"] = "uazapi_fallback"
+        elif not push_result.get("message_sent_via_push"):
+            _log("Ticket existia, PUSH moveu fila, usando UAZAPI...")
+            result = await uazapi.send_text_message(phone, signed)
+            if not result.get("success"):
+                return {"success": False, "error": result.get("error")}
+            result["via"] = "uazapi"
+        else:
+            result = {"success": True, "via": "push"}
+
+        # ================================================================
+        # SALVAR NO CONVERSATION_HISTORY PARA TESTAR INJECAO DE PROMPT
+        # ================================================================
+        context_saved = False
+        try:
+            supabase = get_supabase_service()
+            phone_jid = f"{phone}@s.whatsapp.net"
+            table_name = agent.get("table_messages")
+            now_iso = datetime.utcnow().isoformat()
+
+            if not table_name:
+                _log_warn("table_messages nao encontrado no agente")
+                raise ValueError("table_messages nao configurado")
+
+            # Buscar lead pelo telefone
+            lead_result = supabase.client.table(table_name).select(
+                "id, conversation_history"
+            ).eq("remotejid", phone_jid).limit(1).execute()
+
+            if lead_result.data and len(lead_result.data) > 0:
+                lead_id = lead_result.data[0]["id"]
+                raw_history = lead_result.data[0].get("conversation_history")
+
+                # Normalizar formato
+                if isinstance(raw_history, dict):
+                    messages_list = raw_history.get("messages", [])
+                elif isinstance(raw_history, list):
+                    messages_list = raw_history
+                else:
+                    messages_list = []
+
+                # Adicionar mensagem com contexto de manutencao
+                new_message = {
+                    "role": "model",
+                    "text": signed,
+                    "timestamp": now_iso,
+                    "context": "manutencao_preventiva",
+                    "contract_id": "TEST-CONTRACT-ID",
+                }
+                messages_list.append(new_message)
+
+                # Salvar
+                supabase.client.table(table_name).update({
+                    "conversation_history": {"messages": messages_list},
+                }).eq("id", lead_id).execute()
+
+                context_saved = True
+                _log(f"Contexto salvo no conversation_history (lead {str(lead_id)[:8]}...)")
+            else:
+                _log(f"Lead nao encontrado para {phone_jid} - contexto NAO salvo")
+
+        except Exception as e:
+            _log_warn(f"Erro ao salvar contexto (nao critico): {e}")
+
+        _log(f"=== TESTE CONCLUIDO: {result} | context_saved={context_saved} ===")
+        return {"success": True, "result": result, "phone": phone, "context_saved": context_saved}
+
+    except Exception as e:
+        _log_error(f"Erro no teste: {e}")
+        return {"success": False, "error": str(e)}

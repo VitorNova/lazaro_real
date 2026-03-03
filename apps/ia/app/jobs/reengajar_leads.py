@@ -1184,8 +1184,7 @@ async def _process_agent_follow_up(
         try:
             # Enviar mensagem via WhatsApp com assinatura do agente
             agent_name = agent.get("name", "Assistente")
-            signed_message = f"*{agent_name.title()}:*\n{message}"
-            result = await uazapi.send_text_message(telefone, signed_message)
+            result = await uazapi.send_signed_message(telefone, message, agent_name)
 
             if not result.get("success"):
                 raise ValueError(result.get("error", "Erro desconhecido ao enviar"))

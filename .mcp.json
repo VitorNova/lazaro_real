@@ -1,0 +1,33 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=uaepkqqgagcuvgitakiz",
+      "headers": {
+        "Authorization": "Bearer sbp_530d984d3d9d9d67866a1e3908fa5bc445f9fc58"
+      }
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"]
+    },
+    "serena": {
+      "type": "stdio",
+      "command": "/root/.local/bin/uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/oraios/serena",
+        "serena",
+        "start-mcp-server",
+        "--context",
+        "ide-assistant",
+        "--project",
+        "/var/www/lazaro-v2"
+      ]
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    }
+  }
+}

@@ -5,6 +5,7 @@ from .cobranca import (
     get_function_declarations,
     CALENDAR_TOOL_NAMES,
     DISABLED_TOOLS,
+    SALVAR_DADOS_LEAD_DECLARATION,
 )
 
 __all__ = [
@@ -13,4 +14,5 @@ __all__ = [
     "get_function_declarations",
     "CALENDAR_TOOL_NAMES",
     "DISABLED_TOOLS",
+    "SALVAR_DADOS_LEAD_DECLARATION",
 ]

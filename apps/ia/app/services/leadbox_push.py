@@ -49,12 +49,15 @@ async def leadbox_push_silent(
             ticket_existed: bool - True se ticket já existia
             ticket_id: int|None - ID do ticket
             message_sent_via_push: bool - True se PUSH já enviou a mensagem
+            ticket_check_failed: bool - True se não conseguiu verificar ticket existente
+                                        (caller deve usar UAZAPI direto nesse caso)
     """
     result = {
         "success": False,
         "ticket_existed": False,
         "ticket_id": None,
         "message_sent_via_push": False,
+        "ticket_check_failed": False,  # True se não conseguiu verificar ticket existente
     }
 
     supabase = get_supabase_service()
@@ -140,7 +143,10 @@ async def leadbox_push_silent(
 
         except Exception as e:
             logger.warning(f"[LEADBOX PUSH] Erro ao buscar ticket existente: {e}")
-            # Continua — vai tentar via PUSH
+            # NÃO continua - retorna erro para evitar mensagem duplicada
+            # Se não sabemos se ticket existe, PUSH pode enviar mensagem duplicada
+            result["ticket_check_failed"] = True
+            return result
 
         # ================================================================
         # PASSO 2: Decidir estratégia

@@ -19,12 +19,13 @@ import traceback
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.services.dispatch_logger import get_dispatch_logger
 from app.services.gateway_pagamento import AsaasService, create_asaas_service
 from app.services.leadbox import LeadboxService
 from app.services.leadbox_push import QUEUE_BILLING, leadbox_push_silent
 from app.services.redis import get_redis_service
 from app.services.supabase import get_supabase_service
-from app.services.whatsapp_api import UazapiService
+from app.services.whatsapp_api import UazapiService, sign_message
 from app.utils.dias_uteis import (
     add_business_days,
     anticipate_to_friday,
@@ -912,7 +913,11 @@ async def save_cobranca_enviada(
             "status": "sent",  # billing_notifications usa 'sent', não 'enviado'
             "sent_at": datetime.utcnow().isoformat(),
         }
-        supabase.client.table("billing_notifications").insert(record).execute()
+        # UPSERT: claim_notification já cria registro básico, aqui atualizamos com dados completos
+        supabase.client.table("billing_notifications").upsert(
+            record,
+            on_conflict="agent_id,payment_id,notification_type,scheduled_date"
+        ).execute()
         _log(f"Cobranca salva em billing_notifications: {payment['id']} -> {mask_customer_name(customer_name)}")
     except Exception as e:
         _log_error(f"Erro ao salvar em billing_notifications: {e}")
@@ -1060,17 +1065,28 @@ async def ensure_lead_exists(
             .execute()
         )
 
+        # Montar billing_context para salvar no lead
+        billing_context = {
+            "customer_id": customer_id,
+            "customer_name": payment.get("customer_name", ""),
+            "last_billing_at": now[:10],  # YYYY-MM-DD
+            "pending_amount": float(payment.get("value") or 0),
+            "has_overdue": payment.get("status") == "OVERDUE",
+            "last_payment_id": payment.get("id", ""),
+        }
+
         if response.data:
             lead_id = response.data[0]["id"]
             _log(f"Lead existente encontrado: {lead_id}")
-            # Atualizar lead_origin para contexto de cobrança (fix: billing routing)
+            # Atualizar lead_origin e billing_context para contexto de cobrança
             try:
                 supabase.client.table(table_leads).update({
                     "lead_origin": "disparo_cobranca",
+                    "billing_context": billing_context,
                     "updated_date": now,
                 }).eq("id", lead_id).execute()
             except Exception as e:
-                _log_warn(f"Erro ao atualizar lead_origin: {e}")
+                _log_warn(f"Erro ao atualizar lead_origin/billing_context: {e}")
             return lead_id
 
         # Lead nao existe, criar novo
@@ -1084,6 +1100,7 @@ async def ensure_lead_exists(
             "pipeline_step": "cliente",
             "status": "ativo",
             "lead_origin": "disparo_cobranca",
+            "billing_context": billing_context,
             "current_state": "active",
             "created_date": now,
             "updated_date": now,
@@ -1328,7 +1345,7 @@ async def process_agent_billing(agent: Dict[str, Any]) -> Dict[str, int]:
             if not agent.get("uazapi_base_url") or not agent.get("uazapi_token"):
                 raise ValueError("Configuracao UAZAPI incompleta")
 
-            signed_message = f"*{agent.get('name', 'Ana').title()}:*\n{message}"
+            signed = sign_message(message, agent.get("name", "Ana"))
 
             # ================================================================
             # DISPATCH INTELIGENTE: PUSH decide se cria ticket ou move
@@ -1336,32 +1353,43 @@ async def process_agent_billing(agent: Dict[str, Any]) -> Dict[str, int]:
             # Se ticket JÁ existe: PUT move fila, UAZAPI envia mensagem
             # ================================================================
             push_result = await leadbox_push_silent(
-                phone, QUEUE_BILLING, agent["id"], message=signed_message
+                phone, QUEUE_BILLING, agent["id"], message=signed
             )
 
-            if not push_result.get("message_sent_via_push"):
-                # Ticket já existia — PUSH só moveu de fila, enviar via UAZAPI
+            if push_result.get("ticket_check_failed") or not push_result.get("message_sent_via_push"):
+                # Ticket check falhou ou ticket já existia — enviar via UAZAPI
                 uazapi_client = UazapiService(
                     base_url=agent["uazapi_base_url"],
                     api_key=agent["uazapi_token"],
                 )
-                result = await uazapi_client.send_text_message(phone, signed_message)
+                result = await uazapi_client.send_text_message(phone, signed)
                 if not result.get("success"):
                     raise ValueError(result.get("error", "Erro desconhecido ao enviar"))
 
             # Salvar mensagem no conversation_history (cria lead se nao existir)
             await save_message_to_conversation_history(agent, phone, message, notification_type, payment)
 
-            # Salvar registro completo em billing_notifications
-            await save_cobranca_enviada(
+            # Log dispatch in unified dispatch_log table
+            dispatch_logger = get_dispatch_logger()
+            await dispatch_logger.log_dispatch(
+                job_type="billing",
                 agent_id=agent["id"],
-                payment=payment,
-                customer_name=payment.get("customer_name", "Desconhecido"),
+                reference_id=payment["id"],
                 phone=phone,
-                message_text=message,
                 notification_type=notification_type,
+                message_text=message,
+                status="sent",
+                reference_table="asaas_cobrancas",
+                customer_id=payment.get("customer_id") or payment.get("customer"),
+                customer_name=payment.get("customer_name", "Desconhecido"),
                 days_from_due=days_from_due,
-                payment_link=payment.get("invoice_url") or payment.get("bank_slip_url"),
+                metadata={
+                    "valor": payment.get("value"),
+                    "due_date": str(payment.get("due_date") or payment.get("dueDate", "")),
+                    "billing_type": payment.get("billing_type") or payment.get("billingType"),
+                    "subscription_id": payment.get("subscription_id") or payment.get("subscription"),
+                    "payment_link": payment.get("invoice_url") or payment.get("bank_slip_url"),
+                },
             )
 
             # Marcar ia_cobrou e atualizar progresso da régua na cobrança
@@ -1402,17 +1430,25 @@ async def process_agent_billing(agent: Dict[str, Any]) -> Dict[str, int]:
             )
             _log_error(f"Erro ao enviar notificacao {payment['id']}: {error_msg}")
 
-            # Salvar no Dead Letter Queue para reprocessamento
-            await save_to_dead_letter_queue(
+            # Log failure in unified dispatch_log table
+            dispatch_logger = get_dispatch_logger()
+            await dispatch_logger.log_failure(
+                job_type="billing",
                 agent_id=agent["id"],
-                payment=payment,
+                reference_id=payment["id"],
                 phone=phone,
-                message=message,
                 notification_type=notification_type,
-                scheduled_date=today_str,
-                days_from_due=days_from_due,
                 error_message=error_msg,
-                dispatch_method="uazapi",
+                message_text=message,
+                reference_table="asaas_cobrancas",
+                customer_id=payment.get("customer_id") or payment.get("customer"),
+                customer_name=payment.get("customer_name"),
+                days_from_due=days_from_due,
+                metadata={
+                    "valor": payment.get("value"),
+                    "due_date": str(payment.get("due_date") or payment.get("dueDate", "")),
+                    "billing_type": payment.get("billing_type") or payment.get("billingType"),
+                },
             )
 
             stats["errors"] += 1

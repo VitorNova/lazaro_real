@@ -46,6 +46,10 @@ export function createLeadTableSQL(tableName: string): string {
       -- Asaas integration fields
       asaas_customer_id TEXT,
       cpf_cnpj TEXT,
+      -- Lead conversion tracking (Lead → Cliente Asaas)
+      converted_at TIMESTAMPTZ,
+      first_payment_at TIMESTAMPTZ,
+      interest_type TEXT,
       -- BANT qualification fields
       bant_budget INTEGER DEFAULT 0,
       bant_authority INTEGER DEFAULT 0,
@@ -234,6 +238,20 @@ export function migrateLeadTableTimezoneSQL(tableName: string): string {
  */
 export function migrateLeadTableInsightsSQL(tableName: string): string {
   return `ALTER TABLE "${tableName}" ADD COLUMN IF NOT EXISTS insights JSONB DEFAULT '{}'::jsonb;`;
+}
+
+/**
+ * Gera SQL para adicionar colunas de rastreamento de conversão Lead→Cliente
+ * Permite rastrear quando lead com interesse em aluguel virou cliente Asaas
+ */
+export function migrateLeadTableConversionSQL(tableName: string): string {
+  return `
+    ALTER TABLE "${tableName}" ADD COLUMN IF NOT EXISTS converted_at TIMESTAMPTZ;
+    ALTER TABLE "${tableName}" ADD COLUMN IF NOT EXISTS first_payment_at TIMESTAMPTZ;
+    ALTER TABLE "${tableName}" ADD COLUMN IF NOT EXISTS interest_type TEXT;
+    CREATE INDEX IF NOT EXISTS "${tableName}_cpf_cnpj_idx" ON "${tableName}" (cpf_cnpj) WHERE cpf_cnpj IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS "${tableName}_converted_at_idx" ON "${tableName}" (converted_at) WHERE converted_at IS NOT NULL;
+  `;
 }
 
 /**

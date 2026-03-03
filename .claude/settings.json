@@ -1,0 +1,40 @@
+{
+  "env": {
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "50"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "command": "./scripts/block-production-edits.sh"
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob",
+      "Bash(pm2 logs*)",
+      "Bash(pm2 restart*)",
+      "Bash(grep*)",
+      "Bash(find*)",
+      "Bash(wc*)",
+      "Bash(python -c*)",
+      "Bash(cat*)",
+      "Bash(mkdir*)",
+      "Bash(cp*)",
+      "Bash(touch*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)"
+    ],
+    "deny": [
+      "Bash(rm -rf /)",
+      "Read(.env)",
+      "Read(*/.env)"
+    ]
+  }
+}

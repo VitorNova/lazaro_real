@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional
 import pytz
 
 from app.config import settings
+from app.services.dispatch_logger import get_dispatch_logger
 from app.services.supabase import get_supabase_service
 from app.services.whatsapp_api import UazapiService
 from app.services.agenda import GoogleCalendarOAuth, GoogleCalendarOAuthError
@@ -271,8 +272,7 @@ async def _send_reminder(
 ) -> bool:
     """Envia lembrete via WhatsApp com assinatura do agente."""
     try:
-        signed_message = f"*{agent_name.title()}:*\n{message}"
-        result = await uazapi.send_text_message(phone, signed_message)
+        result = await uazapi.send_signed_message(phone, message, agent_name)
         return result.get("success", False)
     except Exception as e:
         _log_error(f"Erro ao enviar lembrete para {phone}: {e}")
@@ -425,9 +425,49 @@ async def _process_agent_calendar(agent: Dict[str, Any]) -> Dict[str, Any]:
                     agent_id, event_id, phone, "24h",
                     event_dt.isoformat(), message
                 )
+
+                # Log dispatch in unified dispatch_log table
+                dispatch_logger = get_dispatch_logger()
+                await dispatch_logger.log_dispatch(
+                    job_type="calendar",
+                    agent_id=agent_id,
+                    reference_id=event_id,
+                    phone=phone,
+                    notification_type="reminder_24h",
+                    message_text=message,
+                    status="sent",
+                    reference_table="google_calendar",
+                    customer_name=lead_name,
+                    days_from_due=-1,
+                    metadata={
+                        "event_start": event_dt.isoformat(),
+                        "event_title": event_title,
+                        "location": location,
+                    },
+                )
+
                 stats["sent_24h"] += 1
                 _log(f"✅ Lembrete 24h enviado para {phone}")
             else:
+                # Log failure in unified dispatch_log table
+                dispatch_logger = get_dispatch_logger()
+                await dispatch_logger.log_failure(
+                    job_type="calendar",
+                    agent_id=agent_id,
+                    reference_id=event_id,
+                    phone=phone,
+                    notification_type="reminder_24h",
+                    error_message="Failed to send reminder via UAZAPI",
+                    message_text=message,
+                    reference_table="google_calendar",
+                    customer_name=lead_name,
+                    days_from_due=-1,
+                    metadata={
+                        "event_start": event_dt.isoformat(),
+                        "event_title": event_title,
+                    },
+                )
+
                 stats["errors"] += 1
                 _log_error(f"❌ Falha ao enviar lembrete 24h para {phone}")
 
@@ -455,9 +495,49 @@ async def _process_agent_calendar(agent: Dict[str, Any]) -> Dict[str, Any]:
                     agent_id, event_id, phone, "2h",
                     event_dt.isoformat(), message
                 )
+
+                # Log dispatch in unified dispatch_log table
+                dispatch_logger = get_dispatch_logger()
+                await dispatch_logger.log_dispatch(
+                    job_type="calendar",
+                    agent_id=agent_id,
+                    reference_id=event_id,
+                    phone=phone,
+                    notification_type="reminder_2h",
+                    message_text=message,
+                    status="sent",
+                    reference_table="google_calendar",
+                    customer_name=lead_name,
+                    days_from_due=0,
+                    metadata={
+                        "event_start": event_dt.isoformat(),
+                        "event_title": event_title,
+                        "location": location,
+                    },
+                )
+
                 stats["sent_2h"] += 1
                 _log(f"✅ Lembrete 2h enviado para {phone}")
             else:
+                # Log failure in unified dispatch_log table
+                dispatch_logger = get_dispatch_logger()
+                await dispatch_logger.log_failure(
+                    job_type="calendar",
+                    agent_id=agent_id,
+                    reference_id=event_id,
+                    phone=phone,
+                    notification_type="reminder_2h",
+                    error_message="Failed to send reminder via UAZAPI",
+                    message_text=message,
+                    reference_table="google_calendar",
+                    customer_name=lead_name,
+                    days_from_due=0,
+                    metadata={
+                        "event_start": event_dt.isoformat(),
+                        "event_title": event_title,
+                    },
+                )
+
                 stats["errors"] += 1
                 _log_error(f"❌ Falha ao enviar lembrete 2h para {phone}")
 

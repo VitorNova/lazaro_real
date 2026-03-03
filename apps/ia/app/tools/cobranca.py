@@ -49,6 +49,31 @@ CALENDAR_TOOL_NAMES = ["consulta_agenda", "agendar", "cancelar_agendamento", "re
 # FUNCTION DECLARATIONS ATIVAS - Gemini Format
 # ============================================================================
 
+# Declaration do salvar_dados_lead - salva CPF/nome do lead
+SALVAR_DADOS_LEAD_DECLARATION = {
+    "name": "salvar_dados_lead",
+    "description": (
+        "Salva o CPF e nome do lead na base quando ele fornece durante a conversa. "
+        "Usar SEMPRE que o lead informar o CPF, seja formatado (123.456.789-00) ou "
+        "apenas numeros (12345678900). Tambem aceita CNPJ (14 digitos). "
+        "Se o lead informar o nome, inclua tambem."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "cpf": {
+                "type": "string",
+                "description": "CPF ou CNPJ do lead (11 digitos para CPF, 14 para CNPJ). Pode conter pontos, tracos ou barras - sera limpo automaticamente."
+            },
+            "nome": {
+                "type": "string",
+                "description": "Nome completo do lead (opcional, use se ele informar)"
+            }
+        },
+        "required": ["cpf"]
+    }
+}
+
 # Declaration do transferir_departamento (mantida igual)
 TRANSFERIR_DEPARTAMENTO_DECLARATION = {
     "name": "transferir_departamento",
@@ -81,9 +106,10 @@ TRANSFERIR_DEPARTAMENTO_DECLARATION = {
     }
 }
 
-# FUNCTION_DECLARATIONS exportado - APENAS 2 TOOLS ATIVAS
+# FUNCTION_DECLARATIONS exportado - 3 TOOLS ATIVAS
 FUNCTION_DECLARATIONS = [
     CONSULTAR_CLIENTE_DECLARATION,
+    SALVAR_DADOS_LEAD_DECLARATION,
     TRANSFERIR_DEPARTAMENTO_DECLARATION,
 ]
 
