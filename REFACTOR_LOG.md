@@ -1,10 +1,40 @@
 # Lazaro-v2 Refactor Log
 
 ## Status Atual
-**Fase**: 5 - Quebrar reengajar_leads.py ✅ COMPLETA
+**Fase**: 6 - Quebrar asaas.handler.ts ✅ COMPLETA
 **Última Atualização**: 2026-03-03
 **Responsável**: Claude Code
-**Próximo Passo**: Fase 6 - Quebrar asaas.handler.ts
+**Próximo Passo**: Fase 7 - Extrair integrações compartilhadas
+
+---
+
+## Fase 6: Quebrar asaas.handler.ts ✅ COMPLETA
+
+### Objetivo
+- **asaas.handler.ts original**: 2401 linhas
+- **Meta**: Módulos TypeScript por domínio
+
+### Checklist
+- [x] 6.1 api/dashboard/asaas/dashboard.handler.ts <- getAsaasDashboardHandler (629L)
+- [x] 6.2 api/dashboard/asaas/contract-parser.handler.ts <- parseContractHandler, parseAllContractsHandler, mergeContractData, extractWithGemini, parseContractInternal (857L)
+- [x] 6.3 api/dashboard/asaas/sync.handler.ts <- syncAllAsaasHandler, calcDiasAtraso, upsertInBatches, markDeletedRecords (637L)
+- [x] 6.4 api/dashboard/asaas/customers.handler.ts <- getAsaasCustomersHandler, getAsaasParcelamentosHandler, getAsaasAvailableMonthsHandler (288L)
+- [x] 6.5 api/dashboard/asaas/index.ts <- barrel file re-exports (33L)
+
+### Módulos Extraídos
+| Módulo | Linhas | Descrição |
+|--------|--------|-----------|
+| api/dashboard/asaas/dashboard.handler.ts | 629 | getAsaasDashboardHandler (dashboard principal) |
+| api/dashboard/asaas/contract-parser.handler.ts | 857 | Parsing de PDFs + Gemini extraction |
+| api/dashboard/asaas/sync.handler.ts | 637 | syncAllAsaasHandler + helpers |
+| api/dashboard/asaas/customers.handler.ts | 288 | Handlers de clientes e parcelamentos |
+| api/dashboard/asaas/index.ts | 33 | Barrel file (re-exports) |
+
+### Resumo Fase 6
+- **Total de módulos extraídos**: 5
+- **Total de linhas extraídas**: ~2444 linhas
+- **asaas.handler.ts original**: 2401 linhas (não modificado - estratégia de extração)
+- **Próximo**: Atualizar imports em agents/index.ts para usar os novos módulos
 
 ---
 
@@ -279,6 +309,11 @@
 | 2026-03-03 | cbf4e1c | refactor(fase-5.7): follow_up_recorder.py (213L) |
 | 2026-03-03 | 167b0eb | refactor(fase-5.8): follow_up_reset.py (112L) |
 | 2026-03-03 | c3ca41a | refactor(fase-5.9): follow_up_job.py (386L) |
+| 2026-03-03 | d58350a | refactor(fase-6.1): dashboard.handler.ts (629L) |
+| 2026-03-03 | 25cdd9e | refactor(fase-6.2): contract-parser.handler.ts (857L) |
+| 2026-03-03 | 0b2c3aa | refactor(fase-6.3): sync.handler.ts (637L) |
+| 2026-03-03 | c81c960 | refactor(fase-6.4): customers.handler.ts (288L) |
+| 2026-03-03 | c2bbdba | refactor(fase-6.5): index.ts (barrel file) |
 
 ---
 
@@ -291,7 +326,7 @@
 | pagamentos.py | 2984 | ✅ Fase 3 (10 módulos extraídos, integração pendente) |
 | cobrar_clientes.py | 1840 | ✅ Fase 4 (8 módulos extraídos, integração pendente) |
 | reengajar_leads.py | 1466 | ✅ Fase 5 (9 módulos extraídos, integração pendente) |
-| asaas.handler.ts | 2401 | Pendente (Fase 6) |
+| asaas.handler.ts | 2401 → 5 módulos | ✅ Fase 6 (5 módulos extraídos, integração pendente) |
 
 ---
 
@@ -327,4 +362,6 @@
 5. ✅ Fase 4 completa - 8 módulos extraídos de cobrar_clientes.py
 6. ✅ Fase 5 completa - 9 módulos extraídos de reengajar_leads.py
 7. Integrar módulos extraídos nos monolitos (após testes em produção)
-8. Iniciar Fase 6 (Quebrar asaas.handler.ts - 2401 linhas)
+8. ✅ Fase 6 completa - 5 módulos extraídos de asaas.handler.ts
+9. Atualizar imports em agents/index.ts para usar novos módulos
+10. Iniciar Fase 7 (Extrair integrações compartilhadas)
