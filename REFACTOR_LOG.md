@@ -1,10 +1,46 @@
 # Lazaro-v2 Refactor Log
 
 ## Status Atual
-**Fase**: 3 - Quebrar pagamentos.py ✅ COMPLETA
+**Fase**: 4 - Quebrar cobrar_clientes.py ✅ COMPLETA
 **Última Atualização**: 2026-03-03
 **Responsável**: Claude Code
-**Próximo Passo**: Fase 4 - Quebrar cobrar_clientes.py
+**Próximo Passo**: Fase 5 - Quebrar reengajar_leads.py
+
+---
+
+## Fase 4: Quebrar cobrar_clientes.py ✅ COMPLETA
+
+### Objetivo
+- **cobrar_clientes.py original**: 1840 linhas
+- **Meta**: Módulos de 200-400 linhas
+
+### Checklist
+- [x] 4.1 domain/billing/models/billing_config.py <- constantes, templates, config (96L)
+- [x] 4.2 domain/billing/services/payment_fetcher.py <- fetch_*, enrich_*, sync_cache (541L)
+- [x] 4.3 domain/billing/services/billing_formatter.py <- format_*, get_*_template (155L)
+- [x] 4.4 domain/billing/services/billing_notifier.py <- claim, save, update, DLQ (268L)
+- [x] 4.5 domain/billing/services/lead_ensurer.py <- ensure_lead, ensure_message, save_history (299L)
+- [x] 4.6 domain/billing/services/billing_rules.py <- should_skip, get_agents_with_asaas (103L)
+- [x] 4.7 core/utils/phone.py <- mask_*, get_customer_phone, phone_to_remotejid (134L)
+- [x] 4.8 jobs/billing_job.py <- process_agent_billing, entry points (614L)
+
+### Módulos Extraídos
+| Módulo | Linhas | Descrição |
+|--------|--------|-----------|
+| domain/billing/models/billing_config.py | 96 | BILLING_JOB_LOCK_*, PAID_STATUSES, DEFAULT_MESSAGES |
+| domain/billing/services/payment_fetcher.py | 541 | fetch_payments_from_asaas, fallback, sync_cache, enrich |
+| domain/billing/services/billing_formatter.py | 155 | format_brl, format_message, get_overdue_template |
+| domain/billing/services/billing_notifier.py | 268 | claim_notification, save_cobranca, DLQ, get_sent_count |
+| domain/billing/services/lead_ensurer.py | 299 | ensure_lead_exists, ensure_message, save_conversation_history |
+| domain/billing/services/billing_rules.py | 103 | should_skip_payment, get_agents_with_asaas |
+| core/utils/phone.py | 134 | mask_phone, mask_customer_name, get_customer_phone |
+| jobs/billing_job.py | 614 | process_agent_billing (3 fases), entry points |
+
+### Resumo Fase 4
+- **Total de módulos extraídos**: 8
+- **Total de linhas extraídas**: ~2210 linhas
+- **cobrar_clientes.py original**: 1840 linhas (não modificado - estratégia de extração)
+- **Próximo**: Integração futura após testes em produção
 
 ---
 
@@ -188,6 +224,14 @@
 | 2026-03-03 | c94cf99 | refactor(fase-3.8): payment_confirmed_service.py (380L) |
 | 2026-03-03 | 2015085 | refactor(fase-3.9): payment_events_service.py (308L) |
 | 2026-03-03 | 658f79b | refactor(fase-3.10): webhook_asaas.py (425L) |
+| 2026-03-03 | 9f99454 | refactor(fase-4.1): billing_config.py (96L) |
+| 2026-03-03 | d606542 | refactor(fase-4.2): payment_fetcher.py (541L) |
+| 2026-03-03 | 579d7a1 | refactor(fase-4.3): billing_formatter.py (155L) |
+| 2026-03-03 | e482c6a | refactor(fase-4.4): billing_notifier.py (268L) |
+| 2026-03-03 | 6f5347e | refactor(fase-4.5): lead_ensurer.py (299L) |
+| 2026-03-03 | 7d75411 | refactor(fase-4.6): billing_rules.py (103L) |
+| 2026-03-03 | 3597cfb | refactor(fase-4.7): phone.py (134L) |
+| 2026-03-03 | 128d95d | refactor(fase-4.8): billing_job.py (614L) |
 
 ---
 
@@ -198,7 +242,7 @@
 | main.py | 2068 → 51 | ✅ Fase 1 (97.5% redução) |
 | mensagens.py | 4438 | ✅ Fase 2 (16 módulos extraídos, integração pendente) |
 | pagamentos.py | 2984 | ✅ Fase 3 (10 módulos extraídos, integração pendente) |
-| cobrar_clientes.py | 1839 | Pendente (Fase 4) |
+| cobrar_clientes.py | 1840 | ✅ Fase 4 (8 módulos extraídos, integração pendente) |
 | reengajar_leads.py | 1465 | Pendente (Fase 5) |
 | asaas.handler.ts | 2401 | Pendente (Fase 6) |
 
@@ -233,5 +277,6 @@
 2. Substituir main.py por main_refactored.py
 3. ✅ Fase 2 completa - 16 módulos extraídos de mensagens.py
 4. ✅ Fase 3 completa - 10 módulos extraídos de pagamentos.py
-5. Integrar módulos extraídos nos monolitos (após testes em produção)
-6. Iniciar Fase 4 (Quebrar cobrar_clientes.py - 1839 linhas)
+5. ✅ Fase 4 completa - 8 módulos extraídos de cobrar_clientes.py
+6. Integrar módulos extraídos nos monolitos (após testes em produção)
+7. Iniciar Fase 5 (Quebrar reengajar_leads.py - 1465 linhas)
