@@ -4,7 +4,7 @@
 **Fase**: 2 - Quebrar mensagens.py (EM PROGRESSO)
 **Última Atualização**: 2026-03-03
 **Responsável**: Claude Code
-**Próximo Passo**: 2.12 - Extrair ai/tools/billing_tools.py
+**Próximo Passo**: 2.13 - Extrair ai/tools/customer_tools.py
 
 ---
 
@@ -26,7 +26,8 @@
 - [x] 2.9 ai/tools/scheduling_tools.py <- consulta_agenda, agendar, cancelar, reagendar (589L)
 - [x] 2.10 ai/tools/transfer_tools.py <- transferir_departamento, detectar_fuso (603L)
 - [x] 2.11 ai/tools/maintenance_tools.py <- identificar_equip, analisar_foto, verificar_disp, confirmar_agend (230L)
-- [ ] 2.12-2.14 ai/tools/* (billing, customer, registry)
+- [x] 2.12 ai/tools/billing_tools.py <- buscar_cobrancas, consultar_cliente (380L)
+- [ ] 2.13-2.14 ai/tools/* (customer, registry)
 - [ ] 2.15 domain/messaging/message_orchestrator.py (<200 linhas)
 - [ ] 2.16 api/routes/webhook_whatsapp.py
 
@@ -44,6 +45,7 @@
 | ai/tools/scheduling_tools.py | 589 | SchedulingTools: consulta_agenda, agendar, cancelar, reagendar |
 | ai/tools/transfer_tools.py | 603 | TransferTools: transferir_departamento, detectar_fuso_horario |
 | ai/tools/maintenance_tools.py | 230 | MaintenanceTools: identificar_equip, analisar_foto, verificar_disp, confirmar_agend |
+| ai/tools/billing_tools.py | 380 | BillingTools: buscar_cobrancas, consultar_cliente |
 
 ---
 
@@ -120,6 +122,7 @@
 | 2026-03-03 | 6a93a81 | refactor(fase-2.9): scheduling_tools.py (589L) |
 | 2026-03-03 | 8520195 | refactor(fase-2.10): transfer_tools.py (603L) |
 | 2026-03-03 | 9361810 | refactor(fase-2.11): maintenance_tools.py (230L) |
+| 2026-03-03 | c46c5d0 | refactor(fase-2.12): billing_tools.py (380L) |
 
 ---
 
