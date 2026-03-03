@@ -4,7 +4,7 @@
 **Fase**: 2 - Quebrar mensagens.py (EM PROGRESSO)
 **Última Atualização**: 2026-03-03
 **Responsável**: Claude Code
-**Próximo Passo**: 2.8 - Extrair outgoing_message_handler.py
+**Próximo Passo**: 2.9 - Extrair ai/tools/scheduling_tools.py
 
 ---
 
@@ -22,7 +22,7 @@
 - [x] 2.5 domain/messaging/handlers/incoming_message_handler.py <- extract_message_data, handle_control_command (231L)
 - [x] 2.6 domain/messaging/services/message_processor.py <- schedule_processing, process_buffered_messages, prepare_gemini_messages (881L - NEEDS DECOMPOSITION)
 - [x] 2.7 domain/messaging/services/conversation_manager.py <- _save_conversation_history (245L)
-- [ ] 2.8 domain/messaging/handlers/outgoing_message_handler.py
+- [x] 2.8 domain/messaging/handlers/outgoing_message_handler.py <- _split_response, _queue_failed_send (251L)
 - [ ] 2.9-2.14 ai/tools/* (scheduling, transfer, maintenance, billing, customer, registry)
 - [ ] 2.15 domain/messaging/message_orchestrator.py (<200 linhas)
 - [ ] 2.16 api/routes/webhook_whatsapp.py
@@ -37,6 +37,7 @@
 | domain/messaging/handlers/incoming_message_handler.py | 231 | extract_message_data, handle_control_command |
 | domain/messaging/services/message_processor.py | 881 | schedule_processing, process_buffered_messages, prepare_gemini_messages (NEEDS DECOMPOSITION) |
 | domain/messaging/services/conversation_manager.py | 245 | ConversationManager, save_conversation_history |
+| domain/messaging/handlers/outgoing_message_handler.py | 251 | OutgoingMessageHandler, split_response, queue_failed_send |
 
 ---
 
@@ -109,6 +110,7 @@
 | 2026-03-03 | 8c38249 | refactor(fase-2.5): incoming_message_handler.py (231L) |
 | 2026-03-03 | d78e8b3 | refactor(fase-2.6): message_processor.py (881L) |
 | 2026-03-03 | 78d9b33 | refactor(fase-2.7): conversation_manager.py (245L) |
+| 2026-03-03 | dfbcc29 | refactor(fase-2.8): outgoing_message_handler.py (251L) |
 
 ---
 
