@@ -4,7 +4,7 @@
 **Fase**: 2 - Quebrar mensagens.py (EM PROGRESSO)
 **Última Atualização**: 2026-03-03
 **Responsável**: Claude Code
-**Próximo Passo**: 2.2 - Extrair context builders
+**Próximo Passo**: 2.3 - Extrair maintenance_context.py
 
 ---
 
@@ -16,7 +16,7 @@
 
 ### Checklist
 - [x] 2.1 domain/messaging/models/message.py <- ExtractedMessage, ProcessingContext (42L)
-- [ ] 2.2 domain/messaging/context/context_detector.py <- get_context_prompt, detect_conversation_context, prepare_system_prompt
+- [x] 2.2 domain/messaging/context/context_detector.py <- get_context_prompt, detect_conversation_context, prepare_system_prompt (236L)
 - [ ] 2.3 domain/messaging/context/maintenance_context.py <- get_contract_data_for_maintenance, build_maintenance_context_prompt
 - [ ] 2.4 domain/messaging/context/billing_context.py <- get_billing_data_for_context, build_billing_context_prompt
 - [ ] 2.5 domain/messaging/handlers/incoming_message_handler.py
@@ -31,6 +31,7 @@
 | Módulo | Linhas | Descrição |
 |--------|--------|-----------|
 | domain/messaging/models/message.py | 42 | ExtractedMessage, ProcessingContext |
+| domain/messaging/context/context_detector.py | 236 | get_context_prompt, detect_conversation_context, prepare_system_prompt |
 
 ---
 
@@ -97,6 +98,7 @@
 | 2026-03-03 | afa7941 | refactor(fase-1.14): leadbox.py reduzido 130L |
 | 2026-03-03 | 3409138 | refactor(fase-1.15): main_refactored.py 51L |
 | 2026-03-03 | 3268430 | refactor(fase-2.1): ExtractedMessage, ProcessingContext |
+| 2026-03-03 | feb1ce3 | refactor(fase-2.2): context_detector.py (236L) |
 
 ---
 
