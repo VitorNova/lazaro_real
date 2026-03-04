@@ -11,7 +11,7 @@ Este servico gerencia:
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, TypedDict
 
 from supabase import create_client, Client
