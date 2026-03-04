@@ -1,14 +1,14 @@
 # Lazaro-v2 Refactor Log
 
 ## Status Atual
-**Fase**: 8 - Organizar domínios restantes (EM ANDAMENTO)
+**Fase**: 8 - Organizar domínios restantes ✅ COMPLETA
 **Última Atualização**: 2026-03-03
 **Responsável**: Claude Code
-**Próximo Passo**: Fase 8.5 - Mover maintenance para domain/maintenance/
+**Próximo Passo**: Fase 9 - Limpeza Final (remover arquivos-ponte, atualizar imports em produção)
 
 ---
 
-## Fase 8: Organizar Domínios Restantes (EM ANDAMENTO)
+## Fase 8: Organizar Domínios Restantes ✅ COMPLETA
 
 ### Objetivo
 Mover módulos existentes de services/ para domain/ seguindo DDD.
@@ -19,7 +19,7 @@ Organizar Athena, Diana, Observer, Scheduling e Maintenance.
 - [x] 8.2 domain/campaigns/services/ <- services/diana/ (1761L)
 - [x] 8.3 domain/monitoring/services/ <- services/observer/ (619L)
 - [x] 8.4 domain/scheduling/services/ <- ai/tools/scheduling_tools.py (607L)
-- [ ] 8.5 domain/maintenance/ <- tools/manutencao.py + services/manutencao_slots.py (~1063L)
+- [x] 8.5 domain/maintenance/services/ <- tools/manutencao.py + services/manutencao_slots.py (1114L)
 
 ### Módulos Extraídos - Fase 8.1 (Athena → domain/analytics)
 | Módulo | Linhas | Descrição |
@@ -53,6 +53,20 @@ Organizar Athena, Diana, Observer, Scheduling e Maintenance.
 | domain/scheduling/services/scheduling_tools.py | 589 | SchedulingTools (consulta_agenda, agendar, cancelar, reagendar) |
 | domain/scheduling/services/__init__.py | 18 | Re-exports |
 | domain/scheduling/__init__.py | 18 | Barrel file |
+
+### Módulos Extraídos - Fase 8.5 (Maintenance → domain/maintenance)
+| Módulo | Linhas | Descrição |
+|--------|--------|-----------|
+| domain/maintenance/services/slots_service.py | 293 | verificar_slot, listar_slots, registrar_agendamento |
+| domain/maintenance/services/equipment_tools.py | 771 | identificar_equipamento, analisar_foto, verificar/confirmar |
+| domain/maintenance/services/__init__.py | 50 | Re-exports |
+| domain/maintenance/__init__.py | 40 | Barrel file |
+
+### Resumo Fase 8
+- **Total de domínios organizados**: 5
+- **Total de linhas extraídas**: ~5429 linhas
+- **Arquitetura**: DDD com domain/services/ + barrel files
+- **Padrão**: Copy-first (originais preservados para integração futura)
 
 ---
 
@@ -457,6 +471,7 @@ Usar a implementação mais madura como base.
 | 2026-03-03 | 9143eb8 | refactor(fase-8.2): domain/campaigns/services/ (1761L) |
 | 2026-03-03 | 064dce3 | refactor(fase-8.3): domain/monitoring/services/ (619L) |
 | 2026-03-03 | 33a525f | refactor(fase-8.4): domain/scheduling/services/ (607L) |
+| 2026-03-03 | d69e79f | refactor(fase-8.5): domain/maintenance/services/ (1114L) |
 
 ---
 
