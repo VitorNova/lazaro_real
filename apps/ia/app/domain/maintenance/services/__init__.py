@@ -1,12 +1,12 @@
 """
-Domain Maintenance - Manutenção Preventiva de Equipamentos.
+Domain Maintenance Services - Manutenção Preventiva.
 
-Este domínio contém:
-- services/: Slots de agendamento e tools de manutenção
+Módulos:
+- slots_service: Controle de slots de agendamento (manhã/tarde)
+- equipment_tools: Tools de identificação e agendamento de manutenção
 """
 
-from .services import (
-    # Slots
+from .slots_service import (
     TIMEZONE_LAZARO,
     AGENT_ID_LAZARO,
     PERIODOS,
@@ -14,7 +14,9 @@ from .services import (
     verificar_slot,
     listar_slots_disponiveis,
     registrar_agendamento,
-    # Equipment tools
+)
+
+from .equipment_tools import (
     identificar_equipamento,
     analisar_foto_equipamento,
     verificar_disponibilidade_manutencao,
