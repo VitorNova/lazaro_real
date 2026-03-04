@@ -1,10 +1,34 @@
 # Lazaro-v2 Refactor Log
 
 ## Status Atual
-**Fase**: 7 - Extrair integrações compartilhadas ✅ COMPLETA
+**Fase**: 8 - Organizar domínios restantes (EM ANDAMENTO)
 **Última Atualização**: 2026-03-03
 **Responsável**: Claude Code
-**Próximo Passo**: Fase 8 - Organizar domínios restantes
+**Próximo Passo**: Fase 8.2 - Mover Diana services para domain/campaigns/
+
+---
+
+## Fase 8: Organizar Domínios Restantes (EM ANDAMENTO)
+
+### Objetivo
+Mover módulos existentes de services/ para domain/ seguindo DDD.
+Organizar Athena, Diana, Observer, Scheduling e Maintenance.
+
+### Checklist
+- [x] 8.1 domain/analytics/services/ <- services/athena/ (1328L)
+- [ ] 8.2 domain/campaigns/services/ <- services/diana/ (~1327L)
+- [ ] 8.3 domain/monitoring/ <- services/observer/ (~593L)
+- [ ] 8.4 domain/scheduling/ <- ai/tools/scheduling_tools.py (~589L)
+- [ ] 8.5 domain/maintenance/ <- tools/manutencao.py + services/manutencao_slots.py (~1063L)
+
+### Módulos Extraídos - Fase 8.1 (Athena → domain/analytics)
+| Módulo | Linhas | Descrição |
+|--------|--------|-----------|
+| domain/analytics/services/metrics.py | 631 | BusinessMetrics, calculate_business_metrics, cache |
+| domain/analytics/services/prompts.py | 306 | SECTOR_BENCHMARKS, BUSINESS_GLOSSARY, build_system_prompt |
+| domain/analytics/services/tools.py | 296 | get_business_health, ATHENA_BUSINESS_TOOLS |
+| domain/analytics/services/__init__.py | 49 | Re-exports |
+| domain/analytics/__init__.py | 46 | Barrel file |
 
 ---
 
@@ -405,6 +429,7 @@ Usar a implementação mais madura como base.
 | 2026-03-03 | 6f1c1c0 | refactor(fase-7.4): integrations/supabase/ (2445L) |
 | 2026-03-03 | 24b3e64 | refactor(fase-7.5): integrations/leadbox/ (1599L) |
 | 2026-03-03 | caff4e3 | refactor(fase-7.6): integrations/redis/ (1716L) |
+| 2026-03-03 | fde7cb0 | refactor(fase-8.1): domain/analytics/services/ (1328L) |
 
 ---
 
