@@ -4,7 +4,7 @@
 **Fase**: 7 - Extrair integrações compartilhadas (EM PROGRESSO)
 **Última Atualização**: 2026-03-03
 **Responsável**: Claude Code
-**Próximo Passo**: Fase 7.3 - Extrair integração Google Calendar
+**Próximo Passo**: Fase 7.4 - Extrair integração Supabase
 
 ---
 
@@ -17,7 +17,7 @@ Usar a implementação mais madura como base.
 ### Checklist
 - [x] 7.1 integrations/asaas/ <- AsaasClient + types + rate_limiter (1271L)
 - [x] 7.2 integrations/uazapi/ <- UazapiClient + types (1660L)
-- [ ] 7.3 integrations/calendar/ <- GoogleCalendarClient + types
+- [x] 7.3 integrations/calendar/ <- GoogleCalendarClient + MultiCalendarClient (2026L)
 - [ ] 7.4 integrations/supabase/ <- SupabaseClient + repositories
 - [ ] 7.5 integrations/leadbox/ <- LeadboxClient + types
 - [ ] 7.6 integrations/redis/ <- RedisClient + buffer + lock
@@ -36,6 +36,14 @@ Usar a implementação mais madura como base.
 | integrations/uazapi/types.py | 506 | Enums, TypedDicts (webhook, campanhas, payloads) |
 | integrations/uazapi/client.py | 999 | UazapiClient com retry + chunking + typing indicator |
 | integrations/uazapi/__init__.py | 155 | Barrel file com re-exports |
+
+### Módulos Extraídos - Fase 7.3 (Google Calendar)
+| Módulo | Linhas | Descrição |
+|--------|--------|-----------|
+| integrations/calendar/types.py | 583 | Tipos, enums, dataclasses, helpers (baseado no TS) |
+| integrations/calendar/client.py | 631 | GoogleCalendarClient OAuth2 + disponibilidade + Meet |
+| integrations/calendar/multi_calendar.py | 592 | MultiCalendarClient com prioridade e cenários |
+| integrations/calendar/__init__.py | 220 | Barrel file com re-exports |
 
 ### Análise de Maturidade
 | Integração | Python | TypeScript | Vencedor | Motivo |
@@ -357,6 +365,7 @@ Usar a implementação mais madura como base.
 | 2026-03-03 | c2bbdba | refactor(fase-6.5): index.ts (barrel file) |
 | 2026-03-03 | 88d58a3 | refactor(fase-7.1): integrations/asaas/ (1271L) |
 | 2026-03-03 | 57c012c | refactor(fase-7.2): integrations/uazapi/ (1660L) |
+| 2026-03-03 | d3b93a5 | refactor(fase-7.3): integrations/calendar/ (2026L) |
 
 ---
 
