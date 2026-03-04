@@ -1,27 +1,28 @@
 """
-Domain Campaigns - Diana Prospecção Ativa via WhatsApp.
+Domain Campaigns Services - Diana Prospecção Ativa.
 
-Este domínio contém:
-- services/: Serviços de campanhas, mensagens, tipos e formatação
+Módulos:
+- types: DTOs e enums (DianaStatus, DianaProspect, DianaCampanha)
+- phone_formatter: Formatação de telefones brasileiros
+- message_service: Integração UAZAPI + Gemini
+- campaign_service: Serviço principal de campanhas
 """
 
-from .services import (
-    # Types
+from .types import (
     DianaStatus,
     DianaProspect,
     DianaCampanha,
     DianaConversationMessage,
     DianaConversationHistory,
-    # Phone formatter
+)
+from .phone_formatter import (
     format_phone,
     format_to_remotejid,
     extract_phone_from_remotejid,
     is_valid_brazilian_phone,
-    # Services
-    DianaMessageService,
-    DianaCampaignService,
-    get_diana_campaign_service,
 )
+from .message_service import DianaMessageService
+from .campaign_service import DianaCampaignService, get_diana_campaign_service
 
 __all__ = [
     # Types
