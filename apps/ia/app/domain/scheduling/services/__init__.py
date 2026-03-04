@@ -1,11 +1,11 @@
 """
-Domain Scheduling - Tools de Agendamento via Google Calendar.
+Domain Scheduling Services - Tools de Agendamento.
 
-Este domínio contém:
-- services/: Tools de agendamento para function calling
+Módulos:
+- scheduling_tools: Tools de agendamento via Google Calendar
 """
 
-from .services import (
+from .scheduling_tools import (
     SchedulingTools,
     create_scheduling_tools,
     DEFAULT_TIMEZONE,
