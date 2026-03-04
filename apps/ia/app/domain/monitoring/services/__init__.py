@@ -1,11 +1,11 @@
 """
-Domain Monitoring - Observer de Conversas.
+Domain Monitoring Services - Observer de Conversas.
 
-Este domínio contém:
-- services/: Serviço de análise de conversas sem responder ao lead
+Módulos:
+- observer: Serviço de análise de conversas sem responder ao lead
 """
 
-from .services import (
+from .observer import (
     ObserverService,
     get_observer_service,
     analyze_conversation,
