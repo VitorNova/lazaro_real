@@ -131,13 +131,13 @@ def _get_callback_url() -> str:
     """Retorna URL de callback para OAuth."""
     base = settings.api_base_url
     if not base:
-        base = "https://ai.phant.com.br"
+        base = "https://lazaro.fazinzz.com"
     return f"{base}/api/google/oauth/callback"
 
 
 def _get_frontend_url() -> str:
     """Retorna URL do frontend."""
-    return settings.frontend_url or "https://ia.phant.com.br"
+    return settings.frontend_url or "https://lazaro.fazinzz.com"
 
 
 # ============================================================================

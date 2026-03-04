@@ -114,6 +114,30 @@ def subtract_business_days(d: date, days: int) -> date:
     return add_business_days(d, -days)
 
 
+def count_business_days(start: date, end: date) -> int:
+    """
+    Conta dias uteis entre duas datas.
+    Retorna negativo se end < start.
+
+    Exemplos:
+    - start = sexta, end = segunda -> retorna 1
+    - start = segunda, end = sexta -> retorna 4
+    """
+    if start == end:
+        return 0
+
+    direction = 1 if end > start else -1
+    count = 0
+    current = start
+
+    while current != end:
+        current += timedelta(days=direction)
+        if is_business_day(current):
+            count += direction
+
+    return count
+
+
 def anticipate_to_friday(d: date) -> date:
     """
     Antecipa data para sexta-feira se cair em fim de semana ou feriado.

@@ -568,7 +568,7 @@ async def create_agent(
             pass
         raise HTTPException(status_code=500, detail="Falha ao salvar agente")
 
-    webhook_url = f"{settings.api_base_url or 'https://ia.phant.com.br'}/webhooks/dynamic"
+    webhook_url = f"{settings.api_base_url or 'https://lazaro.fazinzz.com'}/webhooks/dynamic"
 
     return {
         "status": "success",
@@ -740,7 +740,7 @@ async def get_qrcode(
         try:
             short_id = agent_id.split("-")[0] if "-" in agent_id else agent_id[:8]
             instance_name = f"Agent_{short_id}"
-            webhook_url = f"{settings.api_base_url or 'https://ia.phant.com.br'}/webhooks/dynamic"
+            webhook_url = f"{settings.api_base_url or 'https://lazaro.fazinzz.com'}/webhooks/dynamic"
 
             result = await _create_uazapi_instance(instance_name, webhook_url)
 

@@ -60,7 +60,7 @@ services:
     container_name: lazaro-ia-v2
     restart: unless-stopped
     ports:
-      - "8001:3105"  # Host:Container (8001 para Traefik)
+      - "3115:3105"  # Host:Container (3115 para nginx)
     env_file:
       - .env
     environment:

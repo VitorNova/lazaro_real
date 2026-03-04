@@ -18,7 +18,7 @@ logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api", tags=["uploads"])
 
-UPLOAD_DIR = "/var/www/phant/crm/uploads"
+UPLOAD_DIR = "/var/www/lazaro-v2/uploads"
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".pdf", ".txt", ".csv", ".json"}
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 

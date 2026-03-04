@@ -1,0 +1,87 @@
+version: "3.7"
+
+services:
+  # Proxy Router para lazaro.fazinzz.com
+  lazaro-router:
+    image: traefik/whoami:latest
+    networks:
+      - network_public
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - traefik.enable=true
+
+        # ============================================
+        # FRONTEND - Rota HTTP (sem TLS)
+        # ============================================
+        - traefik.http.routers.lazaro-http.rule=Host(`lazaro.fazinzz.com`)
+        - traefik.http.routers.lazaro-http.entrypoints=web
+        - traefik.http.routers.lazaro-http.priority=1
+        - traefik.http.routers.lazaro-http.service=lazaro-frontend
+
+        # FRONTEND - Rota HTTPS (com TLS)
+        - traefik.http.routers.lazaro.rule=Host(`lazaro.fazinzz.com`)
+        - traefik.http.routers.lazaro.entrypoints=websecure
+        - traefik.http.routers.lazaro.priority=1
+        - traefik.http.routers.lazaro.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.lazaro.service=lazaro-frontend
+
+        # Frontend service (painel antigo em /var/www/lazaro via PM2 serve)
+        - traefik.http.services.lazaro-frontend.loadbalancer.server.url=http://172.17.0.1:3101
+
+        # ============================================
+        # API - Rotas HTTP e HTTPS
+        # ============================================
+        - traefik.http.routers.lazaro-api-http.rule=Host(`lazaro.fazinzz.com`) && PathPrefix(`/api`)
+        - traefik.http.routers.lazaro-api-http.entrypoints=web
+        - traefik.http.routers.lazaro-api-http.priority=10
+        - traefik.http.routers.lazaro-api-http.service=lazaro-backend
+
+        - traefik.http.routers.lazaro-api.rule=Host(`lazaro.fazinzz.com`) && PathPrefix(`/api`)
+        - traefik.http.routers.lazaro-api.entrypoints=websecure
+        - traefik.http.routers.lazaro-api.priority=10
+        - traefik.http.routers.lazaro-api.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.lazaro-api.service=lazaro-backend
+
+        # Backend service
+        - traefik.http.services.lazaro-backend.loadbalancer.server.url=http://172.17.0.1:3112
+
+        # ============================================
+        # WEBHOOKS - Rotas HTTP e HTTPS
+        # ============================================
+        - traefik.http.routers.lazaro-webhooks-http.rule=Host(`lazaro.fazinzz.com`) && PathPrefix(`/webhooks`)
+        - traefik.http.routers.lazaro-webhooks-http.entrypoints=web
+        - traefik.http.routers.lazaro-webhooks-http.priority=10
+        - traefik.http.routers.lazaro-webhooks-http.service=lazaro-ia
+
+        - traefik.http.routers.lazaro-webhooks.rule=Host(`lazaro.fazinzz.com`) && PathPrefix(`/webhooks`)
+        - traefik.http.routers.lazaro-webhooks.entrypoints=websecure
+        - traefik.http.routers.lazaro-webhooks.priority=10
+        - traefik.http.routers.lazaro-webhooks.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.lazaro-webhooks.service=lazaro-ia
+
+        # IA service
+        - traefik.http.services.lazaro-ia.loadbalancer.server.url=http://172.17.0.1:8001
+
+        # ============================================
+        # HEALTH - Rotas HTTP e HTTPS
+        # ============================================
+        - traefik.http.routers.lazaro-health-http.rule=Host(`lazaro.fazinzz.com`) && Path(`/health`)
+        - traefik.http.routers.lazaro-health-http.entrypoints=web
+        - traefik.http.routers.lazaro-health-http.priority=10
+        - traefik.http.routers.lazaro-health-http.service=lazaro-ia
+
+        - traefik.http.routers.lazaro-health.rule=Host(`lazaro.fazinzz.com`) && Path(`/health`)
+        - traefik.http.routers.lazaro-health.entrypoints=websecure
+        - traefik.http.routers.lazaro-health.priority=10
+        - traefik.http.routers.lazaro-health.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.lazaro-health.service=lazaro-ia
+
+networks:
+  network_public:
+    external: true
+    name: network_public

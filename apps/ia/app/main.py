@@ -1368,7 +1368,7 @@ async def leadbox_webhook(request: Request, background_tasks: BackgroundTasks) -
 # FILE UPLOAD ENDPOINTS
 # =============================================================================
 
-UPLOAD_DIR = "/var/www/phant/crm/uploads"
+UPLOAD_DIR = "/var/www/lazaro-v2/uploads"
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".pdf", ".txt", ".csv", ".json"}
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 
