@@ -4,7 +4,7 @@
 **Fase**: 8 - Organizar domínios restantes (EM ANDAMENTO)
 **Última Atualização**: 2026-03-03
 **Responsável**: Claude Code
-**Próximo Passo**: Fase 8.3 - Mover Observer services para domain/monitoring/
+**Próximo Passo**: Fase 8.4 - Mover scheduling_tools para domain/scheduling/
 
 ---
 
@@ -17,7 +17,7 @@ Organizar Athena, Diana, Observer, Scheduling e Maintenance.
 ### Checklist
 - [x] 8.1 domain/analytics/services/ <- services/athena/ (1328L)
 - [x] 8.2 domain/campaigns/services/ <- services/diana/ (1761L)
-- [ ] 8.3 domain/monitoring/ <- services/observer/ (~593L)
+- [x] 8.3 domain/monitoring/services/ <- services/observer/ (619L)
 - [ ] 8.4 domain/scheduling/ <- ai/tools/scheduling_tools.py (~589L)
 - [ ] 8.5 domain/maintenance/ <- tools/manutencao.py + services/manutencao_slots.py (~1063L)
 
@@ -39,6 +39,13 @@ Organizar Athena, Diana, Observer, Scheduling e Maintenance.
 | domain/campaigns/services/phone_formatter.py | 184 | format_phone, format_to_remotejid |
 | domain/campaigns/services/__init__.py | 43 | Re-exports |
 | domain/campaigns/__init__.py | 42 | Barrel file |
+
+### Módulos Extraídos - Fase 8.3 (Observer → domain/monitoring)
+| Módulo | Linhas | Descrição |
+|--------|--------|-----------|
+| domain/monitoring/services/observer.py | 593 | ObserverService, analyze_conversation, constantes |
+| domain/monitoring/services/__init__.py | 26 | Re-exports |
+| domain/monitoring/__init__.py | 26 | Barrel file |
 
 ---
 
@@ -441,6 +448,7 @@ Usar a implementação mais madura como base.
 | 2026-03-03 | caff4e3 | refactor(fase-7.6): integrations/redis/ (1716L) |
 | 2026-03-03 | fde7cb0 | refactor(fase-8.1): domain/analytics/services/ (1328L) |
 | 2026-03-03 | 9143eb8 | refactor(fase-8.2): domain/campaigns/services/ (1761L) |
+| 2026-03-03 | 064dce3 | refactor(fase-8.3): domain/monitoring/services/ (619L) |
 
 ---
 
