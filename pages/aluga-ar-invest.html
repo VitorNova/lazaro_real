@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aluga AR Invest</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f5f5f7;
+            --blue: #0071e3;
+            --blue-hover: #0077ed;
+            --text-primary: #1d1d1f;
+            --text-secondary: #86868b;
+            --text-body: #424245;
+            --border: #d2d2d7;
+            --border-light: #e8e8ed;
+            --card-shadow: 0 2px 12px rgba(0,0,0,0.04);
+            --font-display: "SF Pro Display", "Inter", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+            --font-text: "SF Pro Text", "Inter", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-text);
+            color: var(--text-body);
+            background: var(--bg-primary);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            line-height: 1.5;
+            font-weight: 400;
+            letter-spacing: -0.01em;
+        }
+
+        /* ─── NAVBAR (Apple-style) ─── */
+        .navbar {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(255,255,255,0.72);
+            backdrop-filter: saturate(180%) blur(20px);
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
+            border-bottom: 1px solid var(--border-light);
+            padding: 10px 0;
+        }
+
+        .navbar .container {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .navbar-logo {
+            height: 48px;
+            width: auto;
+            display: block;
+        }
+
+        /* ─── HERO ─── */
+        .hero {
+            background: var(--bg-primary);
+            text-align: center;
+            padding: 64px 24px 56px;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .hero-eyebrow {
+            font-family: var(--font-text);
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--blue);
+            margin-bottom: 8px;
+        }
+
+        .hero h1 {
+            font-family: var(--font-display);
+            font-size: 48px;
+            font-weight: 700;
+            letter-spacing: -0.04em;
+            line-height: 1.08;
+            margin-bottom: 14px;
+            color: var(--text-primary);
+        }
+
+        .hero p {
+            font-family: var(--font-text);
+            font-size: 19px;
+            font-weight: 400;
+            color: var(--text-secondary);
+            max-width: 560px;
+            margin: 0 auto;
+            line-height: 1.47;
+        }
+
+        /* ─── CONTAINER ─── */
+        .container {
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* ─── SECTIONS ─── */
+        .section {
+            padding: 72px 0;
+        }
+
+        .section--alt {
+            background: var(--bg-secondary);
+        }
+
+        .section-header {
+            margin-bottom: 44px;
+        }
+
+        .section-number {
+            font-family: var(--font-display);
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            margin-bottom: 12px;
+        }
+
+        .section--alt .section-number {
+            color: var(--text-secondary);
+        }
+
+        .section-title {
+            font-family: var(--font-display);
+            font-size: 36px;
+            font-weight: 600;
+            letter-spacing: -0.03em;
+            line-height: 1.1;
+            margin-bottom: 6px;
+            color: var(--text-primary);
+        }
+
+        .section-subtitle {
+            font-family: var(--font-text);
+            font-size: 19px;
+            font-weight: 400;
+            color: var(--text-secondary);
+        }
+
+        /* ─── SCROLL REVEAL ANIMATIONS ─── */
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 0.8s cubic-bezier(0.25, 0.1, 0.25, 1),
+                        transform 0.8s cubic-bezier(0.25, 0.1, 0.25, 1);
+        }
+
+        .reveal.is-visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+        .reveal-delay-4 { transition-delay: 0.4s; }
+
+        .reveal-scale {
+            opacity: 0;
+            transform: scale(0.96) translateY(20px);
+            transition: opacity 0.7s cubic-bezier(0.25, 0.1, 0.25, 1),
+                        transform 0.7s cubic-bezier(0.25, 0.1, 0.25, 1);
+        }
+
+        .reveal-scale.is-visible {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+        }
+
+        /* ─── SUBSECTION ─── */
+        .subsection {
+            margin-bottom: 40px;
+        }
+
+        .subsection:last-child {
+            margin-bottom: 0;
+        }
+
+        .subsection-title {
+            font-family: var(--font-display);
+            font-size: 20px;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-primary);
+        }
+
+        .subsection-title::before {
+            content: '';
+            display: inline-block;
+            width: 3px;
+            height: 20px;
+            background: var(--blue);
+            border-radius: 2px;
+            flex-shrink: 0;
+        }
+
+        /* ─── TABLES ─── */
+        .table-wrapper {
+            background: var(--bg-primary);
+            border-radius: 14px;
+            overflow: hidden;
+            box-shadow: var(--card-shadow);
+            border: 1px solid var(--border-light);
+        }
+
+        .section--alt .table-wrapper {
+            border-color: #d2d2d7;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: var(--font-text);
+            font-size: 15px;
+        }
+
+        thead th {
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 12px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            padding: 12px 24px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        thead th:last-child {
+            text-align: right;
+        }
+
+        tbody td {
+            padding: 14px 24px;
+            border-bottom: 1px solid var(--border-light);
+            font-weight: 400;
+            color: var(--text-body);
+            vertical-align: middle;
+        }
+
+        tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        tbody tr:hover {
+            background: #fafafa;
+        }
+
+        tbody td:last-child {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .row-total td {
+            font-weight: 600;
+            background: #fafafa;
+            border-bottom: none;
+            color: var(--text-primary);
+        }
+
+        .row-highlight td {
+            font-weight: 600;
+            color: var(--blue);
+            background: #f0f6ff;
+        }
+
+        .value-positive {
+            color: #1d7d3f;
+            font-weight: 500;
+        }
+
+        .value-negative {
+            color: var(--text-secondary);
+            font-weight: 400;
+        }
+
+        .value-accent {
+            color: var(--blue);
+            font-weight: 600;
+        }
+
+        .value-bold {
+            font-weight: 600;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.01em;
+        }
+
+        .badge--blue {
+            background: #f0f6ff;
+            color: var(--blue);
+        }
+
+        .badge--green {
+            background: #edf7f0;
+            color: #1d7d3f;
+        }
+
+        .badge--orange {
+            background: #fff6ed;
+            color: #b35c00;
+        }
+
+        /* ─── DESTINACAO DOS RECURSOS ─── */
+        .resources {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .resource-card {
+            background: var(--bg-primary);
+            border-radius: 14px;
+            padding: 28px;
+            box-shadow: var(--card-shadow);
+            border: 1px solid var(--border-light);
+        }
+
+        .section--alt .resource-card {
+            border-color: #d2d2d7;
+        }
+
+        .resource-percent {
+            font-family: var(--font-display);
+            font-size: 44px;
+            font-weight: 700;
+            letter-spacing: -0.04em;
+            color: var(--text-primary);
+            line-height: 1;
+            margin-bottom: 8px;
+        }
+
+        .resource-label {
+            font-size: 15px;
+            font-weight: 400;
+            color: var(--text-secondary);
+            line-height: 1.47;
+        }
+
+        /* ─── GARANTIA ─── */
+        .garantia {
+            background: var(--bg-primary);
+            border-radius: 14px;
+            padding: 28px;
+            box-shadow: var(--card-shadow);
+            border: 1px solid var(--border-light);
+            border-left: 3px solid var(--blue);
+        }
+
+        .section--alt .garantia {
+            border-color: #d2d2d7;
+            border-left: 3px solid var(--blue);
+        }
+
+        .garantia p {
+            font-size: 15px;
+            font-weight: 400;
+            color: var(--text-body);
+            line-height: 1.6;
+        }
+
+        .garantia strong {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        /* ─── SUMMARY CARDS ─── */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+
+        .summary-card {
+            background: var(--bg-primary);
+            border-radius: 14px;
+            padding: 24px;
+            text-align: center;
+            box-shadow: var(--card-shadow);
+            border: 1px solid var(--border-light);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .summary-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+        }
+
+        .summary-card-label {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 10px;
+        }
+
+        .summary-card-value {
+            font-family: var(--font-display);
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            color: var(--text-primary);
+            line-height: 1.1;
+            margin-bottom: 4px;
+        }
+
+        .summary-card-value--blue {
+            color: var(--blue);
+        }
+
+        .summary-card-value--green {
+            color: #1d7d3f;
+        }
+
+        .summary-card-detail {
+            font-size: 13px;
+            font-weight: 400;
+            color: var(--text-secondary);
+        }
+
+        .summary-grid--5 {
+            grid-template-columns: repeat(5, 1fr);
+        }
+
+        /* ─── FOOTER ─── */
+        .footer {
+            background: var(--bg-secondary);
+            padding: 18px 0;
+            text-align: center;
+            font-size: 12px;
+            font-weight: 400;
+            color: var(--text-secondary);
+            border-top: 1px solid var(--border-light);
+        }
+
+        /* ─── RESPONSIVE ─── */
+        @media (max-width: 768px) {
+            .navbar-logo {
+                height: 38px;
+            }
+
+            .hero h1 {
+                font-size: 32px;
+            }
+
+            .hero p {
+                font-size: 17px;
+            }
+
+            .section {
+                padding: 48px 0;
+            }
+
+            .section-number {
+                font-size: 13px;
+            }
+
+            .section-title {
+                font-size: 26px;
+            }
+
+            .section-subtitle {
+                font-size: 17px;
+            }
+
+            .resources {
+                grid-template-columns: 1fr;
+            }
+
+            .summary-grid,
+            .summary-grid--5 {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            thead th,
+            tbody td {
+                padding: 12px 16px;
+                font-size: 14px;
+            }
+
+            .summary-card-value {
+                font-size: 22px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .hero {
+                padding: 48px 24px 40px;
+            }
+
+            .hero h1 {
+                font-size: 26px;
+            }
+
+            .summary-grid,
+            .summary-grid--5 {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- NAVBAR -->
+    <nav class="navbar">
+        <div class="container">
+            <img src="./assets/images/logoar.png" alt="Aluga AR" class="navbar-logo">
+        </div>
+    </nav>
+
+    <!-- HERO -->
+    <section class="hero reveal">
+        <div class="container">
+            <p class="hero-eyebrow">Investimento</p>
+            <h1>Aluga AR Invest</h1>
+            <p>Debenture com garantia real em equipamentos de ar-condicionado e rentabilidade acima do mercado</p>
+        </div>
+    </section>
+
+    <!-- SECTION 1 -->
+    <section class="section">
+        <div class="container">
+            <div class="section-header reveal">
+                <div class="section-number">Secao 01</div>
+                <h2 class="section-title">Modalidade de Investimento</h2>
+                <p class="section-subtitle">Debenture</p>
+            </div>
+
+            <!-- Taxas por Prazo -->
+            <div class="subsection reveal">
+                <h3 class="subsection-title">Taxas por Prazo</h3>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Prazo</th>
+                                <th style="text-align:right">Taxa ao Ano</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>12 meses</td>
+                                <td><span class="badge badge--blue">18% a.a.</span></td>
+                            </tr>
+                            <tr>
+                                <td>24 meses</td>
+                                <td><span class="badge badge--blue">21% a.a.</span></td>
+                            </tr>
+                            <tr>
+                                <td>36 meses</td>
+                                <td><span class="badge badge--blue">24% a.a.</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Destinacao dos Recursos -->
+            <div class="subsection reveal">
+                <h3 class="subsection-title">Destinacao dos Recursos</h3>
+                <div class="resources">
+                    <div class="resource-card reveal-scale reveal-delay-1">
+                        <div class="resource-percent">90%</div>
+                        <div class="resource-label">Aquisicao dos aparelhos de ar-condicionado</div>
+                    </div>
+                    <div class="resource-card reveal-scale reveal-delay-2">
+                        <div class="resource-percent">10%</div>
+                        <div class="resource-label">Pagamento de insumos e custos de instalacao</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Garantia ao Investidor -->
+            <div class="subsection reveal">
+                <h3 class="subsection-title">Garantia ao Investidor</h3>
+                <div class="garantia">
+                    <p>Os aparelhos de ar-condicionado adquiridos com o capital investido sao objeto de <strong>Carta de Doacao</strong> em favor do investidor, devidamente lavrada em <strong>Cartorio de Notas</strong>. Enquanto o equipamento estiver em contrato de aluguel, a escritura permanece vinculada ao investidor como <strong>garantia real</strong> do investimento.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 2 -->
+    <section class="section section--alt">
+        <div class="container">
+            <div class="section-header reveal">
+                <div class="section-number">Secao 02</div>
+                <h2 class="section-title">Matematica da Operacao</h2>
+                <p class="section-subtitle">Contrato de 36 meses</p>
+            </div>
+
+            <!-- Custos por Unidade -->
+            <div class="subsection reveal">
+                <h3 class="subsection-title">Custos por Unidade (Ar-Condicionado 12.000 BTUs)</h3>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th style="text-align:right">Valor</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Ar-condicionado 12.000 BTUs</td>
+                                <td>R$ 1.800,00</td>
+                            </tr>
+                            <tr>
+                                <td>Material de instalacao</td>
+                                <td>R$ 160,00</td>
+                            </tr>
+                            <tr>
+                                <td>Mao de obra de instalacao</td>
+                                <td>R$ 120,00</td>
+                            </tr>
+                            <tr>
+                                <td>5 revisoes preventivas (3 anos)</td>
+                                <td>R$ 500,00</td>
+                            </tr>
+                            <tr>
+                                <td>Custos variaveis</td>
+                                <td>R$ 300,00</td>
+                            </tr>
+                            <tr class="row-total">
+                                <td>CUSTO TOTAL</td>
+                                <td class="value-bold">R$ 2.880,00</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Receita em 36 Meses -->
+            <div class="subsection reveal">
+                <h3 class="subsection-title">Receita em 36 Meses</h3>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th style="text-align:right">Valor</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Mensalidade: R$ 189,00 x 37 (adesao + 36 meses)</td>
+                                <td class="value-positive">R$ 6.993,00</td>
+                            </tr>
+                            <tr>
+                                <td>(-) Custos totais</td>
+                                <td class="value-negative">- R$ 2.880,00</td>
+                            </tr>
+                            <tr>
+                                <td>(-) Impostos</td>
+                                <td class="value-negative">- R$ 419,58</td>
+                            </tr>
+                            <tr>
+                                <td class="value-bold">Subtotal</td>
+                                <td class="value-bold">R$ 3.693,42</td>
+                            </tr>
+                            <tr>
+                                <td>(+) Venda do aparelho ao final do contrato</td>
+                                <td class="value-positive">+ R$ 1.600,00</td>
+                            </tr>
+                            <tr class="row-highlight">
+                                <td>LUCRO BRUTO</td>
+                                <td>R$ 5.293,43</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Custo do Capital -->
+            <div class="subsection reveal">
+                <h3 class="subsection-title">Custo do Capital (Pagamento ao Investidor)</h3>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th style="text-align:right">Calculo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Juros pagos ao investidor</td>
+                                <td>2% a.m. x 36 meses x R$ 2.880,00</td>
+                            </tr>
+                            <tr class="row-total">
+                                <td>Total de juros</td>
+                                <td class="value-bold">R$ 2.073,60</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Lucro Liquido -->
+            <div class="subsection reveal">
+                <h3 class="subsection-title">Lucro Liquido</h3>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Descricao</th>
+                                <th style="text-align:right">Valor</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Lucro bruto</td>
+                                <td class="value-positive">R$ 5.293,43</td>
+                            </tr>
+                            <tr>
+                                <td>(-) Juros ao investidor</td>
+                                <td class="value-negative">- R$ 2.073,60</td>
+                            </tr>
+                            <tr>
+                                <td class="value-bold">Lucro liquido em 36 meses</td>
+                                <td class="value-accent">R$ 3.219,83</td>
+                            </tr>
+                            <tr class="row-highlight">
+                                <td>Lucro liquido por mes</td>
+                                <td>R$ 89,43/ar</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 3 -->
+    <section class="section">
+        <div class="container">
+            <div class="section-header reveal">
+                <div class="section-number">Secao 03</div>
+                <h2 class="section-title">Resumo da Operacao</h2>
+                <p class="section-subtitle">Empresa Aluga AR — Diretor Executivo</p>
+            </div>
+
+            <div class="summary-grid summary-grid--5">
+                <div class="summary-card reveal-scale reveal-delay-1">
+                    <div class="summary-card-label">Mensalidade</div>
+                    <div class="summary-card-value">R$ 189,00</div>
+                    <div class="summary-card-detail">parcela do aluguel AR 12k</div>
+                </div>
+                <div class="summary-card reveal-scale reveal-delay-2">
+                    <div class="summary-card-label">Despesa Mensal</div>
+                    <div class="summary-card-value summary-card-value--blue">R$ 99,57</div>
+                    <div class="summary-card-detail">por unidade</div>
+                </div>
+                <div class="summary-card reveal-scale reveal-delay-3">
+                    <div class="summary-card-label">Lucro Liquido</div>
+                    <div class="summary-card-value summary-card-value--green">R$ 89,43</div>
+                    <div class="summary-card-detail">por unidade / mes</div>
+                </div>
+                <div class="summary-card reveal-scale reveal-delay-4">
+                    <div class="summary-card-label">Rentabilidade Mensal</div>
+                    <div class="summary-card-value summary-card-value--blue">47,31%</div>
+                    <div class="summary-card-detail">ao mes</div>
+                </div>
+                <div class="summary-card reveal-scale reveal-delay-4">
+                    <div class="summary-card-label">Meta: 1.000 Unidades</div>
+                    <div class="summary-card-value summary-card-value--blue">R$ 89.430</div>
+                    <div class="summary-card-detail">receita mensal</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="footer">
+        <div class="container">
+            Aluga AR Invest &mdash; Documento informativo. Todos os valores sao estimativas baseadas em projecoes operacionais.
+        </div>
+    </footer>
+
+    <script>
+        // Apple-style scroll reveal with Intersection Observer
+        (function() {
+            var observer = new IntersectionObserver(function(entries) {
+                entries.forEach(function(entry) {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('is-visible');
+                    }
+                });
+            }, {
+                threshold: 0.1,
+                rootMargin: '0px 0px -60px 0px'
+            });
+
+            document.querySelectorAll('.reveal, .reveal-scale').forEach(function(el) {
+                observer.observe(el);
+            });
+        })();
+    </script>
+
+</body>
+</html>
