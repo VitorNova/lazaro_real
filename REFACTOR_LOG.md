@@ -4,7 +4,7 @@
 **Fase**: 7 - Extrair integrações compartilhadas (EM PROGRESSO)
 **Última Atualização**: 2026-03-03
 **Responsável**: Claude Code
-**Próximo Passo**: Fase 7.5 - Extrair integração Leadbox
+**Próximo Passo**: Fase 7.6 - Extrair integração Redis
 
 ---
 
@@ -19,7 +19,7 @@ Usar a implementação mais madura como base.
 - [x] 7.2 integrations/uazapi/ <- UazapiClient + types (1660L)
 - [x] 7.3 integrations/calendar/ <- GoogleCalendarClient + MultiCalendarClient (2026L)
 - [x] 7.4 integrations/supabase/ <- SupabaseClient + repositories (2445L)
-- [ ] 7.5 integrations/leadbox/ <- LeadboxClient + types
+- [x] 7.5 integrations/leadbox/ <- LeadboxClient + Dispatcher + types (1599L)
 - [ ] 7.6 integrations/redis/ <- RedisClient + buffer + lock
 
 ### Módulos Extraídos - Fase 7.1 (Asaas)
@@ -55,6 +55,14 @@ Usar a implementação mais madura como base.
 | integrations/supabase/repositories/dynamic.py | 730 | DynamicRepository (tabelas dinâmicas) |
 | integrations/supabase/repositories/__init__.py | 38 | Re-exports |
 | integrations/supabase/__init__.py | 219 | Barrel file principal |
+
+### Módulos Extraídos - Fase 7.5 (Leadbox)
+| Módulo | Linhas | Descrição |
+|--------|--------|-----------|
+| integrations/leadbox/types.py | 334 | Enums (TicketStatus, WebhookEvent), TypedDicts, helpers |
+| integrations/leadbox/client.py | 656 | LeadboxClient HTTP completo (transfer, message, query) |
+| integrations/leadbox/dispatch.py | 440 | LeadboxDispatcher (dispatch inteligente ticket) |
+| integrations/leadbox/__init__.py | 169 | Barrel file com re-exports |
 
 ### Análise de Maturidade
 | Integração | Python | TypeScript | Vencedor | Motivo |
@@ -378,6 +386,7 @@ Usar a implementação mais madura como base.
 | 2026-03-03 | 57c012c | refactor(fase-7.2): integrations/uazapi/ (1660L) |
 | 2026-03-03 | d3b93a5 | refactor(fase-7.3): integrations/calendar/ (2026L) |
 | 2026-03-03 | 6f1c1c0 | refactor(fase-7.4): integrations/supabase/ (2445L) |
+| 2026-03-03 | 24b3e64 | refactor(fase-7.5): integrations/leadbox/ (1599L) |
 
 ---
 
