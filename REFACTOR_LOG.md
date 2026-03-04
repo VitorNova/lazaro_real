@@ -4,7 +4,7 @@
 **Fase**: 8 - Organizar domínios restantes (EM ANDAMENTO)
 **Última Atualização**: 2026-03-03
 **Responsável**: Claude Code
-**Próximo Passo**: Fase 8.2 - Mover Diana services para domain/campaigns/
+**Próximo Passo**: Fase 8.3 - Mover Observer services para domain/monitoring/
 
 ---
 
@@ -16,7 +16,7 @@ Organizar Athena, Diana, Observer, Scheduling e Maintenance.
 
 ### Checklist
 - [x] 8.1 domain/analytics/services/ <- services/athena/ (1328L)
-- [ ] 8.2 domain/campaigns/services/ <- services/diana/ (~1327L)
+- [x] 8.2 domain/campaigns/services/ <- services/diana/ (1761L)
 - [ ] 8.3 domain/monitoring/ <- services/observer/ (~593L)
 - [ ] 8.4 domain/scheduling/ <- ai/tools/scheduling_tools.py (~589L)
 - [ ] 8.5 domain/maintenance/ <- tools/manutencao.py + services/manutencao_slots.py (~1063L)
@@ -29,6 +29,16 @@ Organizar Athena, Diana, Observer, Scheduling e Maintenance.
 | domain/analytics/services/tools.py | 296 | get_business_health, ATHENA_BUSINESS_TOOLS |
 | domain/analytics/services/__init__.py | 49 | Re-exports |
 | domain/analytics/__init__.py | 46 | Barrel file |
+
+### Módulos Extraídos - Fase 8.2 (Diana → domain/campaigns)
+| Módulo | Linhas | Descrição |
+|--------|--------|-----------|
+| domain/campaigns/services/campaign_service.py | 849 | DianaCampaignService (CSV, disparo, stats) |
+| domain/campaigns/services/message_service.py | 435 | DianaMessageService (UAZAPI + Gemini) |
+| domain/campaigns/services/types.py | 208 | DianaStatus, DianaProspect, DianaCampanha |
+| domain/campaigns/services/phone_formatter.py | 184 | format_phone, format_to_remotejid |
+| domain/campaigns/services/__init__.py | 43 | Re-exports |
+| domain/campaigns/__init__.py | 42 | Barrel file |
 
 ---
 
@@ -430,6 +440,7 @@ Usar a implementação mais madura como base.
 | 2026-03-03 | 24b3e64 | refactor(fase-7.5): integrations/leadbox/ (1599L) |
 | 2026-03-03 | caff4e3 | refactor(fase-7.6): integrations/redis/ (1716L) |
 | 2026-03-03 | fde7cb0 | refactor(fase-8.1): domain/analytics/services/ (1328L) |
+| 2026-03-03 | 9143eb8 | refactor(fase-8.2): domain/campaigns/services/ (1761L) |
 
 ---
 
