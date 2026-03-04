@@ -4,7 +4,7 @@
 **Fase**: 8 - Organizar domínios restantes (EM ANDAMENTO)
 **Última Atualização**: 2026-03-03
 **Responsável**: Claude Code
-**Próximo Passo**: Fase 8.4 - Mover scheduling_tools para domain/scheduling/
+**Próximo Passo**: Fase 8.5 - Mover maintenance para domain/maintenance/
 
 ---
 
@@ -18,7 +18,7 @@ Organizar Athena, Diana, Observer, Scheduling e Maintenance.
 - [x] 8.1 domain/analytics/services/ <- services/athena/ (1328L)
 - [x] 8.2 domain/campaigns/services/ <- services/diana/ (1761L)
 - [x] 8.3 domain/monitoring/services/ <- services/observer/ (619L)
-- [ ] 8.4 domain/scheduling/ <- ai/tools/scheduling_tools.py (~589L)
+- [x] 8.4 domain/scheduling/services/ <- ai/tools/scheduling_tools.py (607L)
 - [ ] 8.5 domain/maintenance/ <- tools/manutencao.py + services/manutencao_slots.py (~1063L)
 
 ### Módulos Extraídos - Fase 8.1 (Athena → domain/analytics)
@@ -46,6 +46,13 @@ Organizar Athena, Diana, Observer, Scheduling e Maintenance.
 | domain/monitoring/services/observer.py | 593 | ObserverService, analyze_conversation, constantes |
 | domain/monitoring/services/__init__.py | 26 | Re-exports |
 | domain/monitoring/__init__.py | 26 | Barrel file |
+
+### Módulos Extraídos - Fase 8.4 (SchedulingTools → domain/scheduling)
+| Módulo | Linhas | Descrição |
+|--------|--------|-----------|
+| domain/scheduling/services/scheduling_tools.py | 589 | SchedulingTools (consulta_agenda, agendar, cancelar, reagendar) |
+| domain/scheduling/services/__init__.py | 18 | Re-exports |
+| domain/scheduling/__init__.py | 18 | Barrel file |
 
 ---
 
@@ -449,6 +456,7 @@ Usar a implementação mais madura como base.
 | 2026-03-03 | fde7cb0 | refactor(fase-8.1): domain/analytics/services/ (1328L) |
 | 2026-03-03 | 9143eb8 | refactor(fase-8.2): domain/campaigns/services/ (1761L) |
 | 2026-03-03 | 064dce3 | refactor(fase-8.3): domain/monitoring/services/ (619L) |
+| 2026-03-03 | 33a525f | refactor(fase-8.4): domain/scheduling/services/ (607L) |
 
 ---
 
