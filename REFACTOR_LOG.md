@@ -4,7 +4,7 @@
 **Fase**: 7 - Extrair integrações compartilhadas (EM PROGRESSO)
 **Última Atualização**: 2026-03-03
 **Responsável**: Claude Code
-**Próximo Passo**: Fase 7.4 - Extrair integração Supabase
+**Próximo Passo**: Fase 7.5 - Extrair integração Leadbox
 
 ---
 
@@ -18,7 +18,7 @@ Usar a implementação mais madura como base.
 - [x] 7.1 integrations/asaas/ <- AsaasClient + types + rate_limiter (1271L)
 - [x] 7.2 integrations/uazapi/ <- UazapiClient + types (1660L)
 - [x] 7.3 integrations/calendar/ <- GoogleCalendarClient + MultiCalendarClient (2026L)
-- [ ] 7.4 integrations/supabase/ <- SupabaseClient + repositories
+- [x] 7.4 integrations/supabase/ <- SupabaseClient + repositories (2445L)
 - [ ] 7.5 integrations/leadbox/ <- LeadboxClient + types
 - [ ] 7.6 integrations/redis/ <- RedisClient + buffer + lock
 
@@ -44,6 +44,17 @@ Usar a implementação mais madura como base.
 | integrations/calendar/client.py | 631 | GoogleCalendarClient OAuth2 + disponibilidade + Meet |
 | integrations/calendar/multi_calendar.py | 592 | MultiCalendarClient com prioridade e cenários |
 | integrations/calendar/__init__.py | 220 | Barrel file com re-exports |
+
+### Módulos Extraídos - Fase 7.4 (Supabase)
+| Módulo | Linhas | Descrição |
+|--------|--------|-----------|
+| integrations/supabase/types.py | 615 | Enums, TypedDicts (Agent, Lead, Message, etc) |
+| integrations/supabase/client.py | 212 | SupabaseClient singleton + helpers |
+| integrations/supabase/repositories/base.py | 243 | BaseRepository com CRUD genérico |
+| integrations/supabase/repositories/agents.py | 388 | AgentsRepository (tabela agents) |
+| integrations/supabase/repositories/dynamic.py | 730 | DynamicRepository (tabelas dinâmicas) |
+| integrations/supabase/repositories/__init__.py | 38 | Re-exports |
+| integrations/supabase/__init__.py | 219 | Barrel file principal |
 
 ### Análise de Maturidade
 | Integração | Python | TypeScript | Vencedor | Motivo |
@@ -366,6 +377,7 @@ Usar a implementação mais madura como base.
 | 2026-03-03 | 88d58a3 | refactor(fase-7.1): integrations/asaas/ (1271L) |
 | 2026-03-03 | 57c012c | refactor(fase-7.2): integrations/uazapi/ (1660L) |
 | 2026-03-03 | d3b93a5 | refactor(fase-7.3): integrations/calendar/ (2026L) |
+| 2026-03-03 | 6f1c1c0 | refactor(fase-7.4): integrations/supabase/ (2445L) |
 
 ---
 
