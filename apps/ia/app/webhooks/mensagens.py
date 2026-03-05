@@ -36,6 +36,9 @@ from app.domain.messaging.context import context_detector
 from app.domain.messaging.context import billing_context
 from app.domain.messaging.context import maintenance_context
 
+# Security (Fase 5)
+from app.core.security.injection_guard import validate_user_input
+
 from app.config import settings
 from app.services.ia_gemini import GeminiService, get_gemini_service
 from app.services.redis import (
@@ -1476,6 +1479,18 @@ class WhatsAppWebhookHandler:
             logger.debug(f"  -> Phone: {phone}")
             logger.debug(f"  -> Qtd mensagens no buffer: {len(messages)}")
             logger.debug(f"  -> Texto combinado: {combined_text[:150]}...")
+
+            # =================================================================
+            # SECURITY: Validar entrada contra prompt injection (Fase 5)
+            # ANTES de qualquer chamada ao Gemini
+            # =================================================================
+            is_safe, injection_reason = validate_user_input(combined_text, phone)
+            if not is_safe:
+                logger.warning(f"[SECURITY] Prompt injection bloqueado de {phone}: {injection_reason}")
+                # Responder com mensagem neutra sem explicar o bloqueio
+                await uazapi.send_text(phone, "Não entendi sua mensagem. Pode reformular?")
+                await redis.buffer_clear(agent_id, phone)
+                return
 
             # Verificar se ha mensagem de audio para processar
             audio_data = None
