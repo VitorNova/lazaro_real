@@ -27,7 +27,7 @@ from datetime import date, datetime
 import google.generativeai as genai
 
 from app.config import settings
-from app.integrations.supabase import get_supabase_service
+from app.services.supabase import get_supabase_service
 from .slots_service import (
     listar_slots_disponiveis,
     registrar_agendamento,

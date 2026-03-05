@@ -21,7 +21,7 @@ import google.generativeai as genai
 from google.generativeai.types import GenerationConfig, HarmBlockThreshold, HarmCategory
 
 from app.config import settings
-from app.integrations.supabase import get_supabase_service
+from app.services.supabase import get_supabase_service
 
 
 logger = logging.getLogger(__name__)

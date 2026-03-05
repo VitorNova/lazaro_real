@@ -16,7 +16,7 @@ from datetime import date, datetime, time
 from typing import Any, Dict, Optional
 from zoneinfo import ZoneInfo
 
-from app.integrations.supabase import get_supabase_service
+from app.services.supabase import get_supabase_service
 
 
 logger = logging.getLogger(__name__)

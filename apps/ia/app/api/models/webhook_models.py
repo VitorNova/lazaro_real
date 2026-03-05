@@ -17,7 +17,7 @@ Uso:
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 # =============================================================================
@@ -60,7 +60,8 @@ class WhatsAppWebhookPayload(BaseModel):
     instanceId: Optional[str] = Field(None, description="ID da instancia UAZAPI")
     data: Optional[WhatsAppMessageData] = Field(None, description="Dados da mensagem")
     
-    @validator("event", "type", pre=True)
+    @field_validator("event", "type", mode="before")
+    @classmethod
     def normalize_event_type(cls, v):
         """Normaliza string vazia para None."""
         if v == "":
@@ -143,8 +144,9 @@ class AsaasWebhookPayload(BaseModel):
     customer: Optional[AsaasCustomer] = Field(None, description="Dados do cliente")
     subscription: Optional[AsaasSubscription] = Field(None, description="Dados da assinatura")
     
-    @validator("id", "event", pre=True)
-    def validate_required_fields(cls, v, field):
+    @field_validator("id", "event", mode="before")
+    @classmethod
+    def validate_required_fields(cls, v):
         """Valida campos obrigatorios."""
         if v is None or v == "":
             # Permitir None mas logar warning
@@ -181,7 +183,8 @@ class LeadboxTicket(BaseModel):
     contact: Optional[LeadboxContact] = Field(None, description="Dados do contato")
     closedAt: Optional[str] = Field(None, description="Data de fechamento")
     
-    @validator("queueId", "userId", pre=True)
+    @field_validator("queueId", "userId", mode="before")
+    @classmethod
     def coerce_to_string(cls, v):
         """Converte int para string se necessario."""
         if v is not None:
@@ -200,7 +203,8 @@ class LeadboxMessage(BaseModel):
     ticket: Optional[LeadboxTicket] = Field(None, description="Dados do ticket")
     contact: Optional[LeadboxContact] = Field(None, description="Dados do contato")
     
-    @validator("queueId", "userId", pre=True)
+    @field_validator("queueId", "userId", mode="before")
+    @classmethod
     def coerce_to_string(cls, v):
         """Converte int para string se necessario."""
         if v is not None:
