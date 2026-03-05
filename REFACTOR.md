@@ -221,7 +221,7 @@ Comando de validação: python3 -m py_compile apps/ia/app/webhooks/pagamentos.py
 - Porta: 3115 (ingress mode — load balancing automático)
 - Redes: traefik-net, lazaro-net, network_public (overlay)
 
-### Redis no Swarm
+### Redis no Swarm ✅ MIGRADO (2026-03-05)
 - Serviço: redis_redis (stack separado)
 - Localização: Worker-03 (constraint)
 - Persistência: AOF (--appendonly yes)
@@ -229,6 +229,7 @@ Comando de validação: python3 -m py_compile apps/ia/app/webhooks/pagamentos.py
 - Conexão: redis://redis_redis:6379/0 (via network_public)
 - REDIS_URL sobrescrito no docker-stack.yml (não usar .env)
 - Keys atuais: pausas de conversas (pause:{agent_id}:{phone})
+- Redis local (lazaro-redis-v2) **REMOVIDO** — não é mais necessário
 
 ### Como fazer deploy de nova versão
 ```bash
