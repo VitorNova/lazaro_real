@@ -52,7 +52,7 @@ class ToolRegistry:
         # Inicializar todas as tool classes
         self._scheduling_tools = SchedulingTools(supabase, context)
         self._transfer_tools = TransferTools(supabase, context)
-        self._maintenance_tools = MaintenanceTools(supabase, context)
+        self._maintenance_tools = MaintenanceTools(context)
         self._billing_tools = BillingTools(context)
         self._customer_tools = CustomerTools(context, supabase)
 
