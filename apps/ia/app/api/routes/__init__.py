@@ -67,9 +67,9 @@ def register_routes(app: FastAPI) -> None:
     from app.api.routes.diana import router as diana_router
     app.include_router(diana_router, prefix="/api/diana", tags=["diana"])
 
-    # Athena Oraculo - Analytics
-    from app.api.routes.athena import router as athena_router
-    app.include_router(athena_router, prefix="/api/athena", tags=["athena"])
+    # REMOVIDO: Athena Oraculo - Analytics (desativado na refatoração)
+    # from app.api.routes.athena import router as athena_router
+    # app.include_router(athena_router, prefix="/api/athena", tags=["athena"])
 
     # Extracted routes
     app.include_router(uploads_router)
