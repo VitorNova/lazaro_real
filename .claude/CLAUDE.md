@@ -170,6 +170,28 @@ lazaro-real/
 
 ---
 
+## ⚠️ Tabelas Dinâmicas por Agente (CRÍTICO)
+
+Cada agente tem tabelas próprias com nomes dinâmicos:
+
+| Campo no Agent | Exemplo | Uso |
+|---|---|---|
+| `table_leads` | `LeadboxCRM_Ana_14e6e5ce` | Dados do lead |
+| `table_messages` | `leadbox_messages_Ana_14e6e5ce` | Histórico de conversas |
+
+**NUNCA construir nome de tabela manualmente:**
+```python
+# ERRADO
+table = f"leadbox_messages_{agent_id.replace('-', '_')}"
+
+# CORRETO
+table = agent.get("table_messages")
+```
+
+> Ver documentação completa: `apps/ia/app/integrations/supabase/README.md`
+
+---
+
 ## Convenções de Nomenclatura
 
 **Python (`apps/ia`)**
