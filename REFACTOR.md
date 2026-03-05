@@ -19,7 +19,7 @@ Regra absoluta: leia antes de agir. Uma fase por vez. Compile após cada mudanç
 - [x] pagamentos.py agora chama domain/billing/services/ em vez de funções locais
 - [ ] Remover funções locais duplicadas de mensagens.py (aguarda testes em produção)
 - [ ] Remover funções locais duplicadas de pagamentos.py (aguarda testes em produção)
-- [🗑️] athena.py REMOVIDO do escopo (rota desativada, arquivo mantido para referência)
+- [🗑️] athena.py DELETADO (api/routes/athena.py, domain/analytics/, services/athena/)
 
 ### FASE 3 — Jobs Thin ⏳
 - [ ] cobrar_clientes.py → lógica para domain/billing/ (já existe estrutura)
