@@ -586,12 +586,13 @@ class SupabaseService:
                     logger.debug(f"[IS_PAUSED] Lead {remotejid} pausado: Atendimento_Finalizado=true")
                     return True
 
-                # Check 3: Ticket ativo com atendente humano
-                ticket_id = lead.get("ticket_id")
-                current_user_id = lead.get("current_user_id")
-                if ticket_id and current_user_id:
-                    logger.debug(f"[IS_PAUSED] Lead {remotejid} pausado: ticket_id={ticket_id}, user_id={current_user_id}")
-                    return True
+                # Check 3: REMOVIDO - era incorreto
+                # O ticket_id + current_user_id pode ser do BOT (Ana), não de humano
+                # O current_state == 'human' já cobre o caso de atendimento humano
+                # ticket_id = lead.get("ticket_id")
+                # current_user_id = lead.get("current_user_id")
+                # if ticket_id and current_user_id:
+                #     return True
 
                 # Check 4: Fallback para pausar_ia (compatibilidade legada)
                 if bool(lead.get("pausar_ia", False)):
