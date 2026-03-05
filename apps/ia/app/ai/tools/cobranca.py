@@ -10,6 +10,14 @@ REFATORACAO 2026-02-28:
 - consultar_cliente: substitui buscar_cobrancas + identificar_equipamento
 - transferir_departamento: mantida
 - Tools antigas mantidas no codigo (nao deletadas) mas nao exportadas
+
+REFATORACAO 2026-03-05 (Fase 9.7):
+- Habilitadas 4 tools de manutencao:
+  - identificar_equipamento: identifica ACs do cliente (qtd, local, marca)
+  - analisar_foto_equipamento: analisa foto do AC via Gemini Vision
+  - verificar_disponibilidade_manutencao: verifica slots disponiveis
+  - confirmar_agendamento_manutencao: confirma e registra agendamento
+- Agora IA pode coletar dados antes de transferir
 """
 
 from typing import Dict, Any, Optional, List
@@ -20,6 +28,7 @@ import re
 from supabase import create_client
 from app.config import settings
 from app.ai.tools.cliente import CONSULTAR_CLIENTE_DECLARATION
+from app.domain.maintenance.services.equipment_tools import MAINTENANCE_FUNCTION_DECLARATIONS
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +43,12 @@ DISABLED_TOOLS = [
     "agendar",
     "cancelar_agendamento",
     "reagendar",
-    "analisar_foto_equipamento",
-    "verificar_disponibilidade_manutencao",
-    "confirmar_agendamento_manutencao",
     "buscar_cobrancas",        # substituida por consultar_cliente
-    "identificar_equipamento",  # substituida por consultar_cliente
+    # Maintenance tools HABILITADAS na Fase 9.7:
+    # - identificar_equipamento: identifica ACs do cliente
+    # - analisar_foto_equipamento: analisa foto do AC
+    # - verificar_disponibilidade_manutencao: verifica slots
+    # - confirmar_agendamento_manutencao: confirma agendamento
 ]
 
 # Tools de calendário (para compatibilidade, todas desabilitadas)
@@ -106,12 +116,12 @@ TRANSFERIR_DEPARTAMENTO_DECLARATION = {
     }
 }
 
-# FUNCTION_DECLARATIONS exportado - 3 TOOLS ATIVAS
+# FUNCTION_DECLARATIONS exportado - 7 TOOLS ATIVAS (3 base + 4 manutencao)
 FUNCTION_DECLARATIONS = [
     CONSULTAR_CLIENTE_DECLARATION,
     SALVAR_DADOS_LEAD_DECLARATION,
     TRANSFERIR_DEPARTAMENTO_DECLARATION,
-]
+] + MAINTENANCE_FUNCTION_DECLARATIONS
 
 
 # ============================================================================
@@ -271,7 +281,7 @@ def get_function_declarations(has_calendar: bool = False) -> List[Dict[str, Any]
         has_calendar: Ignorado (mantido para compatibilidade)
 
     Returns:
-        Lista de function declarations (sempre as 2 tools ativas)
+        Lista de function declarations (7 tools ativas: 3 base + 4 manutencao)
     """
     logger.debug(f"Retornando {len(FUNCTION_DECLARATIONS)} tools ativas")
     return FUNCTION_DECLARATIONS

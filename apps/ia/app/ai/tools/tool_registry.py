@@ -87,17 +87,19 @@ class ToolRegistry:
         - salvar_dados_lead: Salva CPF/nome do lead
         - transferir_departamento: Transfere para departamento
 
-        Tools legadas (mantidas para compatibilidade):
+        Tools de manutencao (habilitadas Fase 9.7):
+        - identificar_equipamento: Identifica ACs do cliente (qtd, local)
+        - analisar_foto_equipamento: Analisa foto via Gemini Vision
+        - verificar_disponibilidade_manutencao: Verifica slots
+        - confirmar_agendamento_manutencao: Confirma agendamento
+
+        Tools legadas (desabilitadas):
         - consulta_agenda: Consulta horarios disponiveis
         - agendar: Cria agendamento
         - cancelar_agendamento: Cancela agendamento
         - reagendar: Reagenda
         - detectar_fuso_horario: Detecta timezone
-        - identificar_equipamento: Identifica equipamento
-        - analisar_foto_equipamento: Analisa foto
-        - verificar_disponibilidade_manutencao: Verifica slots
-        - confirmar_agendamento_manutencao: Confirma manutencao
-        - buscar_cobrancas: Busca cobrancas pendentes
+        - buscar_cobrancas: Substituida por consultar_cliente
 
         Returns:
             Dict com nome -> handler callable
