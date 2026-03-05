@@ -17,7 +17,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 import structlog
 
-from app.tools.manutencao import (
+from app.domain.maintenance.services.equipment_tools import (
     analisar_foto_equipamento,
     confirmar_agendamento_manutencao,
     identificar_equipamento,

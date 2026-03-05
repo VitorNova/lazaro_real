@@ -15,7 +15,7 @@ import structlog
 from supabase import create_client
 
 from app.config import settings
-from app.tools.cliente import consultar_cliente
+from app.ai.tools.cliente import consultar_cliente
 
 logger = structlog.get_logger(__name__)
 

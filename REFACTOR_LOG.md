@@ -19,7 +19,7 @@ Remover código duplicado, substituir monolitos pelos módulos refatorados, limp
 - [x] 9.3 Converter services/diana/ em ponte → domain/campaigns/
 - [x] 9.4 Converter services/observer/ em ponte → domain/monitoring/
 - [x] 9.5 Remover pasta production/ (cópia desnecessária)
-- [ ] 9.6 Remover tools/ (usar ai/tools/) ⚠️ ADIADO - dependência invertida
+- [x] 9.6 Inverter dependência tools/ → ai/tools/ ✅ COMPLETO
 - [x] 9.7 Mover utils/dias_uteis.py → core/utils/ + ponte
 - [x] 9.8 Remover shared/ (não usada)
 - [x] 9.9 Mover api/*.py → api/routes/ + pontes
@@ -45,9 +45,22 @@ Remover código duplicado, substituir monolitos pelos módulos refatorados, limp
 ### Concluído - 9.5 pasta production/ removida
 - Removida pasta `/production/agente-ia/` com código duplicado e documentação antiga
 
-### Adiado - 9.6 tools/ não pode ser removido
-- `ai/tools/*.py` IMPORTA de `tools/*.py` (dependência invertida)
-- Requer refatoração dos imports em ai/tools/ primeiro
+### Concluído - 9.6 Dependência tools/ → ai/tools/ invertida ✅
+**Problema original**: `ai/tools/*.py` importava de `tools/*.py` (dependência invertida)
+
+**Solução aplicada**:
+| Arquivo | Ação | Destino |
+|---------|------|---------|
+| tools/cliente.py | Movido → ponte | ai/tools/cliente.py |
+| tools/cobranca.py | Movido → ponte | ai/tools/cobranca.py |
+| tools/manutencao.py | Convertido em ponte | domain/maintenance/services/equipment_tools.py |
+
+**Imports atualizados**:
+- `ai/tools/billing_tools.py`: agora importa de `app.ai.tools.cliente`
+- `ai/tools/maintenance_tools.py`: agora importa de `app.domain.maintenance.services.equipment_tools`
+- `ai/tools/cobranca.py`: agora importa de `app.ai.tools.cliente`
+
+**Resultado**: pasta `tools/` agora contém apenas pontes para compatibilidade
 
 ### Concluído - 9.7 utils/dias_uteis.py movido
 | Antes | Depois |
