@@ -8,6 +8,8 @@ All processing logic is delegated to:
 
 Routes:
 - POST /webhooks/leadbox: Process Leadbox events
+
+Validacao Pydantic adicionada na Fase 5.
 """
 
 from typing import Any, Dict
@@ -15,12 +17,14 @@ import json as _json
 
 import structlog
 from fastapi import APIRouter, BackgroundTasks, Request
+from pydantic import ValidationError
 
 from app.api.handlers.leadbox_handler import (
     handle_new_message,
     handle_ticket_closed,
     handle_queue_change,
 )
+from app.api.models.webhook_models import LeadboxWebhookPayload
 
 logger = structlog.get_logger(__name__)
 
@@ -46,8 +50,17 @@ async def leadbox_webhook(request: Request, background_tasks: BackgroundTasks) -
     Events ignored:
     - AckMessage: Message acknowledgment
     - FinishedTicketHistoricMessages: Historical messages loaded
+
+    Validado com Pydantic (warning only, nao rejeita).
     """
     body = await request.json()
+
+    # Validar com Pydantic (warning only)
+    validated_payload = None
+    try:
+        validated_payload = LeadboxWebhookPayload(**body)
+    except ValidationError as e:
+        logger.warning("[LEADBOX WEBHOOK] Validacao Pydantic falhou: %s", e.errors())
 
     event_type = body.get("event") or body.get("type") or "unknown"
     logger.info("[LEADBOX WEBHOOK] Evento recebido: %s", event_type)

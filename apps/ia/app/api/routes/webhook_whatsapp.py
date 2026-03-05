@@ -7,13 +7,17 @@ Endpoints:
 - POST /webhook/whatsapp/test - Teste de webhook
 
 Extraido de: apps/ia/app/webhooks/mensagens.py (Fase 2.16)
+Validacao Pydantic adicionada na Fase 5.
 """
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import structlog
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from pydantic import ValidationError
+
+from app.api.models.webhook_models import WhatsAppWebhookPayload, WhatsAppTestPayload
 
 logger = structlog.get_logger(__name__)
 
@@ -47,6 +51,7 @@ async def webhook_whatsapp_post(
     Endpoint POST para receber webhooks do WhatsApp (UAZAPI).
 
     Processa a mensagem em background e retorna imediatamente.
+    Valida payload com Pydantic antes de processar.
 
     Args:
         request: Request do FastAPI
@@ -59,9 +64,23 @@ async def webhook_whatsapp_post(
         # Parsear body
         body = await request.json()
 
+        # Validar com Pydantic
+        try:
+            payload = WhatsAppWebhookPayload(**body)
+        except ValidationError as e:
+            logger.warning(
+                "webhook_validation_failed",
+                errors=e.errors(),
+                body_preview=str(body)[:200],
+            )
+            # Nao rejeitar - apenas logar warning e continuar
+            # UAZAPI pode enviar formatos variados
+            payload = None
+
         logger.debug(
             "webhook_received",
             body_preview=str(body)[:200],
+            validated=payload is not None,
         )
 
         # Verificar tipo de evento
@@ -102,44 +121,34 @@ async def webhook_whatsapp_get() -> Dict[str, Any]:
 
 
 @router.post("/whatsapp/test")
-async def webhook_whatsapp_test(request: Request) -> Dict[str, Any]:
+async def webhook_whatsapp_test(payload: WhatsAppTestPayload) -> Dict[str, Any]:
     """
     Endpoint de teste para simular mensagens do webhook.
 
     Util para desenvolvimento e debugging.
+    Validado automaticamente pelo Pydantic.
 
     Args:
-        request: Request com payload de teste
+        payload: Payload de teste validado
 
     Returns:
         Dict com resultado do processamento
     """
     try:
-        body = await request.json()
-
-        # Validar campos minimos
-        required = ["phone", "text"]
-        for field in required:
-            if field not in body:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Campo obrigatorio: {field}",
-                )
-
         # Montar payload no formato UAZAPI
         webhook_data = {
             "event": "messages.upsert",
-            "instanceId": body.get("instance_id", "test-instance"),
+            "instanceId": payload.instance_id,
             "data": {
                 "key": {
-                    "remoteJid": f"{body['phone']}@s.whatsapp.net",
+                    "remoteJid": f"{payload.phone}@s.whatsapp.net",
                     "fromMe": False,
                     "id": f"test_{datetime.utcnow().timestamp()}",
                 },
                 "message": {
-                    "conversation": body["text"],
+                    "conversation": payload.text,
                 },
-                "pushName": body.get("name", "Teste"),
+                "pushName": payload.name,
                 "messageTimestamp": datetime.utcnow().isoformat(),
             },
         }
@@ -150,8 +159,6 @@ async def webhook_whatsapp_test(request: Request) -> Dict[str, Any]:
 
         return {"test": True, "result": result}
 
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error("webhook_test_error", error=str(e), exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

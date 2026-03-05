@@ -7,6 +7,7 @@ Responsavel por:
 - Endpoint de reprocessamento manual
 
 Extraido de: app/webhooks/pagamentos.py (Fase 3.10)
+Validacao Pydantic adicionada na Fase 5.
 """
 
 import logging
@@ -15,8 +16,10 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 
 from app.config import settings
+from app.api.models.webhook_models import AsaasWebhookPayload, AsaasReprocessContractPayload
 from app.services.supabase import get_supabase_service
 from app.domain.billing.models.payment import LAZARO_AGENT_ID
 from app.domain.billing.services.customer_sync_service import sincronizar_cliente
@@ -62,9 +65,18 @@ async def asaas_webhook(request: Request, background_tasks: BackgroundTasks) -> 
 
     O Asaas espera resposta rapida (< 5s).
     Sempre retorna 200 para evitar reenvios.
+    Valida payload com Pydantic para logging de erros.
     """
     try:
         body = await request.json()
+
+        # Validar com Pydantic (warning only, nao rejeita)
+        try:
+            validated = AsaasWebhookPayload(**body)
+            logger.debug("[ASAAS WEBHOOK] Payload validado com Pydantic")
+        except ValidationError as e:
+            logger.warning("[ASAAS WEBHOOK] Validacao Pydantic falhou: %s", e.errors())
+            # Continuar processamento mesmo com erro de validacao
 
         event_id: Optional[str] = body.get("id")
         event: Optional[str] = body.get("event")
@@ -328,7 +340,7 @@ async def _processar_evento(
 
 @router.post("/asaas/reprocess-contract")
 async def reprocess_contract(
-    request: Request,
+    payload: AsaasReprocessContractPayload,
     background_tasks: BackgroundTasks,
 ) -> JSONResponse:
     """
@@ -339,7 +351,7 @@ async def reprocess_contract(
     - Contratos criados antes do webhook estar configurado
     - Reextrair dados apos correcao de bugs
 
-    Body:
+    Payload validado por Pydantic:
     {
         "subscription_id": "sub_xxx",
         "agent_id": "uuid"
@@ -347,19 +359,11 @@ async def reprocess_contract(
 
     Returns:
         202 Accepted com status de processamento agendado
-        400 Bad Request se faltam parametros
         404 Not Found se subscription nao existe
     """
     try:
-        body = await request.json()
-        subscription_id = body.get("subscription_id")
-        agent_id = body.get("agent_id")
-
-        if not subscription_id or not agent_id:
-            return JSONResponse(
-                status_code=400,
-                content={"error": "subscription_id and agent_id required"}
-            )
+        subscription_id = payload.subscription_id
+        agent_id = payload.agent_id
 
         logger.info(
             "[REPROCESS CONTRACT] Solicitado reprocessamento: subscription=%s agent=%s",
