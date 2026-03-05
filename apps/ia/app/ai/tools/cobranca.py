@@ -438,7 +438,9 @@ class FunctionHandlers:
                         "customer_id, customer_name, payment_id, valor, due_date, status"
                     ).eq("phone", tel).in_(
                         "status", ["sent", "pending"]
-                    ).order("sent_at", desc=True).limit(5).execute()
+                    # Ordenar por due_date ASC para priorizar cobranças vencidas (mais antigas primeiro)
+                    # Fix: antes ordenava por sent_at DESC, retornando a cobrança mais recente em vez da vencida
+                    ).order("due_date", desc=False).limit(5).execute()
 
                     if result.data:
                         # Encontrou cobrancas enviadas recentemente
