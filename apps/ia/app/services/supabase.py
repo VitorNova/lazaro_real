@@ -1,6 +1,16 @@
 """
 SupabaseService - Servico de integracao com Supabase para o agente-ia Python.
 
+DEPRECATED: Este modulo sera substituido por app.integrations.supabase.
+Novos codigos devem usar:
+    from app.integrations.supabase.repositories import (
+        agents_repository,
+        dynamic_repository,
+    )
+
+Este modulo permanece para compatibilidade com codigo existente.
+Migrar gradualmente para integrations/supabase/.
+
 Este servico gerencia:
 - Conexao com Supabase usando supabase-py
 - Tabelas dinamicas: LeadboxCRM_{shortId} e leadbox_messages_{shortId}
