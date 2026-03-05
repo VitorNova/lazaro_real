@@ -219,7 +219,16 @@ Comando de validação: python3 -m py_compile apps/ia/app/webhooks/pagamentos.py
 - lazaro_lazaro-ia: 3 réplicas distribuídas nos Workers
 - Image: vitorzx/lazaro-ia:latest (Docker Hub)
 - Porta: 3115 (ingress mode — load balancing automático)
-- Redes: traefik-net (overlay), lazaro-net (overlay)
+- Redes: traefik-net, lazaro-net, network_public (overlay)
+
+### Redis no Swarm
+- Serviço: redis_redis (stack separado)
+- Localização: Worker-03 (constraint)
+- Persistência: AOF (--appendonly yes)
+- Volume: redis_data
+- Conexão: redis://redis_redis:6379/0 (via network_public)
+- REDIS_URL sobrescrito no docker-stack.yml (não usar .env)
+- Keys atuais: pausas de conversas (pause:{agent_id}:{phone})
 
 ### Como fazer deploy de nova versão
 ```bash

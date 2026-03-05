@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  lazaro-ia:
+    image: vitorzx/lazaro-ia:latest
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+    env_file:
+      - /var/www/lazaro-real/.env
+    environment:
+      - REDIS_URL=redis://redis_redis:6379/0
+    ports:
+      - target: 3005
+        published: 3115
+        protocol: tcp
+        mode: ingress
+    networks:
+      - traefik-net
+      - lazaro-net
+      - network_public
+
+networks:
+  traefik-net:
+    external: true
+    name: traefik-net
+  lazaro-net:
+    driver: overlay
+  network_public:
+    external: true
+    name: network_public
