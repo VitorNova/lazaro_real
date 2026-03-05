@@ -204,3 +204,48 @@ Agora usa `ai/tools/tool_registry.py` com handlers modulares.
 Próxima ação: Testar webhook_handler em produção
 Após validação: Remover funções locais duplicadas de pagamentos.py
 Comando de validação: python3 -m py_compile apps/ia/app/webhooks/pagamentos.py
+
+---
+
+## INFRAESTRUTURA — Docker Swarm
+
+### Arquitetura
+- Manager-01 (5.161.179.122) — CPX31 160GB — Orquestrador + Traefik
+- Worker-01 (178.156.166.133) — CPX11 40GB — Réplica lazaro-ia
+- Worker-02 (178.156.182.255) — CPX11 40GB — Réplica lazaro-ia
+- Worker-03 (178.156.183.235) — CPX11 40GB — Réplica lazaro-ia
+
+### Serviços no Swarm
+- lazaro_lazaro-ia: 3 réplicas distribuídas nos Workers
+- Image: vitorzx/lazaro-ia:latest (Docker Hub)
+- Porta: 3115 (ingress mode — load balancing automático)
+- Redes: traefik-net (overlay), lazaro-net (overlay)
+
+### Como fazer deploy de nova versão
+```bash
+cd /var/www/lazaro-real
+docker compose build lazaro-ia
+docker tag lazaro-docker-lazaro-ia:latest vitorzx/lazaro-ia:latest
+docker push vitorzx/lazaro-ia:latest
+docker service update --image vitorzx/lazaro-ia:latest lazaro_lazaro-ia
+docker service ps lazaro_lazaro-ia
+```
+
+### Como verificar saúde do Swarm
+```bash
+docker node ls
+docker stack ps lazaro
+curl http://localhost:3115/health
+```
+
+### SSH nos Workers
+```bash
+ssh -i ~/.ssh/id_swarm root@178.156.166.133  # Worker-01
+ssh -i ~/.ssh/id_swarm root@178.156.182.255  # Worker-02
+ssh -i ~/.ssh/id_swarm root@178.156.183.235  # Worker-03
+```
+
+### Arquivos importantes
+- /var/www/lazaro-real/docker-stack.yml — configuração do Swarm
+- /var/www/lazaro-real/docker-compose.traefik.yml — roteamento externo
+- /var/www/lazaro-real/.env — variáveis de ambiente
