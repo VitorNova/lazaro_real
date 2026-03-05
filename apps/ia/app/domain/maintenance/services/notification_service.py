@@ -181,6 +181,7 @@ async def mark_notification_sent(
     proxima_manutencao: date,
     customer_phone: str,
     message_sent: str,
+    table_messages: str = None,
 ) -> None:
     """
     Registra o envio da notificacao no banco de dados.
@@ -205,7 +206,12 @@ async def mark_notification_sent(
         phone_jid = f"{customer_phone}@s.whatsapp.net" if customer_phone else None
 
         if phone_jid:
-            table_name = f"leadbox_messages_{AGENT_ID_LAZARO.replace('-', '_')}"
+            # Usar table_messages do agent se disponivel, senao fallback
+            if table_messages:
+                table_name = table_messages
+            else:
+                # Fallback para Ana (padrao historico)
+                table_name = "leadbox_messages_Ana_14e6e5ce"
 
             result = supabase.client.table(table_name).select(
                 "id, conversation_history"
@@ -400,6 +406,7 @@ async def process_maintenance_notifications(
                     proxima_manutencao=proxima_manutencao,
                     customer_phone=phone,
                     message_sent=message,
+                    table_messages=agent.get("table_messages"),
                 )
 
                 dispatch_logger = get_dispatch_logger()
