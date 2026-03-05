@@ -78,7 +78,11 @@ async def handle_ticket_closed(
 
     Clears ticket_id, queue_id, user_id and reactivates AI
     when a ticket is closed in Leadbox.
+
+    IMPORTANTE: Aguarda processamento ativo completar antes de resetar
+    para evitar race condition onde IA responde após ticket fechado.
     """
+    import asyncio
     from app.services.supabase import get_supabase_service
     from app.services.redis import get_redis_service
 
@@ -96,6 +100,7 @@ async def handle_ticket_closed(
         remotejid = f"{clean_phone}@s.whatsapp.net"
 
         for ag in (agents.data or []):
+            agent_id = ag.get("id")
             table_leads = ag.get("table_leads")
             if not table_leads:
                 continue
@@ -109,6 +114,38 @@ async def handle_ticket_closed(
                     continue
 
             try:
+                redis_svc = await get_redis_service()
+
+                # =================================================================
+                # RACE CONDITION FIX: Aguardar processamento ativo completar
+                # Se há um lock ativo, significa que a IA está processando a mensagem
+                # Aguardamos até 3 segundos para o processamento terminar
+                # =================================================================
+                if agent_id:
+                    lock_key = f"lock:msg:{agent_id}:{clean_phone}"
+                    is_processing = await redis_svc.client.exists(lock_key)
+
+                    if is_processing:
+                        logger.info(
+                            "[LEADBOX HANDLER] Processamento ativo para %s (agent=%s) - aguardando até 3s",
+                            phone, agent_id[:8]
+                        )
+                        # Aguardar até 3 segundos em intervalos de 500ms
+                        for attempt in range(6):
+                            await asyncio.sleep(0.5)
+                            if not await redis_svc.client.exists(lock_key):
+                                logger.info(
+                                    "[LEADBOX HANDLER] Processamento terminou para %s após %dms",
+                                    phone, (attempt + 1) * 500
+                                )
+                                break
+                        else:
+                            logger.warning(
+                                "[LEADBOX HANDLER] Timeout aguardando processamento para %s - resetando mesmo assim",
+                                phone
+                            )
+
+                # AGORA é seguro resetar o estado
                 supabase_svc.client.table(table_leads) \
                     .update({
                         "ticket_id": None,
@@ -124,15 +161,13 @@ async def handle_ticket_closed(
                     .execute()
 
                 # Também remover pausa do Redis
-                try:
-                    redis_svc = await get_redis_service()
-                    agent_id = ag.get("id")
-                    if agent_id:
+                if agent_id:
+                    try:
                         await redis_svc.pause_clear(agent_id, clean_phone)
                         logger.info("[LEADBOX HANDLER] Pausa Redis removida para %s (agent=%s)",
                                    phone, agent_id[:8])
-                except Exception as redis_err:
-                    logger.warning("[LEADBOX HANDLER] Erro ao remover pausa Redis: %s", redis_err)
+                    except Exception as redis_err:
+                        logger.warning("[LEADBOX HANDLER] Erro ao remover pausa Redis: %s", redis_err)
 
                 logger.info("[LEADBOX HANDLER] Ticket fechado - lead %s resetado para IA em %s",
                            phone, table_leads)
