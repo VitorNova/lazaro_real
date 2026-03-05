@@ -53,6 +53,7 @@ Regra absoluta: leia antes de agir. Uma fase por vez. Compile após cada mudanç
 Solução necessária: inverter a dependência fazendo tools/ importar de ai/tools/ ou eliminar tools/.
 
 ## COMMITS FEITOS
+- 3f97696 refactor(fase-E.2): integrar _extract_message_data e _handle_control_command (-157 linhas)
 - 1b0fb6d refactor(pagamentos): extrair webhook_handler para domain/billing/handlers (-138 linhas)
 - 442bc51 refactor(fase-E): remover funções dead code de mensagens.py (-760 linhas)
 - ebf002f refactor(fase-B): integrar message_processor em mensagens.py (-698 linhas)
@@ -78,15 +79,15 @@ Solução necessária: inverter a dependência fazendo tools/ importar de ai/too
 - e21ac84 refactor(fase-1.1): marcar services/supabase.py como DEPRECATED
 - c57667d refactor(fase-1.1): adicionar metodos faltantes nos repositories
 
-## MAPEAMENTO: mensagens.py (1615 linhas — era 4414, redução de 63%)
+## MAPEAMENTO: mensagens.py (1458 linhas — era 4414, redução de 67%)
 
 ### Métodos da classe WhatsAppWebhookHandler
 
 | Método | Linhas | Tamanho | Status Domain/ |
 |--------|--------|---------|----------------|
 | `__init__` | 844-863 | 19 | - |
-| `_extract_message_data` | 865-1013 | 148 | ⏳ Extrair → `domain/messaging/services/` |
-| `_handle_control_command` | 1015-1177 | 162 | ⏳ Extrair → `domain/messaging/handlers/` |
+| `_extract_message_data` | 156-170 | 14 | ✅ INTEGRADO → `incoming_message_handler.py` (Fase E.2) |
+| `_handle_control_command` | 171-212 | 41 | ✅ INTEGRADO → `incoming_message_handler.py` (Fase E.2) |
 | `_schedule_processing` | 1179-? | ~50 | ✅ Stub em `message_processor.py` |
 | `_process_buffered_messages` | 1196-1250 | 54 | ✅ INTEGRADO → `message_processor.py` (Fase B) |
 | `_prepare_gemini_messages` | 1919-1955 | 36 | ✅ Stub em `message_processor.py` |
