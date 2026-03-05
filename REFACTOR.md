@@ -53,6 +53,7 @@ Regra absoluta: leia antes de agir. Uma fase por vez. Compile após cada mudanç
 Solução necessária: inverter a dependência fazendo tools/ importar de ai/tools/ ou eliminar tools/.
 
 ## COMMITS FEITOS
+- 398632c refactor(fase-A): remover _create_function_handlers inline (1360 linhas)
 - 60810dc refactor(fase-4): logging unificado em jobs
 - e3559fb refactor(fase-B): alinhar message_processor.py com Fase A
 - f9bf97a refactor(fase-A): integrar ai/tools/tool_registry em mensagens.py
@@ -107,11 +108,11 @@ Deve ser movido para `ai/tools/handlers.py` como módulo independente.
 
 ### Plano de Extração (ordem de prioridade)
 
-1. **Fase A**: ✅ INTEGRADO — `_create_function_handlers` → `ai/tools/tool_registry.py`
+1. **Fase A**: ✅ COMPLETO — `_create_function_handlers` → `ai/tools/tool_registry.py`
    - Import: `from app.ai.tools.tool_registry import get_function_handlers`
    - Uso: `handlers = get_function_handlers(supabase, context)`
-   - Método inline (1358 linhas) mantido como fallback até teste em produção
-   - Commit: f9bf97a
+   - Método inline (1360 linhas) **REMOVIDO** de mensagens.py
+   - Commits: f9bf97a (integração), 398632c (remoção inline)
 2. **Fase B**: ✅ ALINHADO — `message_processor.py` atualizado para usar `get_function_handlers`
    - Removido parâmetro `create_handlers_callback`
    - Usa `get_function_handlers(supabase, context)` diretamente
