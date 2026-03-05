@@ -92,7 +92,7 @@ Solução necessária: inverter a dependência fazendo tools/ importar de ai/too
 | `_prepare_gemini_messages` | 1919-1955 | 36 | ✅ Stub em `message_processor.py` |
 | `_save_conversation_history` | 1957-2132 | 175 | ✅ Em `conversation_manager.py` |
 | `_create_function_handlers` | — | — | ✅ REMOVIDO (Fase A) → `ai/tools/tool_registry.py` |
-| `handle_message` | 3498-4277 | 779 | ⏳ Stub incompleto em `message_orchestrator.py` |
+| `handle_message` | 705-1490 | 785 | ⏸️ BLOQUEADO — complexidade alta (ver Fase C) |
 
 ### Funções standalone duplicadas — ✅ REMOVIDAS (Fase E)
 
@@ -123,8 +123,14 @@ Agora usa `ai/tools/tool_registry.py` com handlers modulares.
    - Método inline (750 linhas) **REMOVIDO** de mensagens.py
    - mensagens.py: 3073 → 2375 linhas (-698 linhas, 23%)
    - Commits: e3559fb (alinhamento), ebf002f (integração)
-3. **Fase C**: Completar `message_orchestrator.py` com lógica real de `handle_message`
-4. **Fase D**: Integrar módulos e testar em produção
+3. **Fase C**: ⏸️ BLOQUEADA — `handle_message` não compatível com orchestrator
+   - `handle_message` tem 785 linhas com lógica complexa de produção
+   - Inclui: human takeover, race conditions, dispatch integration, pattern detection
+   - Orchestrator (`message_orchestrator.py`) tem placeholders incompatíveis
+   - Handler usa estado de instância (_scheduled_tasks, _processing_keys, buffer_delay)
+   - **Alternativa futura**: extrair sub-serviços (HumanTakeoverService, DispatchCheckService)
+   - **Status**: Manter inline até refatoração mais profunda
+4. **Fase D**: Testar módulos em produção (Fases A, B, E prontas)
 5. **Fase E**: ✅ COMPLETO — Funções dead code removidas (-760 linhas)
    - 7 funções duplicadas removidas (usam context modules)
    - Constantes TIMEZONE_* duplicadas removidas
