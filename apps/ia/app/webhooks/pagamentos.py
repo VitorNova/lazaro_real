@@ -116,6 +116,9 @@ from app.domain.billing.services.payment_events_service import (
     processar_captura_cartao_recusada,
 )
 
+# Webhook handler centralizado
+from app.domain.billing.handlers.webhook_handler import handle_asaas_event
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -291,155 +294,14 @@ async def asaas_webhook(request: Request, background_tasks: BackgroundTasks) -> 
         except Exception as e:
             logger.debug("[ASAAS WEBHOOK] Aviso ao registrar evento: %s", e)
 
-        # 5. Processar por tipo de evento
-        # ========================================================================
-        # CUSTOMER EVENTS
-        # ========================================================================
-        if event == "CUSTOMER_CREATED" and customer:
-            # Sincroniza cliente em asaas_clientes + processa PDF em background
-            await sincronizar_cliente(supabase, customer, agent_id or LAZARO_AGENT_ID)
-            background_tasks.add_task(
-                processar_customer_created_background,
-                customer_id=customer.get("id"),
-                customer_name=customer.get("name"),
-                agent_id=agent_id or LAZARO_AGENT_ID,
-            )
-            logger.info("[ASAAS WEBHOOK] CUSTOMER_CREATED sincronizado e PDF agendado: %s", customer.get("id"))
-
-        elif event == "CUSTOMER_UPDATED" and customer:
-            # Apenas sincroniza cliente em asaas_clientes
-            await sincronizar_cliente(supabase, customer, agent_id or LAZARO_AGENT_ID)
-            logger.info("[ASAAS WEBHOOK] CUSTOMER_UPDATED sincronizado: %s", customer.get("id"))
-
-        elif event == "CUSTOMER_DELETED" and customer:
-            # Soft delete do cliente e dados relacionados
-            await processar_cliente_deletado(supabase, customer, agent_id or LAZARO_AGENT_ID)
-            logger.info("[ASAAS WEBHOOK] CUSTOMER_DELETED processado: %s", customer.get("id"))
-
-        # ========================================================================
-        # SUBSCRIPTION EVENTS
-        # ========================================================================
-        elif event == "SUBSCRIPTION_CREATED" and subscription:
-            # Sincroniza cliente (se vier no payload) e contrato em asaas_contratos + processa PDF em background
-            # Importante: Asaas nem sempre manda CUSTOMER_CREATED quando cliente ja existe
-            if customer:
-                await sincronizar_cliente(supabase, customer, agent_id or LAZARO_AGENT_ID)
-            await sincronizar_contrato(supabase, subscription, agent_id or LAZARO_AGENT_ID)
-            background_tasks.add_task(
-                processar_subscription_created_background,
-                subscription_id=subscription.get("id"),
-                customer_id=subscription.get("customer"),
-                agent_id=agent_id or LAZARO_AGENT_ID,
-            )
-            logger.info(
-                "[ASAAS WEBHOOK] SUBSCRIPTION_CREATED sincronizado e PDF agendado: %s (customer: %s)",
-                subscription.get("id"),
-                subscription.get("customer")
-            )
-
-        elif event == "SUBSCRIPTION_UPDATED" and subscription:
-            # Apenas sincroniza contrato em asaas_contratos
-            await sincronizar_contrato(supabase, subscription, agent_id or LAZARO_AGENT_ID)
-            logger.info("[ASAAS WEBHOOK] SUBSCRIPTION_UPDATED sincronizado: %s", subscription.get("id"))
-
-        elif event == "SUBSCRIPTION_DELETED" and subscription:
-            # Soft delete do contrato
-            await processar_contrato_deletado(supabase, subscription, agent_id or LAZARO_AGENT_ID)
-            logger.info("[ASAAS WEBHOOK] SUBSCRIPTION_DELETED processado: %s", subscription.get("id"))
-
-        # ========================================================================
-        # PAYMENT EVENTS
-        # ========================================================================
-        elif event == "PAYMENT_CREATED" and payment:
-            # Sincroniza cobranca em asaas_cobrancas
-            await sincronizar_cobranca(supabase, payment, agent_id or LAZARO_AGENT_ID)
-            logger.info("[ASAAS WEBHOOK] PAYMENT_CREATED sincronizado: %s", payment.get("id"))
-
-        elif event == "PAYMENT_UPDATED" and payment:
-            # Sincroniza cobranca em asaas_cobrancas
-            await sincronizar_cobranca(supabase, payment, agent_id or LAZARO_AGENT_ID)
-            logger.info("[ASAAS WEBHOOK] PAYMENT_UPDATED sincronizado: %s", payment.get("id"))
-
-        elif event == "PAYMENT_CONFIRMED" and payment:
-            # Pagamento confirmado (saldo ainda nao disponivel)
-            await processar_pagamento_confirmado(supabase, payment, agent_id)
-            logger.info("[ASAAS WEBHOOK] PAYMENT_CONFIRMED processado: %s", payment.get("id"))
-
-        elif event == "PAYMENT_RECEIVED" and payment:
-            # Pagamento recebido/pago (saldo disponivel)
-            await processar_pagamento_recebido(supabase, payment, agent_id)
-            logger.info("[ASAAS WEBHOOK] PAYMENT_RECEIVED processado: %s", payment.get("id"))
-
-        elif event == "PAYMENT_OVERDUE" and payment:
-            # Cobranca vencida
-            await processar_pagamento_vencido(supabase, payment, agent_id)
-            logger.info("[ASAAS WEBHOOK] PAYMENT_OVERDUE processado: %s", payment.get("id"))
-
-        elif event == "PAYMENT_CHECKOUT_VIEWED" and payment:
-            # Cliente visualizou link de pagamento (apenas log para analytics)
-            payment_id = payment.get("id", "?")
-            value = payment.get("value", 0)
-            logger.info(
-                "[ASAAS WEBHOOK] PAYMENT_CHECKOUT_VIEWED: Payment %s (R$ %.2f) visualizado pelo cliente",
-                payment_id,
-                value
-            )
-
-        elif event == "PAYMENT_DELETED" and payment:
-            # Soft delete da cobranca
-            await processar_cobranca_deletada(supabase, payment, agent_id or LAZARO_AGENT_ID)
-            logger.info("[ASAAS WEBHOOK] PAYMENT_DELETED processado: %s", payment.get("id"))
-
-        # ========================================================================
-        # PAYMENT EVENTS - ESTORNOS E CHARGEBACKS (CRÍTICOS)
-        # ========================================================================
-        elif event == "PAYMENT_REFUNDED" and payment:
-            # Cobrança estornada (devolução total)
-            await processar_pagamento_estornado(supabase, payment, agent_id)
-            logger.info("[ASAAS WEBHOOK] PAYMENT_REFUNDED processado: %s", payment.get("id"))
-
-        elif event == "PAYMENT_PARTIALLY_REFUNDED" and payment:
-            # Cobrança parcialmente estornada
-            await processar_pagamento_estornado_parcial(supabase, payment, agent_id)
-            logger.info("[ASAAS WEBHOOK] PAYMENT_PARTIALLY_REFUNDED processado: %s", payment.get("id"))
-
-        elif event == "PAYMENT_CHARGEBACK_REQUESTED" and payment:
-            # CRÍTICO: Chargeback solicitado - requer ação imediata
-            await processar_chargeback_solicitado(supabase, payment, agent_id)
-            logger.warning("[ASAAS WEBHOOK] PAYMENT_CHARGEBACK_REQUESTED processado: %s", payment.get("id"))
-
-        elif event == "PAYMENT_CHARGEBACK_DISPUTE" and payment:
-            # Chargeback em disputa
-            await processar_chargeback_disputa(supabase, payment, agent_id)
-            logger.info("[ASAAS WEBHOOK] PAYMENT_CHARGEBACK_DISPUTE processado: %s", payment.get("id"))
-
-        elif event == "PAYMENT_AWAITING_CHARGEBACK_REVERSAL" and payment:
-            # Aguardando reversão de chargeback
-            await processar_aguardando_reversao_chargeback(supabase, payment, agent_id)
-            logger.info("[ASAAS WEBHOOK] PAYMENT_AWAITING_CHARGEBACK_REVERSAL processado: %s", payment.get("id"))
-
-        # ========================================================================
-        # PAYMENT EVENTS - RESTAURAÇÃO E OUTROS
-        # ========================================================================
-        elif event == "PAYMENT_RESTORED" and payment:
-            # Cobrança restaurada (ex: após reversão de chargeback)
-            await processar_pagamento_restaurado(supabase, payment, agent_id)
-            logger.info("[ASAAS WEBHOOK] PAYMENT_RESTORED processado: %s", payment.get("id"))
-
-        elif event == "PAYMENT_RECEIVED_IN_CASH_UNDONE" and payment:
-            # Confirmação de dinheiro desfeita
-            await processar_pagamento_dinheiro_desfeito(supabase, payment, agent_id)
-            logger.info("[ASAAS WEBHOOK] PAYMENT_RECEIVED_IN_CASH_UNDONE processado: %s", payment.get("id"))
-
-        elif event == "PAYMENT_ANTICIPATED" and payment:
-            # Cobrança antecipada
-            await processar_pagamento_antecipado(supabase, payment, agent_id)
-            logger.info("[ASAAS WEBHOOK] PAYMENT_ANTICIPATED processado: %s", payment.get("id"))
-
-        elif event == "PAYMENT_CREDIT_CARD_CAPTURE_REFUSED" and payment:
-            # Captura do cartão recusada
-            await processar_captura_cartao_recusada(supabase, payment, agent_id)
-            logger.info("[ASAAS WEBHOOK] PAYMENT_CREDIT_CARD_CAPTURE_REFUSED processado: %s", payment.get("id"))
+        # 5. Processar por tipo de evento via webhook_handler
+        await handle_asaas_event(
+            event=event,
+            body=body,
+            supabase=supabase,
+            agent_id=agent_id,
+            background_tasks=background_tasks,
+        )
 
         logger.debug("[ASAAS WEBHOOK] Processado com sucesso")
         return JSONResponse(status_code=200, content={"status": "ok"})
