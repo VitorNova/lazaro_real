@@ -51,6 +51,8 @@ Regra absoluta: leia antes de agir. Uma fase por vez. Compile após cada mudanç
 Solução necessária: inverter a dependência fazendo tools/ importar de ai/tools/ ou eliminar tools/.
 
 ## COMMITS FEITOS
+- f9bf97a refactor(fase-A): integrar ai/tools/tool_registry em mensagens.py
+- 640d1f0 docs: mapear mensagens.py e auditar leadbox_handler
 - d4151f9 refactor(fase-3): notificar_manutencoes.py thin (868→115 linhas)
 - 7537dbf refactor(fase-3): reengajar_leads.py como thin dispatcher
 - 7264b7c refactor(fase-3): atualizar __init__.py de leads/services
@@ -80,7 +82,7 @@ Solução necessária: inverter a dependência fazendo tools/ importar de ai/too
 | `_process_buffered_messages` | ?-1917 | 738 | ✅ Stub em `message_processor.py` |
 | `_prepare_gemini_messages` | 1919-1955 | 36 | ✅ Stub em `message_processor.py` |
 | `_save_conversation_history` | 1957-2132 | 175 | ✅ Em `conversation_manager.py` |
-| `_create_function_handlers` | 2134-3492 | 1358 | ❌ **CRÍTICO** - mover → `ai/tools/handlers.py` |
+| `_create_function_handlers` | 2134-3492 | 1358 | ✅ INTEGRADO → `ai/tools/tool_registry.py` |
 | `handle_message` | 3498-4277 | 779 | ⏳ Stub incompleto em `message_orchestrator.py` |
 
 ### Funções standalone duplicadas
@@ -101,11 +103,15 @@ Deve ser movido para `ai/tools/handlers.py` como módulo independente.
 
 ### Plano de Extração (ordem de prioridade)
 
-1. **Fase A**: Extrair `_create_function_handlers` → `ai/tools/handlers.py` (1358 linhas)
+1. **Fase A**: ✅ INTEGRADO — `_create_function_handlers` → `ai/tools/tool_registry.py`
+   - Import: `from app.ai.tools.tool_registry import get_function_handlers`
+   - Uso: `handlers = get_function_handlers(supabase, context)`
+   - Método inline (1358 linhas) mantido como fallback até teste em produção
+   - Commit: f9bf97a
 2. **Fase B**: Completar stubs em `domain/messaging/services/message_processor.py`
 3. **Fase C**: Completar `message_orchestrator.py` com lógica real de `handle_message`
 4. **Fase D**: Integrar módulos e testar em produção
-5. **Fase E**: Remover código duplicado de `mensagens.py`
+5. **Fase E**: Remover código duplicado de `mensagens.py` (inclui `_create_function_handlers`)
 
 ---
 
