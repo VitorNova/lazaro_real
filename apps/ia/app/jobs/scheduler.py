@@ -22,7 +22,9 @@ def create_scheduler() -> Optional[Any]:
     """
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
-        return AsyncIOScheduler()
+        return AsyncIOScheduler(
+            job_defaults={'misfire_grace_time': 3600}
+        )
     except ImportError:
         logger.warning("APScheduler not installed")
         return None

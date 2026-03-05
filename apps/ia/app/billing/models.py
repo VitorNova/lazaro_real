@@ -58,7 +58,7 @@ class RulerDecision:
     should_send: bool
     offset: int  # D-1, D0, D+3...
     template_key: str
-    phase: str  # "pre" | "due" | "post"
+    phase: str  # "reminder" | "due_date" | "overdue"
 
 
 @dataclass

@@ -181,9 +181,9 @@ async def dispatch_single(
 
 def _get_template(decision: RulerDecision, messages_config: Dict[str, Any]) -> str:
     """Obtem template baseado na decisao."""
-    if decision.phase == "pre":
+    if decision.phase == "reminder":
         return messages_config.get("reminderTemplate") or DEFAULT_MESSAGES["reminder"]
-    elif decision.phase == "due":
+    elif decision.phase == "due_date":
         return messages_config.get("dueDateTemplate") or DEFAULT_MESSAGES["dueDate"]
     else:
         return get_overdue_template(decision.offset, messages_config)

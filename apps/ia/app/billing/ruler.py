@@ -22,12 +22,12 @@ def calculate_offset(today: date, due_date: date) -> int:
 
 
 def determine_phase(offset: int) -> str:
-    """Determina fase: 'pre', 'due', 'post'."""
+    """Determina fase: 'reminder', 'due_date', 'overdue'."""
     if offset < 0:
-        return "pre"
+        return "reminder"
     elif offset == 0:
-        return "due"
-    return "post"
+        return "due_date"
+    return "overdue"
 
 
 def should_send_today(offset: int, schedule: Optional[List[int]] = None) -> bool:
@@ -39,9 +39,9 @@ def should_send_today(offset: int, schedule: Optional[List[int]] = None) -> bool
 
 def select_template_key(offset: int, phase: str) -> str:
     """Seleciona chave do template baseado no offset e fase."""
-    if phase == "pre":
+    if phase == "reminder":
         return "reminder"
-    elif phase == "due":
+    elif phase == "due_date":
         return "dueDate"
     else:
         if offset <= 5:
