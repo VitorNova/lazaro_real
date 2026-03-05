@@ -6,13 +6,27 @@
  * Route groups extracted:
  * - crud.routes.ts: Agent CRUD operations (create, get, update, delete, list)
  * - connection.routes.ts: QR Code, webhook config, Evolution, UAZAPI
+ * - dashboard.routes.ts: Dashboard stats, Asaas, Maintenance, Agent Metrics
+ * - leads.routes.ts: Leads API, Conversations, Toggle AI
+ * - user-settings.routes.ts: User configuration (logo, company name)
+ * - google-calendar.routes.ts: Google Calendar OAuth
+ * - billing-audit.routes.ts: Billing, Audit Logs, Interventions, Integrations
+ * - learning.routes.ts: Learning Entries (AI curation)
+ * - messages-media.routes.ts: Messages, Media, Avatar
  *
- * Remaining routes are imported from index.legacy.ts until fully migrated.
+ * Remaining routes in index.legacy.ts (to be extracted incrementally).
  */
 
 import { FastifyInstance } from 'fastify';
 import { registerCrudRoutes } from './crud.routes';
 import { registerConnectionRoutes } from './connection.routes';
+import { registerDashboardRoutes } from './dashboard.routes';
+import { registerLeadsRoutes } from './leads.routes';
+import { registerUserSettingsRoutes } from './user-settings.routes';
+import { registerGoogleCalendarRoutes } from './google-calendar.routes';
+import { registerBillingAuditRoutes } from './billing-audit.routes';
+import { registerLearningRoutes } from './learning.routes';
+import { registerMessagesMediaRoutes } from './messages-media.routes';
 
 // Re-export handlers for external use
 export { createAgentHandler, CreateAgentRequest, CreateAgentBody } from './create.handler';
@@ -55,9 +69,18 @@ export {
 export async function registerAgentRoutes(fastify: FastifyInstance): Promise<void> {
   console.info('[AgentRoutes] Registering agent routes (refactored)...');
 
-  // Register extracted route groups
-  await registerCrudRoutes(fastify);
-  await registerConnectionRoutes(fastify);
+  // Register extracted route groups (in parallel where possible)
+  await Promise.all([
+    registerCrudRoutes(fastify),
+    registerConnectionRoutes(fastify),
+    registerDashboardRoutes(fastify),
+    registerLeadsRoutes(fastify),
+    registerUserSettingsRoutes(fastify),
+    registerGoogleCalendarRoutes(fastify),
+    registerBillingAuditRoutes(fastify),
+    registerLearningRoutes(fastify),
+    registerMessagesMediaRoutes(fastify),
+  ]);
 
   // Import remaining routes from legacy file
   // These will be progressively migrated to separate files

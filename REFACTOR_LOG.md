@@ -2,9 +2,9 @@
 
 ## Status Atual
 **Fase**: 9 - Limpeza Final 🔄 EM ANDAMENTO
-**Última Atualização**: 2026-03-04
+**Última Atualização**: 2026-03-05
 **Responsável**: Claude Code
-**Próximo Passo**: Testes em produção antes de integrar módulos nos monolitos
+**Próximo Passo**: 9.6 - Inverter dependência tools/ ← ai/tools/
 
 ---
 
@@ -24,7 +24,7 @@ Remover código duplicado, substituir monolitos pelos módulos refatorados, limp
 - [x] 9.8 Remover shared/ (não usada)
 - [x] 9.9 Mover api/*.py → api/routes/ + pontes
 - [ ] 9.10 Atualizar imports nos monolitos ⚠️ ADIADO (aguardando testes em produção)
-- [x] 9.11 Quebrar api/agents/index.ts em route groups (parcial)
+- [x] 9.11 Quebrar api/agents/index.ts em route groups ✅ COMPLETO
 - [x] 9.12 Criar repositórios Asaas (asaas_customers, asaas_contracts, asaas_payments)
 
 ### Concluído - 9.1 main.py substituído
@@ -71,15 +71,23 @@ Remover código duplicado, substituir monolitos pelos módulos refatorados, limp
 
 > Pontes criadas em api/*.py para compatibilidade com imports existentes
 
-### Concluído - 9.11 api/agents/index.ts quebrado (parcial)
+### Concluído - 9.11 api/agents/index.ts quebrado ✅ COMPLETO
 | Arquivo | Linhas | Descrição |
 |---------|--------|-----------|
-| index.ts | 68 | Orquestrador - importa e registra route groups |
+| index.ts | 92 | Orquestrador - importa e registra 9 route groups em paralelo |
 | crud.routes.ts | 191 | CRUD de agentes (create, get, update, delete, list, statuses) |
 | connection.routes.ts | 198 | QR Code, webhook config, Evolution, UAZAPI |
-| index.legacy.ts | 1789 | Rotas restantes (a serem extraídas incrementalmente) |
+| dashboard.routes.ts | 175 | Dashboard stats, Asaas, Maintenance, Agent Metrics |
+| leads.routes.ts | 260 | Leads API, Conversations, Toggle AI, Special Agents |
+| user-settings.routes.ts | 195 | User configuration (logo, company name) |
+| google-calendar.routes.ts | 90 | Google Calendar OAuth |
+| billing-audit.routes.ts | 240 | Billing, Audit Logs, Interventions, Integrations |
+| learning.routes.ts | 145 | Learning Entries (AI curation) |
+| messages-media.routes.ts | 105 | Messages, Media, Avatar |
+| index.legacy.ts | 190 | Rotas restantes (status, stats, schedules) |
 
-> Migração incremental - rotas extraídas são removidas do index.legacy.ts progressivamente
+**Resultado**: 1790 linhas → 11 arquivos modulares (~1880 linhas total, mas organizados)
+**Redução do monolito**: index.legacy.ts de 1790L para 190L (89% redução)
 
 ### Concluído - 9.12 Repositórios Asaas criados
 | Repositório | Linhas | Descrição |
