@@ -53,6 +53,7 @@ Regra absoluta: leia antes de agir. Uma fase por vez. Compile após cada mudanç
 Solução necessária: inverter a dependência fazendo tools/ importar de ai/tools/ ou eliminar tools/.
 
 ## COMMITS FEITOS
+- 442bc51 refactor(fase-E): remover funções dead code de mensagens.py (-760 linhas)
 - ebf002f refactor(fase-B): integrar message_processor em mensagens.py (-698 linhas)
 - 27e2db3 refactor(fase-5): validação Pydantic nos webhooks
 - 398632c refactor(fase-A): remover _create_function_handlers inline (1360 linhas)
@@ -76,7 +77,7 @@ Solução necessária: inverter a dependência fazendo tools/ importar de ai/too
 - e21ac84 refactor(fase-1.1): marcar services/supabase.py como DEPRECATED
 - c57667d refactor(fase-1.1): adicionar metodos faltantes nos repositories
 
-## MAPEAMENTO: mensagens.py (2375 linhas — era 4414)
+## MAPEAMENTO: mensagens.py (1615 linhas — era 4414, redução de 63%)
 
 ### Métodos da classe WhatsAppWebhookHandler
 
@@ -92,21 +93,22 @@ Solução necessária: inverter a dependência fazendo tools/ importar de ai/too
 | `_create_function_handlers` | — | — | ✅ REMOVIDO (Fase A) → `ai/tools/tool_registry.py` |
 | `handle_message` | 3498-4277 | 779 | ⏳ Stub incompleto em `message_orchestrator.py` |
 
-### Funções standalone duplicadas
+### Funções standalone duplicadas — ✅ REMOVIDAS (Fase E)
 
-| Função | Linhas | Status |
-|--------|--------|--------|
-| `get_context_prompt` | 65-129 | ✅ Duplicada (usar `context_detector.py`) |
-| `detect_conversation_context` | 136-219 | ✅ Duplicada (usar `context_detector.py`) |
-| `get_contract_data_for_maintenance` | 221-303 | ✅ Duplicada (usar `maintenance_context.py`) |
-| `build_maintenance_context_prompt` | 305-384 | ✅ Duplicada (usar `maintenance_context.py`) |
-| `get_billing_data_for_context` | 386-430 | ✅ Duplicada (usar `billing_context.py`) |
-| `build_billing_context_prompt` | 432-503 | ✅ Duplicada (usar `billing_context.py`) |
-| `prepare_system_prompt` | var | ✅ Duplicada (usar `context_detector.py`) |
+| Função | Status |
+|--------|--------|
+| `get_context_prompt` | ✅ REMOVIDA (usar `context_detector.py`) |
+| `detect_conversation_context` | ✅ REMOVIDA (usar `context_detector.py`) |
+| `get_contract_data_for_maintenance` | ✅ REMOVIDA (usar `maintenance_context.py`) |
+| `build_maintenance_context_prompt` | ✅ REMOVIDA (usar `maintenance_context.py`) |
+| `get_billing_data_for_context` | ✅ REMOVIDA (usar `billing_context.py`) |
+| `build_billing_context_prompt` | ✅ REMOVIDA (usar `billing_context.py`) |
+| `prepare_system_prompt` | ✅ REMOVIDA (usar `context_detector.py`) |
+| `TIMEZONE_MAP`, `DEFAULT_TIMEZONE` | ✅ REMOVIDAS (constantes duplicadas) |
 
-### Problema principal
-`_create_function_handlers` com 1358 linhas contém ALL function handlers do Gemini inline.
-Deve ser movido para `ai/tools/handlers.py` como módulo independente.
+### Problema principal — ✅ RESOLVIDO
+`_create_function_handlers` (1358 linhas) foi REMOVIDO (Fase A).
+Agora usa `ai/tools/tool_registry.py` com handlers modulares.
 
 ### Plano de Extração (ordem de prioridade)
 
@@ -122,7 +124,11 @@ Deve ser movido para `ai/tools/handlers.py` como módulo independente.
    - Commits: e3559fb (alinhamento), ebf002f (integração)
 3. **Fase C**: Completar `message_orchestrator.py` com lógica real de `handle_message`
 4. **Fase D**: Integrar módulos e testar em produção
-5. **Fase E**: Remover funções duplicadas restantes de `mensagens.py`
+5. **Fase E**: ✅ COMPLETO — Funções dead code removidas (-760 linhas)
+   - 7 funções duplicadas removidas (usam context modules)
+   - Constantes TIMEZONE_* duplicadas removidas
+   - mensagens.py: 2375 → 1615 linhas
+   - Commit: 442bc51
 
 ---
 
