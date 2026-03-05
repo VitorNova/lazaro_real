@@ -2,7 +2,7 @@ module.exports = {
   apps: [{
     name: 'lazaro-ia',
     script: '/var/www/phant/agente-ia/venv/bin/uvicorn',
-    args: 'app.main:app --host 0.0.0.0 --port 3006',
+    args: 'app.main:app --host 0.0.0.0 --port 3115',
     cwd: '/var/www/lazaro-real/apps/ia',
     interpreter: 'none',
     env: {

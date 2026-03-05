@@ -226,6 +226,11 @@ async def root():
 from app.api.routes import register_routes
 register_routes(app)
 
+# Alias para compatibilidade com UAZAPI (manda para /webhook/whatsapp)
+# O router já tem prefix="/webhook" então não precisa de prefix adicional
+from app.webhooks.mensagens import router as mensagens_router
+app.include_router(mensagens_router, tags=["webhook-compat"])
+
 
 # =============================================================================
 # MAIN
