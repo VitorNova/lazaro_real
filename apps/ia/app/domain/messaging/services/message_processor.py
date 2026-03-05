@@ -160,31 +160,34 @@ async def process_buffered_messages(
         return
 
     # =================================================================
-    # HEARTBEAT: Task que renova o lock a cada 20s enquanto processa
-    # Previne expiração do lock durante retry do Gemini ou processamento longo
+    # IMPORTANTE: try/finally começa AQUI para garantir que o lock é
+    # sempre liberado, mesmo se houver erro ao criar heartbeat
     # =================================================================
     heartbeat_task: Optional[asyncio.Task] = None
     heartbeat_running = True
 
-    async def lock_heartbeat():
-        """Renova o lock a cada 20s enquanto o processamento está ativo."""
-        HEARTBEAT_INTERVAL = 20  # Renova a cada 20s (TTL é 60s)
-        while heartbeat_running:
-            await asyncio.sleep(HEARTBEAT_INTERVAL)
-            if heartbeat_running:  # Verificar novamente após sleep
-                try:
-                    extended = await redis.lock_extend(agent_id, phone, ttl=60)
-                    if extended:
-                        logger.debug(f"[LOCK HEARTBEAT] Renovado para {phone}")
-                    else:
-                        logger.warning(f"[LOCK HEARTBEAT] Falha ao renovar para {phone} - lock expirou?")
-                except Exception as hb_err:
-                    logger.warning(f"[LOCK HEARTBEAT] Erro: {hb_err}")
-
-    heartbeat_task = asyncio.create_task(lock_heartbeat())
-    logger.debug(f"[LOCK HEARTBEAT] Iniciado para {phone}")
-
     try:
+        # =================================================================
+        # HEARTBEAT: Task que renova o lock a cada 20s enquanto processa
+        # Previne expiração do lock durante retry do Gemini ou processamento longo
+        # =================================================================
+        async def lock_heartbeat():
+            """Renova o lock a cada 20s enquanto o processamento está ativo."""
+            HEARTBEAT_INTERVAL = 20  # Renova a cada 20s (TTL é 60s)
+            while heartbeat_running:
+                await asyncio.sleep(HEARTBEAT_INTERVAL)
+                if heartbeat_running:  # Verificar novamente após sleep
+                    try:
+                        extended = await redis.lock_extend(agent_id, phone, ttl=60)
+                        if extended:
+                            logger.debug(f"[LOCK HEARTBEAT] Renovado para {phone}")
+                        else:
+                            logger.warning(f"[LOCK HEARTBEAT] Falha ao renovar para {phone} - lock expirou?")
+                    except Exception as hb_err:
+                        logger.warning(f"[LOCK HEARTBEAT] Erro: {hb_err}")
+
+        heartbeat_task = asyncio.create_task(lock_heartbeat())
+        logger.debug(f"[LOCK HEARTBEAT] Iniciado para {phone}")
         # ================================================================
         # VERIFICAR FILA DO LEADBOX APÓS DELAY (defesa em profundidade)
         # Re-busca lead do Supabase para pegar current_queue_id atualizado
