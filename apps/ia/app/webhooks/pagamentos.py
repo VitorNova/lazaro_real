@@ -69,6 +69,53 @@ from app.config import settings
 from app.services.gateway_pagamento import AsaasService
 from app.services.supabase import get_supabase_service
 
+# Domain billing services
+from app.domain.billing.services.customer_sync_service import (
+    sincronizar_cliente,
+    match_lead_to_customer,
+    get_cached_customer,
+    resolve_customer_name,
+)
+from app.domain.billing.services.customer_deletion_service import (
+    processar_cliente_deletado,
+)
+from app.domain.billing.services.contract_sync_service import (
+    sincronizar_contrato,
+    processar_contrato_deletado,
+)
+from app.domain.billing.services.contract_extraction_service import (
+    processar_customer_created_background,
+    processar_subscription_created_background,
+    extract_text_from_pdf,
+    extract_contract_with_gemini,
+    extract_contract_from_image,
+    corrigir_valores_comerciais,
+    merge_contract_data,
+)
+from app.domain.billing.services.payment_sync_service import (
+    sincronizar_cobranca,
+    processar_cobranca_deletada,
+)
+from app.domain.billing.services.payment_confirmed_service import (
+    processar_pagamento_confirmado,
+    buscar_telefone_cliente,
+    atualizar_lead_pagamento,
+    processar_pagamento_recebido,
+)
+from app.domain.billing.services.payment_events_service import (
+    atualizar_status_cobranca,
+    processar_pagamento_vencido,
+    processar_pagamento_estornado,
+    processar_pagamento_estornado_parcial,
+    processar_chargeback_solicitado,
+    processar_chargeback_disputa,
+    processar_aguardando_reversao_chargeback,
+    processar_pagamento_restaurado,
+    processar_pagamento_dinheiro_desfeito,
+    processar_pagamento_antecipado,
+    processar_captura_cartao_recusada,
+)
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -250,9 +297,9 @@ async def asaas_webhook(request: Request, background_tasks: BackgroundTasks) -> 
         # ========================================================================
         if event == "CUSTOMER_CREATED" and customer:
             # Sincroniza cliente em asaas_clientes + processa PDF em background
-            await _sincronizar_cliente(supabase, customer, agent_id or LAZARO_AGENT_ID)
+            await sincronizar_cliente(supabase, customer, agent_id or LAZARO_AGENT_ID)
             background_tasks.add_task(
-                _processar_customer_created_background,
+                processar_customer_created_background,
                 customer_id=customer.get("id"),
                 customer_name=customer.get("name"),
                 agent_id=agent_id or LAZARO_AGENT_ID,
@@ -261,12 +308,12 @@ async def asaas_webhook(request: Request, background_tasks: BackgroundTasks) -> 
 
         elif event == "CUSTOMER_UPDATED" and customer:
             # Apenas sincroniza cliente em asaas_clientes
-            await _sincronizar_cliente(supabase, customer, agent_id or LAZARO_AGENT_ID)
+            await sincronizar_cliente(supabase, customer, agent_id or LAZARO_AGENT_ID)
             logger.info("[ASAAS WEBHOOK] CUSTOMER_UPDATED sincronizado: %s", customer.get("id"))
 
         elif event == "CUSTOMER_DELETED" and customer:
             # Soft delete do cliente e dados relacionados
-            await _processar_cliente_deletado(supabase, customer, agent_id or LAZARO_AGENT_ID)
+            await processar_cliente_deletado(supabase, customer, agent_id or LAZARO_AGENT_ID)
             logger.info("[ASAAS WEBHOOK] CUSTOMER_DELETED processado: %s", customer.get("id"))
 
         # ========================================================================
@@ -276,10 +323,10 @@ async def asaas_webhook(request: Request, background_tasks: BackgroundTasks) -> 
             # Sincroniza cliente (se vier no payload) e contrato em asaas_contratos + processa PDF em background
             # Importante: Asaas nem sempre manda CUSTOMER_CREATED quando cliente ja existe
             if customer:
-                await _sincronizar_cliente(supabase, customer, agent_id or LAZARO_AGENT_ID)
-            await _sincronizar_contrato(supabase, subscription, agent_id or LAZARO_AGENT_ID)
+                await sincronizar_cliente(supabase, customer, agent_id or LAZARO_AGENT_ID)
+            await sincronizar_contrato(supabase, subscription, agent_id or LAZARO_AGENT_ID)
             background_tasks.add_task(
-                _processar_subscription_created_background,
+                processar_subscription_created_background,
                 subscription_id=subscription.get("id"),
                 customer_id=subscription.get("customer"),
                 agent_id=agent_id or LAZARO_AGENT_ID,
@@ -292,12 +339,12 @@ async def asaas_webhook(request: Request, background_tasks: BackgroundTasks) -> 
 
         elif event == "SUBSCRIPTION_UPDATED" and subscription:
             # Apenas sincroniza contrato em asaas_contratos
-            await _sincronizar_contrato(supabase, subscription, agent_id or LAZARO_AGENT_ID)
+            await sincronizar_contrato(supabase, subscription, agent_id or LAZARO_AGENT_ID)
             logger.info("[ASAAS WEBHOOK] SUBSCRIPTION_UPDATED sincronizado: %s", subscription.get("id"))
 
         elif event == "SUBSCRIPTION_DELETED" and subscription:
             # Soft delete do contrato
-            await _processar_contrato_deletado(supabase, subscription, agent_id or LAZARO_AGENT_ID)
+            await processar_contrato_deletado(supabase, subscription, agent_id or LAZARO_AGENT_ID)
             logger.info("[ASAAS WEBHOOK] SUBSCRIPTION_DELETED processado: %s", subscription.get("id"))
 
         # ========================================================================
@@ -305,27 +352,27 @@ async def asaas_webhook(request: Request, background_tasks: BackgroundTasks) -> 
         # ========================================================================
         elif event == "PAYMENT_CREATED" and payment:
             # Sincroniza cobranca em asaas_cobrancas
-            await _sincronizar_cobranca(supabase, payment, agent_id or LAZARO_AGENT_ID)
+            await sincronizar_cobranca(supabase, payment, agent_id or LAZARO_AGENT_ID)
             logger.info("[ASAAS WEBHOOK] PAYMENT_CREATED sincronizado: %s", payment.get("id"))
 
         elif event == "PAYMENT_UPDATED" and payment:
             # Sincroniza cobranca em asaas_cobrancas
-            await _sincronizar_cobranca(supabase, payment, agent_id or LAZARO_AGENT_ID)
+            await sincronizar_cobranca(supabase, payment, agent_id or LAZARO_AGENT_ID)
             logger.info("[ASAAS WEBHOOK] PAYMENT_UPDATED sincronizado: %s", payment.get("id"))
 
         elif event == "PAYMENT_CONFIRMED" and payment:
             # Pagamento confirmado (saldo ainda nao disponivel)
-            await _processar_pagamento_confirmado(supabase, payment, agent_id)
+            await processar_pagamento_confirmado(supabase, payment, agent_id)
             logger.info("[ASAAS WEBHOOK] PAYMENT_CONFIRMED processado: %s", payment.get("id"))
 
         elif event == "PAYMENT_RECEIVED" and payment:
             # Pagamento recebido/pago (saldo disponivel)
-            await _processar_pagamento_recebido(supabase, payment, agent_id)
+            await processar_pagamento_recebido(supabase, payment, agent_id)
             logger.info("[ASAAS WEBHOOK] PAYMENT_RECEIVED processado: %s", payment.get("id"))
 
         elif event == "PAYMENT_OVERDUE" and payment:
             # Cobranca vencida
-            await _processar_pagamento_vencido(supabase, payment, agent_id)
+            await processar_pagamento_vencido(supabase, payment, agent_id)
             logger.info("[ASAAS WEBHOOK] PAYMENT_OVERDUE processado: %s", payment.get("id"))
 
         elif event == "PAYMENT_CHECKOUT_VIEWED" and payment:
@@ -340,7 +387,7 @@ async def asaas_webhook(request: Request, background_tasks: BackgroundTasks) -> 
 
         elif event == "PAYMENT_DELETED" and payment:
             # Soft delete da cobranca
-            await _processar_cobranca_deletada(supabase, payment, agent_id or LAZARO_AGENT_ID)
+            await processar_cobranca_deletada(supabase, payment, agent_id or LAZARO_AGENT_ID)
             logger.info("[ASAAS WEBHOOK] PAYMENT_DELETED processado: %s", payment.get("id"))
 
         # ========================================================================
@@ -348,27 +395,27 @@ async def asaas_webhook(request: Request, background_tasks: BackgroundTasks) -> 
         # ========================================================================
         elif event == "PAYMENT_REFUNDED" and payment:
             # Cobrança estornada (devolução total)
-            await _processar_pagamento_estornado(supabase, payment, agent_id)
+            await processar_pagamento_estornado(supabase, payment, agent_id)
             logger.info("[ASAAS WEBHOOK] PAYMENT_REFUNDED processado: %s", payment.get("id"))
 
         elif event == "PAYMENT_PARTIALLY_REFUNDED" and payment:
             # Cobrança parcialmente estornada
-            await _processar_pagamento_estornado_parcial(supabase, payment, agent_id)
+            await processar_pagamento_estornado_parcial(supabase, payment, agent_id)
             logger.info("[ASAAS WEBHOOK] PAYMENT_PARTIALLY_REFUNDED processado: %s", payment.get("id"))
 
         elif event == "PAYMENT_CHARGEBACK_REQUESTED" and payment:
             # CRÍTICO: Chargeback solicitado - requer ação imediata
-            await _processar_chargeback_solicitado(supabase, payment, agent_id)
+            await processar_chargeback_solicitado(supabase, payment, agent_id)
             logger.warning("[ASAAS WEBHOOK] PAYMENT_CHARGEBACK_REQUESTED processado: %s", payment.get("id"))
 
         elif event == "PAYMENT_CHARGEBACK_DISPUTE" and payment:
             # Chargeback em disputa
-            await _processar_chargeback_disputa(supabase, payment, agent_id)
+            await processar_chargeback_disputa(supabase, payment, agent_id)
             logger.info("[ASAAS WEBHOOK] PAYMENT_CHARGEBACK_DISPUTE processado: %s", payment.get("id"))
 
         elif event == "PAYMENT_AWAITING_CHARGEBACK_REVERSAL" and payment:
             # Aguardando reversão de chargeback
-            await _processar_aguardando_reversao_chargeback(supabase, payment, agent_id)
+            await processar_aguardando_reversao_chargeback(supabase, payment, agent_id)
             logger.info("[ASAAS WEBHOOK] PAYMENT_AWAITING_CHARGEBACK_REVERSAL processado: %s", payment.get("id"))
 
         # ========================================================================
@@ -376,22 +423,22 @@ async def asaas_webhook(request: Request, background_tasks: BackgroundTasks) -> 
         # ========================================================================
         elif event == "PAYMENT_RESTORED" and payment:
             # Cobrança restaurada (ex: após reversão de chargeback)
-            await _processar_pagamento_restaurado(supabase, payment, agent_id)
+            await processar_pagamento_restaurado(supabase, payment, agent_id)
             logger.info("[ASAAS WEBHOOK] PAYMENT_RESTORED processado: %s", payment.get("id"))
 
         elif event == "PAYMENT_RECEIVED_IN_CASH_UNDONE" and payment:
             # Confirmação de dinheiro desfeita
-            await _processar_pagamento_dinheiro_desfeito(supabase, payment, agent_id)
+            await processar_pagamento_dinheiro_desfeito(supabase, payment, agent_id)
             logger.info("[ASAAS WEBHOOK] PAYMENT_RECEIVED_IN_CASH_UNDONE processado: %s", payment.get("id"))
 
         elif event == "PAYMENT_ANTICIPATED" and payment:
             # Cobrança antecipada
-            await _processar_pagamento_antecipado(supabase, payment, agent_id)
+            await processar_pagamento_antecipado(supabase, payment, agent_id)
             logger.info("[ASAAS WEBHOOK] PAYMENT_ANTICIPATED processado: %s", payment.get("id"))
 
         elif event == "PAYMENT_CREDIT_CARD_CAPTURE_REFUSED" and payment:
             # Captura do cartão recusada
-            await _processar_captura_cartao_recusada(supabase, payment, agent_id)
+            await processar_captura_cartao_recusada(supabase, payment, agent_id)
             logger.info("[ASAAS WEBHOOK] PAYMENT_CREDIT_CARD_CAPTURE_REFUSED processado: %s", payment.get("id"))
 
         logger.debug("[ASAAS WEBHOOK] Processado com sucesso")
@@ -476,7 +523,7 @@ async def reprocess_contract(
 
         # Agendar reprocessamento em background com force_reprocess=True
         background_tasks.add_task(
-            _processar_subscription_created_background,
+            processar_subscription_created_background,
             subscription_id=subscription_id,
             customer_id=customer_id,
             agent_id=agent_id,
@@ -588,7 +635,7 @@ async def _sincronizar_cliente(
         # Tenta vincular o cliente recém-criado a um lead existente
         # ================================================================
         try:
-            await _match_lead_to_customer(
+            await match_lead_to_customer(
                 supabase=supabase,
                 agent_id=agent_id,
                 customer_id=customer_id,
@@ -963,7 +1010,7 @@ async def _sincronizar_contrato(
 
         if customer_id:
             # 1. Verificar cache local primeiro (TTL: 5 minutos)
-            cached_customer = await _get_cached_customer(supabase, customer_id, agent_id)
+            cached_customer = await get_cached_customer(supabase, customer_id, agent_id)
 
             if cached_customer:
                 # Cache hit - usar dados do cache
@@ -1000,7 +1047,7 @@ async def _sincronizar_contrato(
 
                         if customer_from_api:
                             # Sincronizar cliente em asaas_clientes
-                            await _sincronizar_cliente(supabase, customer_from_api, agent_id)
+                            await sincronizar_cliente(supabase, customer_from_api, agent_id)
 
                             # Usar nome do cliente da API
                             customer_name = customer_from_api.get("name", "Desconhecido")
@@ -1282,7 +1329,7 @@ async def _sincronizar_cobranca(
 
         if customer_id:
             # 1. Verificar cache local primeiro (TTL: 5 minutos)
-            cached_customer = await _get_cached_customer(supabase, customer_id, agent_id)
+            cached_customer = await get_cached_customer(supabase, customer_id, agent_id)
 
             if cached_customer:
                 # Cache hit - usar dados do cache
@@ -1319,7 +1366,7 @@ async def _sincronizar_cobranca(
 
                         if customer_from_api:
                             # Sincronizar cliente em asaas_clientes
-                            await _sincronizar_cliente(supabase, customer_from_api, agent_id)
+                            await sincronizar_cliente(supabase, customer_from_api, agent_id)
 
                             # Usar nome do cliente da API
                             customer_name = customer_from_api.get("name", "Desconhecido")
@@ -1580,22 +1627,22 @@ async def _processar_customer_created_background(
 
                         if doc_name_lower.endswith(".pdf"):
                             # Fluxo PDF: pymupdf + Gemini Text
-                            pdf_text = _extract_text_from_pdf(doc_bytes)
+                            pdf_text = extract_text_from_pdf(doc_bytes)
 
                             if not pdf_text or len(pdf_text.strip()) < 50:
                                 logger.warning("[CUSTOMER_CREATED] PDF %s sem texto legivel", doc_name)
                                 continue
 
                             logger.info("[CUSTOMER_CREATED] Extraindo dados do PDF com Gemini...")
-                            contract_data = await _extract_contract_with_gemini(pdf_text)
+                            contract_data = await extract_contract_with_gemini(pdf_text)
                         else:
                             # Fluxo Imagem: Gemini Vision direto
                             logger.info("[CUSTOMER_CREATED] Extraindo dados da imagem com Gemini Vision...")
-                            contract_data = await _extract_contract_from_image(doc_bytes, doc_name)
+                            contract_data = await extract_contract_from_image(doc_bytes, doc_name)
 
                         if contract_data:
                             # Corrigir valores que parecem errados (2.70 -> 2700.00)
-                            contract_data = _corrigir_valores_comerciais(contract_data)
+                            contract_data = corrigir_valores_comerciais(contract_data)
                             all_contract_data.append(contract_data)
                             all_pdf_data.append({
                                 "payment_id": payment_id,
@@ -1619,7 +1666,7 @@ async def _processar_customer_created_background(
                 continue
 
             # 6. Merge dados de todos os PDFs
-            merged_data = _merge_contract_data(all_contract_data)
+            merged_data = merge_contract_data(all_contract_data)
 
             # Calcular campos derivados
             equipamentos = merged_data.get("equipamentos", [])
@@ -1833,22 +1880,22 @@ async def _processar_subscription_created_background(
 
                     if doc_name_lower.endswith(".pdf"):
                         # Fluxo PDF: pymupdf + Gemini Text
-                        pdf_text = _extract_text_from_pdf(doc_bytes)
+                        pdf_text = extract_text_from_pdf(doc_bytes)
 
                         if not pdf_text or len(pdf_text.strip()) < 50:
                             logger.warning("[SUBSCRIPTION_CREATED] PDF %s sem texto legivel", doc_name)
                             continue
 
                         logger.info("[SUBSCRIPTION_CREATED] Extraindo dados do PDF com Gemini...")
-                        contract_data = await _extract_contract_with_gemini(pdf_text)
+                        contract_data = await extract_contract_with_gemini(pdf_text)
                     else:
                         # Fluxo Imagem: Gemini Vision direto
                         logger.info("[SUBSCRIPTION_CREATED] Extraindo dados da imagem com Gemini Vision...")
-                        contract_data = await _extract_contract_from_image(doc_bytes, doc_name)
+                        contract_data = await extract_contract_from_image(doc_bytes, doc_name)
 
                     if contract_data:
                         # Corrigir valores que parecem errados (2.70 -> 2700.00)
-                        contract_data = _corrigir_valores_comerciais(contract_data)
+                        contract_data = corrigir_valores_comerciais(contract_data)
                         all_contract_data.append(contract_data)
                         all_pdf_data.append({
                             "payment_id": payment_id,
@@ -1872,7 +1919,7 @@ async def _processar_subscription_created_background(
             return
 
         # Merge dados de todos os PDFs
-        merged_data = _merge_contract_data(all_contract_data)
+        merged_data = merge_contract_data(all_contract_data)
 
         # Calcular campos derivados
         equipamentos = merged_data.get("equipamentos", [])
@@ -2500,7 +2547,7 @@ async def _atualizar_lead_pagamento(
 
     # 2.3 - Fallback: buscar telefone via função existente
     if not lead:
-        telefone = await _buscar_telefone_cliente(supabase, customer_id, payment_id)
+        telefone = await buscar_telefone_cliente(supabase, customer_id, payment_id)
         if telefone:
             try:
                 lead_result = (
@@ -2645,7 +2692,7 @@ async def _processar_pagamento_recebido(
     customer_id = payment.get("customer", "")
     if agent_id and customer_id:
         try:
-            await _atualizar_lead_pagamento(
+            await atualizar_lead_pagamento(
                 supabase, agent_id, customer_id, payment_id,
                 payment_value=value
             )
@@ -2766,7 +2813,7 @@ async def _processar_pagamento_estornado(
         "ia_recebeu_step": None,
         "ia_recebeu_days_from_due": None,
     }
-    await _atualizar_status_cobranca(
+    await atualizar_status_cobranca(
         supabase, payment, agent_id,
         status="REFUNDED",
         extra_fields=extra_fields,
@@ -2797,7 +2844,7 @@ async def _processar_pagamento_estornado_parcial(
         "ia_recebeu_step": None,
         "ia_recebeu_days_from_due": None,
     }
-    await _atualizar_status_cobranca(
+    await atualizar_status_cobranca(
         supabase, payment, agent_id,
         status="PARTIALLY_REFUNDED",
         extra_fields=extra_fields,
@@ -2828,7 +2875,7 @@ async def _processar_chargeback_solicitado(
         "ia_recebeu_step": None,
         "ia_recebeu_days_from_due": None,
     }
-    await _atualizar_status_cobranca(
+    await atualizar_status_cobranca(
         supabase, payment, agent_id,
         status="CHARGEBACK_REQUESTED",
         extra_fields=extra_fields,
@@ -2857,7 +2904,7 @@ async def _processar_chargeback_disputa(
     extra_fields = {
         "chargeback_dispute_at": datetime.utcnow().isoformat(),
     }
-    await _atualizar_status_cobranca(
+    await atualizar_status_cobranca(
         supabase, payment, agent_id,
         status="CHARGEBACK_DISPUTE",
         extra_fields=extra_fields,
@@ -2879,7 +2926,7 @@ async def _processar_aguardando_reversao_chargeback(
 
     Aguardando reversão do chargeback pela bandeira.
     """
-    await _atualizar_status_cobranca(
+    await atualizar_status_cobranca(
         supabase, payment, agent_id,
         status="AWAITING_CHARGEBACK_REVERSAL",
         billing_status="chargeback",
@@ -2907,7 +2954,7 @@ async def _processar_pagamento_restaurado(
         "chargeback_dispute_at": None,
         "refund_date": None,
     }
-    await _atualizar_status_cobranca(
+    await atualizar_status_cobranca(
         supabase, payment, agent_id,
         status="PENDING",
         extra_fields=extra_fields,
@@ -2930,7 +2977,7 @@ async def _processar_pagamento_dinheiro_desfeito(
     Confirmação de recebimento em dinheiro foi desfeita.
     Volta ao status PENDING.
     """
-    await _atualizar_status_cobranca(
+    await atualizar_status_cobranca(
         supabase, payment, agent_id,
         status="PENDING",
         billing_status="pending",
@@ -2954,7 +3001,7 @@ async def _processar_pagamento_antecipado(
     extra_fields = {
         "anticipated_at": datetime.utcnow().isoformat(),
     }
-    await _atualizar_status_cobranca(
+    await atualizar_status_cobranca(
         supabase, payment, agent_id,
         status="RECEIVED",
         extra_fields=extra_fields,
@@ -2976,7 +3023,7 @@ async def _processar_captura_cartao_recusada(
 
     Captura do cartão de crédito foi recusada após pré-autorização.
     """
-    await _atualizar_status_cobranca(
+    await atualizar_status_cobranca(
         supabase, payment, agent_id,
         status="FAILED",
         billing_status="failed",
