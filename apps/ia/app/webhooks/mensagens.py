@@ -1259,6 +1259,34 @@ class WhatsAppWebhookHandler:
             logger.info(f"Bot pausado para {phone}, mensagem ignorada")
             return {"status": "ignored", "reason": "bot_paused"}
 
+        # ====================================================================
+        # VERIFICAÇÃO EXTRA: Ticket ativo com atendente humano em fila não-IA
+        # Defesa em profundidade: mesmo que is_lead_paused tenha passado,
+        # verificar se ticket está em fila de atendimento humano
+        # ====================================================================
+        ticket_id = lead.get("ticket_id")
+        current_user_id = lead.get("current_user_id")
+        if ticket_id and current_user_id:
+            lead_queue_id = lead.get("current_queue_id")
+            # IA_QUEUES já foi definido na verificação de fila do Leadbox (linha ~1196)
+            if lead_queue_id:
+                try:
+                    lead_queue_int = int(lead_queue_id)
+                    if lead_queue_int not in IA_QUEUES:
+                        logger.info(
+                            f"[TICKET CHECK] Lead {phone} tem ticket ativo "
+                            f"(ticket_id={ticket_id}, queue={lead_queue_id}) "
+                            f"fora das filas IA {IA_QUEUES} - ignorando"
+                        )
+                        return {"status": "ignored", "reason": "ticket_active_human"}
+                except (ValueError, TypeError):
+                    # Se não conseguir converter queue_id, assume que está com humano
+                    logger.warning(
+                        f"[TICKET CHECK] Lead {phone} tem ticket ativo "
+                        f"(ticket_id={ticket_id}) com queue_id inválido ({lead_queue_id}) - ignorando"
+                    )
+                    return {"status": "ignored", "reason": "ticket_active_invalid_queue"}
+
         # DEBUG 3: Adicionando ao buffer
         logger.debug(f"[DEBUG 3/6] ADICIONANDO AO BUFFER:")
         logger.debug(f"  -> Agent ID: {agent_id}")
