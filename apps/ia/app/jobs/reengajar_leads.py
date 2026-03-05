@@ -37,12 +37,6 @@ def _log(msg: str, data: Any = None) -> None:
     logger.info(f"{LOG_PREFIX} {msg}{extra}")
 
 
-def _log_warn(msg: str) -> None:
-    logger.warning(f"{LOG_PREFIX} {msg}")
-
-
-def _log_error(msg: str) -> None:
-    logger.error(f"{LOG_PREFIX} {msg}")
 
 
 async def run_follow_up_job() -> Dict[str, Any]:
@@ -54,11 +48,11 @@ async def run_follow_up_job() -> Dict[str, Any]:
     global _is_running
 
     if _is_running:
-        _log_warn("Job ja esta em execucao, pulando...")
+        logger.warning("[REENGAJAR LEADS] Job ja esta em execucao, pulando...")
         return {"status": "skipped", "reason": "already_running"}
 
     _is_running = True
-    _log("Iniciando job de follow-up...")
+    logger.info("[REENGAJAR LEADS] Iniciando job de follow-up...")
 
     total_stats = {
         "sent": 0, "skipped": 0, "errors": 0,
@@ -67,16 +61,16 @@ async def run_follow_up_job() -> Dict[str, Any]:
 
     try:
         agents = await get_agents_with_follow_up()
-        _log(f"Encontrados {len(agents)} agentes com follow-up habilitado")
+        logger.info(f"[REENGAJAR LEADS] Encontrados {len(agents)} agentes com follow-up habilitado")
 
         if not agents:
-            _log("Nenhum agente com follow-up habilitado encontrado")
+            logger.info("[REENGAJAR LEADS] Nenhum agente com follow-up habilitado encontrado")
             return {"status": "completed", "stats": total_stats, "message": "no_agents"}
 
         for agent in agents:
             agent_name = agent.get("name", "Unknown")
             agent_id = agent.get("id", "")
-            _log(f"Processando agente: {agent_name} ({agent_id[:8]}...)")
+            logger.info(f"[REENGAJAR LEADS] Processando agente: {agent_name} ({agent_id[:8]}...)")
 
             try:
                 agent_stats = await process_agent_follow_up(agent)
@@ -84,10 +78,10 @@ async def run_follow_up_job() -> Dict[str, Any]:
                 total_stats["skipped"] += agent_stats.get("skipped", 0)
                 total_stats["errors"] += agent_stats.get("errors", 0)
                 total_stats["agents_processed"] += 1
-                _log(f"Agente {agent_name}: {agent_stats}")
+                logger.info(f"[REENGAJAR LEADS] Agente {agent_name}: {agent_stats}")
             except Exception as e:
-                _log_error(f"Erro ao processar agente {agent_name}: {e}")
-                _log_error(traceback.format_exc())
+                logger.error(f"[REENGAJAR LEADS] Erro ao processar agente {agent_name}: {e}")
+                logger.error(traceback.format_exc())
                 total_stats["errors"] += 1
 
         _log(
@@ -98,8 +92,8 @@ async def run_follow_up_job() -> Dict[str, Any]:
         return {"status": "completed", "stats": total_stats}
 
     except Exception as e:
-        _log_error(f"Erro no processamento: {e}")
-        _log_error(traceback.format_exc())
+        logger.error(f"[REENGAJAR LEADS] Erro no processamento: {e}")
+        logger.error(traceback.format_exc())
         return {"status": "error", "error": str(e)}
 
     finally:
@@ -119,11 +113,11 @@ async def _force_run_follow_up() -> Dict[str, Any]:
     global _is_running
 
     if _is_running:
-        _log_warn("Job ja esta em execucao, pulando...")
+        logger.warning("[REENGAJAR LEADS] Job ja esta em execucao, pulando...")
         return {"status": "skipped", "reason": "already_running"}
 
     _is_running = True
-    _log("=== EXECUCAO FORCADA (ignorando horario/dia util) ===")
+    logger.info("[REENGAJAR LEADS] === EXECUCAO FORCADA (ignorando horario/dia util) ===")
 
     total_stats = {
         "sent": 0, "skipped": 0, "errors": 0,
@@ -153,16 +147,16 @@ async def _force_run_follow_up() -> Dict[str, Any]:
             if a.get("uazapi_base_url") and a.get("uazapi_token")
         ]
 
-        _log(f"Encontrados {len(agents)} agentes com follow-up habilitado")
+        logger.info(f"[REENGAJAR LEADS] Encontrados {len(agents)} agentes com follow-up habilitado")
 
         if not agents:
-            _log("Nenhum agente com follow-up habilitado encontrado")
+            logger.info("[REENGAJAR LEADS] Nenhum agente com follow-up habilitado encontrado")
             return {"status": "completed", "stats": total_stats, "message": "no_agents"}
 
         for agent in agents:
             agent_name = agent.get("name", "Unknown")
             agent_id = agent.get("id", "")
-            _log(f"Processando agente: {agent_name} ({agent_id})")
+            logger.info(f"[REENGAJAR LEADS] Processando agente: {agent_name} ({agent_id})")
 
             try:
                 # force_mode=True ignora schedule (horario/dia)
@@ -171,10 +165,10 @@ async def _force_run_follow_up() -> Dict[str, Any]:
                 total_stats["skipped"] += agent_stats.get("skipped", 0)
                 total_stats["errors"] += agent_stats.get("errors", 0)
                 total_stats["agents_processed"] += 1
-                _log(f"Agente {agent_name}: {agent_stats}")
+                logger.info(f"[REENGAJAR LEADS] Agente {agent_name}: {agent_stats}")
             except Exception as e:
-                _log_error(f"Erro ao processar agente {agent_name}: {e}")
-                _log_error(traceback.format_exc())
+                logger.error(f"[REENGAJAR LEADS] Erro ao processar agente {agent_name}: {e}")
+                logger.error(traceback.format_exc())
                 total_stats["errors"] += 1
 
         _log(
@@ -185,8 +179,8 @@ async def _force_run_follow_up() -> Dict[str, Any]:
         return {"status": "completed", "stats": total_stats}
 
     except Exception as e:
-        _log_error(f"Erro no processamento: {e}")
-        _log_error(traceback.format_exc())
+        logger.error(f"[REENGAJAR LEADS] Erro no processamento: {e}")
+        logger.error(traceback.format_exc())
         return {"status": "error", "error": str(e)}
 
     finally:

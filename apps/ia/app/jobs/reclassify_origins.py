@@ -426,8 +426,8 @@ if __name__ == "__main__":
         limit=args.limit,
     ))
 
-    # Imprimir resultado final
-    print("\n" + "=" * 60)
-    print("RESULTADO FINAL:")
-    print(json.dumps(stats, indent=2, ensure_ascii=False))
-    print("=" * 60)
+    # Log resultado final
+    logger.info("\n" + "=" * 60)
+    logger.info("RESULTADO FINAL:")
+    logger.info(json.dumps(stats, indent=2, ensure_ascii=False))
+    logger.info("=" * 60)

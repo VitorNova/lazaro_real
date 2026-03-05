@@ -34,19 +34,6 @@ from app.domain.billing.services import (
 logger = logging.getLogger(__name__)
 
 
-def _log(msg: str) -> None:
-    """Log com prefixo do job."""
-    logger.info(f"[BILLING JOB] {msg}")
-
-
-def _log_warn(msg: str) -> None:
-    logger.warning(f"[BILLING JOB] {msg}")
-
-
-def _log_error(msg: str) -> None:
-    logger.error(f"[BILLING JOB] {msg}")
-
-
 async def process_billing_charges() -> Dict[str, Any]:
     """
     Processa todos os agentes com Asaas configurado.
@@ -61,22 +48,22 @@ async def process_billing_charges() -> Dict[str, Any]:
     # So executa em dias uteis
     if not is_business_day(today):
         await release_billing_lock()
-        _log("Hoje nao e dia util, pulando execucao")
+        logger.info("[BILLING JOB] Hoje nao e dia util, pulando execucao")
         return {"status": "skipped", "reason": "not_business_day"}
 
     # Verifica horario comercial (8h-20h)
     if not is_business_hours(8, 20):
         await release_billing_lock()
-        _log("Fora do horario comercial, pulando execucao")
+        logger.info("[BILLING JOB] Fora do horario comercial, pulando execucao")
         return {"status": "skipped", "reason": "outside_business_hours"}
 
-    _log("Iniciando processamento de cobrancas...")
+    logger.info("[BILLING JOB] Iniciando processamento de cobrancas...")
 
     total_stats = {"sent": 0, "skipped": 0, "errors": 0, "agents_processed": 0}
 
     try:
         agents = await get_agents_with_asaas()
-        _log(f"Encontrados {len(agents)} agentes com Asaas configurado")
+        logger.info(f"[BILLING JOB] Encontrados {len(agents)} agentes com Asaas configurado")
 
         for agent in agents:
             try:
@@ -86,17 +73,17 @@ async def process_billing_charges() -> Dict[str, Any]:
                 total_stats["errors"] += agent_stats["errors"]
                 total_stats["agents_processed"] += 1
             except Exception as e:
-                _log_error(f"Erro ao processar agente {agent.get('name')}: {e}")
+                logger.error(f"[BILLING JOB] Erro ao processar agente {agent.get('name')}: {e}")
 
-        _log(
-            f"Job finalizado: {total_stats['sent']} mensagens enviadas, "
+        logger.info(
+            f"[BILLING JOB] Job finalizado: {total_stats['sent']} mensagens enviadas, "
             f"{total_stats['skipped']} puladas, {total_stats['errors']} erros"
         )
 
         return {"status": "completed", "stats": total_stats}
 
     except Exception as e:
-        _log_error(f"Erro no processamento de cobrancas: {e}")
+        logger.error(f"[BILLING JOB] Erro no processamento de cobrancas: {e}")
         return {"status": "error", "error": str(e)}
 
     finally:
@@ -105,7 +92,7 @@ async def process_billing_charges() -> Dict[str, Any]:
 
 async def run_billing_charge_job() -> Dict[str, Any]:
     """Entry point para o scheduler / execucao manual."""
-    _log("Executando billing charge job...")
+    logger.info("[BILLING JOB] Executando billing charge job...")
     return await process_billing_charges()
 
 
@@ -122,41 +109,41 @@ async def _force_run_billing_charge() -> Dict[str, Any]:
     if not await acquire_billing_lock():
         return {"status": "skipped", "reason": "already_running"}
 
-    _log("=== EXECUCAO FORCADA (ignorando horario/dia util) ===")
+    logger.info("[BILLING JOB] === EXECUCAO FORCADA (ignorando horario/dia util) ===")
 
     total_stats = {"sent": 0, "skipped": 0, "errors": 0, "agents_processed": 0}
 
     try:
         agents = await get_agents_with_asaas()
-        _log(f"Encontrados {len(agents)} agentes com Asaas configurado")
+        logger.info(f"[BILLING JOB] Encontrados {len(agents)} agentes com Asaas configurado")
 
         if not agents:
-            _log("Nenhum agente com Asaas configurado encontrado")
+            logger.info("[BILLING JOB] Nenhum agente com Asaas configurado encontrado")
             return {"status": "completed", "stats": total_stats, "message": "no_agents"}
 
         for agent in agents:
-            _log(f"Processando agente: {agent.get('name')} ({agent.get('id')})")
+            logger.info(f"[BILLING JOB] Processando agente: {agent.get('name')} ({agent.get('id')})")
             try:
                 agent_stats = await process_agent_billing(agent)
                 total_stats["sent"] += agent_stats.get("sent", 0)
                 total_stats["skipped"] += agent_stats.get("skipped", 0)
                 total_stats["errors"] += agent_stats.get("errors", 0)
                 total_stats["agents_processed"] += 1
-                _log(f"Agente {agent.get('name')}: {agent_stats}")
+                logger.info(f"[BILLING JOB] Agente {agent.get('name')}: {agent_stats}")
             except Exception as e:
-                _log_error(f"Erro ao processar agente {agent.get('name')}: {e}")
-                _log_error(traceback.format_exc())
+                logger.error(f"[BILLING JOB] Erro ao processar agente {agent.get('name')}: {e}")
+                logger.error(traceback.format_exc())
 
-        _log(
-            f"=== Job finalizado: {total_stats['sent']} enviadas, "
+        logger.info(
+            f"[BILLING JOB] === Job finalizado: {total_stats['sent']} enviadas, "
             f"{total_stats['skipped']} puladas, {total_stats['errors']} erros ==="
         )
 
         return {"status": "completed", "stats": total_stats}
 
     except Exception as e:
-        _log_error(f"Erro no processamento: {e}")
-        _log_error(traceback.format_exc())
+        logger.error(f"[BILLING JOB] Erro no processamento: {e}")
+        logger.error(traceback.format_exc())
         return {"status": "error", "error": str(e)}
 
     finally:

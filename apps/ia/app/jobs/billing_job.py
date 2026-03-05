@@ -64,23 +64,9 @@ from app.domain.billing.services.billing_rules import (
 )
 from app.core.utils.phone import get_customer_phone
 
-logger = logging.getLogger(__name__)
-
-
-def _log(msg: str) -> None:
-    """Log com prefixo do job."""
-    logger.info(f"[BILLING JOB] {msg}")
-
-
-def _log_warn(msg: str) -> None:
-    logger.warning(f"[BILLING JOB] {msg}")
-
-
-def _log_error(msg: str) -> None:
-    logger.error(f"[BILLING JOB] {msg}")
-
-
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
 async def process_agent_billing(agent: Dict[str, Any]) -> Dict[str, int]:
@@ -106,7 +92,7 @@ async def process_agent_billing(agent: Dict[str, Any]) -> Dict[str, int]:
     auto_collection = asaas_config.get("autoCollection") or {}
 
     if auto_collection.get("enabled") is False:
-        _log(f"Cobranca automatica desabilitada para: {agent.get('name')}")
+        logger.info(f"[BILLING JOB] Cobranca automatica desabilitada para: {agent.get('name')}")
         return stats
 
     # Configuracoes da regua (D-2 e D-1 por padrao)
@@ -119,7 +105,7 @@ async def process_agent_billing(agent: Dict[str, Any]) -> Dict[str, int]:
     }
     messages = auto_collection.get("messages") or {}
 
-    _log(f"Processando cobranca para agente: {agent.get('name')} ({agent['id'][:8]}...)")
+    logger.info(f"[BILLING JOB] Processando cobranca para agente: {agent.get('name')} ({agent['id'][:8]}...)")
 
     today = get_today_brasilia()
     today_str = format_date(today)
@@ -144,7 +130,7 @@ async def process_agent_billing(agent: Dict[str, Any]) -> Dict[str, int]:
         )
 
         if not claimed:
-            _log(f"Notificacao ja enviada para {payment['id']} ({notification_type})")
+            logger.info(f"[BILLING JOB] Notificacao ja enviada para {payment['id']} ({notification_type})")
             stats["skipped"] += 1
             return False
 
@@ -216,12 +202,12 @@ async def process_agent_billing(agent: Dict[str, Any]) -> Dict[str, int]:
                     "ia_ultima_notificacao_at": datetime.utcnow().isoformat(),
                 }).eq("id", payment["id"]).eq("agent_id", agent["id"]).execute()
             except Exception as e:
-                _log_warn(f"Erro ao marcar ia_cobrou em asaas_cobrancas: {e}")
+                logger.warning(f"[BILLING JOB] Erro ao marcar ia_cobrou em asaas_cobrancas: {e}")
 
             await update_notification_status(
                 agent["id"], payment["id"], notification_type, today_str, "sent"
             )
-            _log(f"Notificacao enviada: {payment['id']} ({notification_type}) -> {mask_phone(phone)}")
+            logger.info(f"[BILLING JOB] Notificacao enviada: {payment['id']} ({notification_type}) -> {mask_phone(phone)}")
             stats["sent"] += 1
             return True
 
@@ -230,7 +216,7 @@ async def process_agent_billing(agent: Dict[str, Any]) -> Dict[str, int]:
             await update_notification_status(
                 agent["id"], payment["id"], notification_type, today_str, "failed", error_msg
             )
-            _log_error(f"Erro ao enviar notificacao {payment['id']}: {error_msg}")
+            logger.error(f"[BILLING JOB] Erro ao enviar notificacao {payment['id']}: {error_msg}")
 
             # Log failure in unified dispatch_log table
             dispatch_logger = get_dispatch_logger()
@@ -266,7 +252,7 @@ async def process_agent_billing(agent: Dict[str, Any]) -> Dict[str, int]:
         if format_date(anticipated_date) != today_str and format_date(target_due_date) != today_str:
             continue
 
-        _log(f"Buscando pagamentos com vencimento em {format_date(target_due_date)} ({days_ahead} dias uteis)")
+        logger.info(f"[BILLING JOB] Buscando pagamentos com vencimento em {format_date(target_due_date)} ({days_ahead} dias uteis)")
 
         payments, source = await fetch_payments_with_fallback(
             agent=agent,
@@ -288,7 +274,7 @@ async def process_agent_billing(agent: Dict[str, Any]) -> Dict[str, int]:
 
             phone = get_customer_phone(payment)
             if not phone:
-                _log_warn(f"Cliente {mask_customer_name(payment.get('customer_name', 'Desconhecido'))} sem telefone valido")
+                logger.warning(f"[BILLING JOB] Cliente {mask_customer_name(payment.get('customer_name', 'Desconhecido'))} sem telefone valido")
                 continue
 
             template = messages.get("reminderTemplate") or DEFAULT_MESSAGES["reminder"]
@@ -307,7 +293,7 @@ async def process_agent_billing(agent: Dict[str, Any]) -> Dict[str, int]:
     # 2. NOTIFICACAO NO DIA DO VENCIMENTO
     # ========================================================================
     if on_due_date:
-        _log(f"Buscando pagamentos com vencimento hoje ({today_str})")
+        logger.info(f"[BILLING JOB] Buscando pagamentos com vencimento hoje ({today_str})")
 
         payments, source = await fetch_payments_with_fallback(
             agent=agent,
@@ -329,7 +315,7 @@ async def process_agent_billing(agent: Dict[str, Any]) -> Dict[str, int]:
 
             phone = get_customer_phone(payment)
             if not phone:
-                _log_warn(f"Cliente {mask_customer_name(payment.get('customer_name', 'Desconhecido'))} sem telefone valido")
+                logger.warning(f"[BILLING JOB] Cliente {mask_customer_name(payment.get('customer_name', 'Desconhecido'))} sem telefone valido")
                 continue
 
             template = messages.get("dueDateTemplate") or DEFAULT_MESSAGES["dueDate"]
@@ -350,7 +336,7 @@ async def process_agent_billing(agent: Dict[str, Any]) -> Dict[str, int]:
         max_attempts = after_due.get("maxAttempts", 15)
         overdue_days_list = after_due.get("overdueDays") or list(range(1, 16))
 
-        _log(f"Buscando pagamentos vencidos (max: {max_attempts} tentativas, agrupado por cliente)")
+        logger.info(f"[BILLING JOB] Buscando pagamentos vencidos (max: {max_attempts} tentativas, agrupado por cliente)")
 
         thirty_days_ago = subtract_business_days(today, 30)
         yesterday = subtract_business_days(today, 1)
@@ -382,7 +368,7 @@ async def process_agent_billing(agent: Dict[str, Any]) -> Dict[str, int]:
             elif isinstance(due_date_val, date):
                 due_date_parsed = due_date_val
             else:
-                _log_warn(f"Pagamento {payment['id']} sem due_date valido, pulando")
+                logger.warning(f"[BILLING JOB] Pagamento {payment['id']} sem due_date valido, pulando")
                 continue
 
             days_overdue = (today - due_date_parsed).days
@@ -392,12 +378,12 @@ async def process_agent_billing(agent: Dict[str, Any]) -> Dict[str, int]:
 
             sent_count = await get_sent_count(agent["id"], payment["id"])
             if sent_count >= max_attempts:
-                _log(f"Pagamento {payment['id']} atingiu maximo de tentativas ({max_attempts})")
+                logger.info(f"[BILLING JOB] Pagamento {payment['id']} atingiu maximo de tentativas ({max_attempts})")
                 continue
 
             eligible.append((payment, days_overdue))
 
-        _log(f"{len(eligible)} pagamentos elegiveis para cobranca")
+        logger.info(f"[BILLING JOB] {len(eligible)} pagamentos elegiveis para cobranca")
 
         # Fase 3b: Agrupar por cliente
         grouped: Dict[str, List[Tuple[Dict[str, Any], int]]] = {}
@@ -407,14 +393,14 @@ async def process_agent_billing(agent: Dict[str, Any]) -> Dict[str, int]:
                 grouped[customer_id] = []
             grouped[customer_id].append((payment, days_ov))
 
-        _log(f"{len(grouped)} clientes para cobrar ({len(eligible)} faturas)")
+        logger.info(f"[BILLING JOB] {len(grouped)} clientes para cobrar ({len(eligible)} faturas)")
 
         # Fase 3c: Enviar 1 mensagem por cliente
         for customer_id, customer_payments in grouped.items():
             first_payment_data = customer_payments[0][0]
             phone = get_customer_phone(first_payment_data)
             if not phone:
-                _log_warn(f"Cliente {mask_customer_name(first_payment_data.get('customer_name', 'Desconhecido'))} sem telefone valido")
+                logger.warning(f"[BILLING JOB] Cliente {mask_customer_name(first_payment_data.get('customer_name', 'Desconhecido'))} sem telefone valido")
                 continue
 
             customer_name = first_payment_data.get("customer_name", "Cliente")
@@ -449,8 +435,8 @@ async def process_agent_billing(agent: Dict[str, Any]) -> Dict[str, int]:
                     first_payment.get("invoice_url") or first_payment.get("bank_slip_url"),
                 )
 
-                _log(
-                    f"Enviando cobranca consolidada: {mask_customer_name(customer_name)} - "
+                logger.info(
+                    f"[BILLING JOB] Enviando cobranca consolidada: {mask_customer_name(customer_name)} - "
                     f"{len(customer_payments)} faturas, total {format_brl(total_value)}"
                 )
 
@@ -474,9 +460,9 @@ async def process_agent_billing(agent: Dict[str, Any]) -> Dict[str, int]:
                             await update_notification_status(
                                 agent["id"], pmt["id"], "overdue", today_str, "sent"
                             )
-                            _log(f"Registro salvo para {pmt['id']} (consolidado com {first_payment['id']})")
+                            logger.info(f"[BILLING JOB] Registro salvo para {pmt['id']} (consolidado com {first_payment['id']})")
 
-    _log(f"Processamento concluido para agente: {agent.get('name')}")
+    logger.info(f"[BILLING JOB] Processamento concluido para agente: {agent.get('name')}")
     return stats
 
 
@@ -497,7 +483,7 @@ async def process_billing_charges() -> Dict[str, Any]:
         BILLING_JOB_LOCK_KEY, "1", nx=True, ex=BILLING_JOB_LOCK_TTL
     )
     if not lock_acquired:
-        _log_warn("Job ja esta em execucao em outra instancia, pulando...")
+        logger.warning("[BILLING JOB] Job ja esta em execucao em outra instancia, pulando...")
         return {"status": "skipped", "reason": "already_running"}
 
     today = get_today_brasilia()
@@ -505,22 +491,22 @@ async def process_billing_charges() -> Dict[str, Any]:
     # So executa em dias uteis
     if not is_business_day(today):
         await redis.client.delete(BILLING_JOB_LOCK_KEY)
-        _log("Hoje nao e dia util, pulando execucao")
+        logger.info("[BILLING JOB] Hoje nao e dia util, pulando execucao")
         return {"status": "skipped", "reason": "not_business_day"}
 
     # Verifica horario comercial (8h-20h)
     if not is_business_hours(8, 20):
         await redis.client.delete(BILLING_JOB_LOCK_KEY)
-        _log("Fora do horario comercial, pulando execucao")
+        logger.info("[BILLING JOB] Fora do horario comercial, pulando execucao")
         return {"status": "skipped", "reason": "outside_business_hours"}
 
-    _log("Iniciando processamento de cobrancas...")
+    logger.info("[BILLING JOB] Iniciando processamento de cobrancas...")
 
     total_stats = {"sent": 0, "skipped": 0, "errors": 0, "agents_processed": 0}
 
     try:
         agents = await get_agents_with_asaas()
-        _log(f"Encontrados {len(agents)} agentes com Asaas configurado")
+        logger.info(f"[BILLING JOB] Encontrados {len(agents)} agentes com Asaas configurado")
 
         for agent in agents:
             try:
@@ -530,17 +516,17 @@ async def process_billing_charges() -> Dict[str, Any]:
                 total_stats["errors"] += agent_stats["errors"]
                 total_stats["agents_processed"] += 1
             except Exception as e:
-                _log_error(f"Erro ao processar agente {agent.get('name')}: {e}")
+                logger.error(f"[BILLING JOB] Erro ao processar agente {agent.get('name')}: {e}")
 
-        _log(
-            f"Job finalizado: {total_stats['sent']} mensagens enviadas, "
+        logger.info(
+            f"[BILLING JOB] Job finalizado: {total_stats['sent']} mensagens enviadas, "
             f"{total_stats['skipped']} puladas, {total_stats['errors']} erros"
         )
 
         return {"status": "completed", "stats": total_stats}
 
     except Exception as e:
-        _log_error(f"Erro no processamento de cobrancas: {e}")
+        logger.error(f"[BILLING JOB] Erro no processamento de cobrancas: {e}")
         return {"status": "error", "error": str(e)}
 
     finally:
@@ -549,7 +535,7 @@ async def process_billing_charges() -> Dict[str, Any]:
 
 async def run_billing_charge_job() -> Dict[str, Any]:
     """Entry point para o scheduler / execucao manual."""
-    _log("Executando billing charge job...")
+    logger.info("[BILLING JOB] Executando billing charge job...")
     return await process_billing_charges()
 
 
@@ -570,44 +556,44 @@ async def _force_run_billing_charge() -> Dict[str, Any]:
         BILLING_JOB_LOCK_KEY, "1", nx=True, ex=BILLING_JOB_LOCK_TTL
     )
     if not lock_acquired:
-        _log_warn("Job ja esta em execucao em outra instancia, pulando...")
+        logger.warning("[BILLING JOB] Job ja esta em execucao em outra instancia, pulando...")
         return {"status": "skipped", "reason": "already_running"}
 
-    _log("=== EXECUCAO FORCADA (ignorando horario/dia util) ===")
+    logger.info("[BILLING JOB] === EXECUCAO FORCADA (ignorando horario/dia util) ===")
 
     total_stats = {"sent": 0, "skipped": 0, "errors": 0, "agents_processed": 0}
 
     try:
         agents = await get_agents_with_asaas()
-        _log(f"Encontrados {len(agents)} agentes com Asaas configurado")
+        logger.info(f"[BILLING JOB] Encontrados {len(agents)} agentes com Asaas configurado")
 
         if not agents:
-            _log("Nenhum agente com Asaas configurado encontrado")
+            logger.info("[BILLING JOB] Nenhum agente com Asaas configurado encontrado")
             return {"status": "completed", "stats": total_stats, "message": "no_agents"}
 
         for agent in agents:
-            _log(f"Processando agente: {agent.get('name')} ({agent.get('id')})")
+            logger.info(f"[BILLING JOB] Processando agente: {agent.get('name')} ({agent.get('id')})")
             try:
                 agent_stats = await process_agent_billing(agent)
                 total_stats["sent"] += agent_stats.get("sent", 0)
                 total_stats["skipped"] += agent_stats.get("skipped", 0)
                 total_stats["errors"] += agent_stats.get("errors", 0)
                 total_stats["agents_processed"] += 1
-                _log(f"Agente {agent.get('name')}: {agent_stats}")
+                logger.info(f"[BILLING JOB] Agente {agent.get('name')}: {agent_stats}")
             except Exception as e:
-                _log_error(f"Erro ao processar agente {agent.get('name')}: {e}")
-                _log_error(traceback.format_exc())
+                logger.error(f"[BILLING JOB] Erro ao processar agente {agent.get('name')}: {e}")
+                logger.error(traceback.format_exc())
 
-        _log(
-            f"=== Job finalizado: {total_stats['sent']} enviadas, "
+        logger.info(
+            f"[BILLING JOB] === Job finalizado: {total_stats['sent']} enviadas, "
             f"{total_stats['skipped']} puladas, {total_stats['errors']} erros ==="
         )
 
         return {"status": "completed", "stats": total_stats}
 
     except Exception as e:
-        _log_error(f"Erro no processamento: {e}")
-        _log_error(traceback.format_exc())
+        logger.error(f"[BILLING JOB] Erro no processamento: {e}")
+        logger.error(traceback.format_exc())
         return {"status": "error", "error": str(e)}
 
     finally:

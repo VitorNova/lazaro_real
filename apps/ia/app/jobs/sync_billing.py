@@ -60,12 +60,6 @@ DEFAULT_MESSAGES = {
 # HELPERS
 # ============================================================================
 
-def _log(msg: str) -> None:
-    logger.info(f"[SYNC_BILLING] {msg}")
-
-
-def _log_error(msg: str) -> None:
-    logger.error(f"[SYNC_BILLING] {msg}")
 
 
 def format_brl(value: float) -> str:
@@ -161,14 +155,14 @@ def sync_billing_notifications(
             supabase_key = os.environ.get("SUPABASE_SERVICE_KEY")
 
     if not supabase_url or not supabase_key:
-        _log_error("SUPABASE_URL e SUPABASE_SERVICE_KEY sao obrigatorios")
+        logger.error("[SYNC BILLING] SUPABASE_URL e SUPABASE_SERVICE_KEY sao obrigatorios")
         return {"status": "error", "message": "Missing Supabase credentials"}
 
     sb: Client = create_client(supabase_url, supabase_key)
 
     stats = {"synced": 0, "skipped": 0, "errors": 0, "total_notifications": 0}
 
-    _log("Iniciando sincronizacao billing_notifications -> ia_cobrancas_enviadas")
+    logger.info("[SYNC BILLING] Iniciando sincronizacao billing_notifications -> ia_cobrancas_enviadas")
 
     # 1. Buscar todas as billing_notifications enviadas
     response = (
@@ -180,10 +174,10 @@ def sync_billing_notifications(
     )
     notifications = response.data or []
     stats["total_notifications"] = len(notifications)
-    _log(f"Encontradas {len(notifications)} notificacoes enviadas")
+    logger.info(f"[SYNC BILLING] Encontradas {len(notifications)} notificacoes enviadas")
 
     if not notifications:
-        _log("Nenhuma notificacao para sincronizar")
+        logger.info("[SYNC BILLING] Nenhuma notificacao para sincronizar")
         return {"status": "completed", "stats": stats}
 
     # 2. Buscar payment_ids ja registrados em ia_cobrancas_enviadas
@@ -200,7 +194,7 @@ def sync_billing_notifications(
         key = f"{rec['payment_id']}|{rec.get('notification_type', '')}"
         existing_keys.add(key)
 
-    _log(f"Ja existem {len(existing_keys)} registros em ia_cobrancas_enviadas")
+    logger.info(f"[SYNC BILLING] Ja existem {len(existing_keys)} registros em ia_cobrancas_enviadas")
 
     # 3. Buscar cache de cobrancas (asaas_cobrancas) para enriquecimento
     cobrancas_response = (
@@ -216,7 +210,7 @@ def sync_billing_notifications(
     for c in cobrancas:
         cobranca_map[c["id"]] = c
 
-    _log(f"Cache de cobrancas: {len(cobranca_map)} registros")
+    logger.info(f"[SYNC BILLING] Cache de cobrancas: {len(cobranca_map)} registros")
 
     # 4. Processar cada notificacao
     batch_records: List[Dict[str, Any]] = []
@@ -274,7 +268,7 @@ def sync_billing_notifications(
         batch_records.append(record)
         existing_keys.add(notif_key)  # Evitar duplicatas no mesmo batch
 
-    _log(f"Novos registros para inserir: {len(batch_records)}")
+    logger.info(f"[SYNC BILLING] Novos registros para inserir: {len(batch_records)}")
 
     # 5. Inserir em lotes de 50
     BATCH_SIZE = 50
@@ -283,16 +277,16 @@ def sync_billing_notifications(
         try:
             sb.table("ia_cobrancas_enviadas").insert(batch).execute()
             stats["synced"] += len(batch)
-            _log(f"Lote {i // BATCH_SIZE + 1}: {len(batch)} registros inseridos")
+            logger.info(f"[SYNC BILLING] Lote {i // BATCH_SIZE + 1}: {len(batch)} registros inseridos")
         except Exception as e:
-            _log_error(f"Erro ao inserir lote {i // BATCH_SIZE + 1}: {e}")
+            logger.error(f"[SYNC BILLING] Erro ao inserir lote {i // BATCH_SIZE + 1}: {e}")
             # Tentar um por um no caso de erro
             for record in batch:
                 try:
                     sb.table("ia_cobrancas_enviadas").insert(record).execute()
                     stats["synced"] += 1
                 except Exception as e2:
-                    _log_error(f"Erro ao inserir {record['payment_id']}: {e2}")
+                    logger.error(f"[SYNC BILLING] Erro ao inserir {record['payment_id']}: {e2}")
                     stats["errors"] += 1
 
     _log(
@@ -309,7 +303,7 @@ def sync_billing_notifications(
 
 async def run_sync_billing_job() -> Dict[str, Any]:
     """Entry point async para o scheduler."""
-    _log("Executando sync billing job...")
+    logger.info("[SYNC BILLING] Executando sync billing job...")
     return sync_billing_notifications()
 
 

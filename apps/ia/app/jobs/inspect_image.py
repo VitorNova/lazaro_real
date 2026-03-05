@@ -4,10 +4,13 @@ Script para inspecionar a imagem e ver o que o Gemini consegue ler.
 """
 import asyncio
 import base64
+import logging
 import os
 import sys
 
 import google.generativeai as genai
+
+logger = logging.getLogger(__name__)
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
 IMAGE_PATH = "/tmp/contrato_debug.jpeg"
@@ -15,26 +18,26 @@ IMAGE_PATH = "/tmp/contrato_debug.jpeg"
 
 async def main():
     if not os.path.exists(IMAGE_PATH):
-        print(f"ERRO: Imagem {IMAGE_PATH} não encontrada")
-        print("Execute o script reread_missing_contract.py primeiro")
+        logger.error(f"ERRO: Imagem {IMAGE_PATH} nao encontrada")
+        logger.error("Execute o script reread_missing_contract.py primeiro")
         return
 
     with open(IMAGE_PATH, "rb") as f:
         image_bytes = f.read()
 
-    print(f"Imagem: {IMAGE_PATH} ({len(image_bytes)} bytes)")
-    print("=" * 80)
+    logger.info(f"Imagem: {IMAGE_PATH} ({len(image_bytes)} bytes)")
+    logger.info("=" * 80)
 
     genai.configure(api_key=GOOGLE_API_KEY)
     model = genai.GenerativeModel("gemini-2.0-flash")
 
-    prompt = """Descreva esta imagem em detalhes. O que você vê?
+    prompt = """Descreva esta imagem em detalhes. O que voce ve?
 
 Diga:
-1. Que tipo de documento é este?
-2. Quais palavras/textos você consegue ler (liste TODAS)?
-3. A qualidade da imagem é boa o suficiente para extrair dados?
-4. Se é um contrato, onde está o número do contrato?"""
+1. Que tipo de documento e este?
+2. Quais palavras/textos voce consegue ler (liste TODAS)?
+3. A qualidade da imagem e boa o suficiente para extrair dados?
+4. Se e um contrato, onde esta o numero do contrato?"""
 
     image_b64 = base64.b64encode(image_bytes).decode('utf-8')
 
@@ -48,11 +51,12 @@ Diga:
         prompt
     ])
 
-    print("RESPOSTA DO GEMINI:")
-    print("=" * 80)
-    print(response.text)
-    print("=" * 80)
+    logger.info("RESPOSTA DO GEMINI:")
+    logger.info("=" * 80)
+    logger.info(response.text)
+    logger.info("=" * 80)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format='%(message)s')
     asyncio.run(main())

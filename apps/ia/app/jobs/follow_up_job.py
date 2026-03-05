@@ -65,12 +65,6 @@ def _log(msg: str, data: Any = None) -> None:
     logger.info(f"{LOG_PREFIX} {msg}{extra}")
 
 
-def _log_warn(msg: str) -> None:
-    logger.warning(f"{LOG_PREFIX} {msg}")
-
-
-def _log_error(msg: str) -> None:
-    logger.error(f"{LOG_PREFIX} {msg}")
 
 
 # ============================================================================
@@ -136,7 +130,7 @@ async def _process_agent_follow_up(
     if not force_mode:
         can_run, reason = is_within_schedule(salvador_cfg, agent_tz)
         if not can_run:
-            _log(f"Agente {agent_name}: fora do schedule ({reason})")
+            logger.info(f"[FOLLOW UP JOB] Agente {agent_name}: fora do schedule ({reason})")
             return stats
 
     # Rate limit diario
@@ -144,7 +138,7 @@ async def _process_agent_follow_up(
 
     # Buscar leads elegiveis
     eligible_leads = await get_eligible_leads(agent, max_follow_ups)
-    _log(f"Encontrados {len(eligible_leads)} leads elegiveis para follow-up")
+    logger.info(f"[FOLLOW UP JOB] Encontrados {len(eligible_leads)} leads elegiveis para follow-up")
 
     if not eligible_leads:
         return stats
@@ -187,7 +181,7 @@ async def _process_agent_follow_up(
         # Rate limiting via Redis
         can_send, reason = await can_send_follow_up(agent_id, remotejid, max_per_day)
         if not can_send:
-            _log(f"Rate limited {telefone}: {reason}")
+            logger.info(f"[FOLLOW UP JOB] Rate limited {telefone}: {reason}")
             stats["skipped"] += 1
             continue
 
@@ -203,7 +197,7 @@ async def _process_agent_follow_up(
                     if isinstance(parts, list):
                         text = " ".join(p.get("text", "") for p in parts if isinstance(p, dict))
                 if detect_opt_out(text):
-                    _log_warn(f"Opt-out detectado para {telefone}")
+                    logger.warning(f"[FOLLOW UP JOB] Opt-out detectado para {telefone}")
                     opt_out_detected = True
                     try:
                         supabase = get_supabase_service()
@@ -224,7 +218,7 @@ async def _process_agent_follow_up(
             conversation_history, first_name or "lead"
         )
         if not deve_enviar:
-            _log(f"Lead {telefone} classificado como SKIP: {motivo}")
+            logger.info(f"[FOLLOW UP JOB] Lead {telefone} classificado como SKIP: {motivo}")
             stats["skipped"] += 1
             continue
 
@@ -235,11 +229,11 @@ async def _process_agent_follow_up(
         )
 
         if message.strip().upper().startswith("SKIP"):
-            _log(f"Gemini retornou SKIP para {telefone}")
+            logger.info(f"[FOLLOW UP JOB] Gemini retornou SKIP para {telefone}")
             stats["skipped"] += 1
             continue
 
-        _log(f"Lead {telefone} - {hours_since_last:.1f}h - enviando follow-up #{next_follow_up_number}")
+        logger.info(f"[FOLLOW UP JOB] Lead {telefone} - {hours_since_last:.1f}h - enviando follow-up #{next_follow_up_number}")
 
         try:
             # Enviar mensagem
@@ -248,7 +242,7 @@ async def _process_agent_follow_up(
             if not result.get("success"):
                 raise ValueError(result.get("error", "Erro desconhecido"))
 
-            _log(f"Follow-up #{next_follow_up_number} enviado para {telefone}: {message[:60]}...")
+            logger.info(f"[FOLLOW UP JOB] Follow-up #{next_follow_up_number} enviado para {telefone}: {message[:60]}...")
 
             # Registrar em Redis
             await record_follow_up(agent_id, remotejid)
@@ -263,7 +257,7 @@ async def _process_agent_follow_up(
             await asyncio.sleep(1.5)
 
         except Exception as e:
-            _log_error(f"Erro ao enviar follow-up para {telefone}: {e}")
+            logger.error(f"[FOLLOW UP JOB] Erro ao enviar follow-up para {telefone}: {e}")
             stats["errors"] += 1
 
     return stats
@@ -281,17 +275,17 @@ async def run_follow_up_job() -> Dict[str, Any]:
     global _is_running
 
     if _is_running:
-        _log_warn("Job ja esta em execucao, pulando...")
+        logger.warning("[FOLLOW UP JOB] Job ja esta em execucao, pulando...")
         return {"status": "skipped", "reason": "already_running"}
 
     _is_running = True
-    _log("Iniciando job de follow-up...")
+    logger.info("[FOLLOW UP JOB] Iniciando job de follow-up...")
 
     total_stats = {"sent": 0, "skipped": 0, "errors": 0, "agents_processed": 0}
 
     try:
         agents = await get_agents_with_follow_up()
-        _log(f"Encontrados {len(agents)} agentes com follow-up habilitado")
+        logger.info(f"[FOLLOW UP JOB] Encontrados {len(agents)} agentes com follow-up habilitado")
 
         if not agents:
             return {"status": "completed", "stats": total_stats, "message": "no_agents"}
@@ -305,15 +299,15 @@ async def run_follow_up_job() -> Dict[str, Any]:
                 total_stats["errors"] += agent_stats.get("errors", 0)
                 total_stats["agents_processed"] += 1
             except Exception as e:
-                _log_error(f"Erro ao processar agente {agent_name}: {e}")
-                _log_error(traceback.format_exc())
+                logger.error(f"[FOLLOW UP JOB] Erro ao processar agente {agent_name}: {e}")
+                logger.error(traceback.format_exc())
                 total_stats["errors"] += 1
 
-        _log(f"Job finalizado: {total_stats['sent']} enviados, {total_stats['skipped']} pulados")
+        logger.info(f"[FOLLOW UP JOB] Job finalizado: {total_stats['sent']} enviados, {total_stats['skipped']} pulados")
         return {"status": "completed", "stats": total_stats}
 
     except Exception as e:
-        _log_error(f"Erro no processamento: {e}")
+        logger.error(f"[FOLLOW UP JOB] Erro no processamento: {e}")
         return {"status": "error", "error": str(e)}
 
     finally:
@@ -333,11 +327,11 @@ async def force_run_follow_up() -> Dict[str, Any]:
     global _is_running
 
     if _is_running:
-        _log_warn("Job ja esta em execucao, pulando...")
+        logger.warning("[FOLLOW UP JOB] Job ja esta em execucao, pulando...")
         return {"status": "skipped", "reason": "already_running"}
 
     _is_running = True
-    _log("=== EXECUCAO FORCADA ===")
+    logger.info("[FOLLOW UP JOB] === EXECUCAO FORCADA ===")
 
     total_stats = {"sent": 0, "skipped": 0, "errors": 0, "agents_processed": 0}
 
@@ -361,7 +355,7 @@ async def force_run_follow_up() -> Dict[str, Any]:
         agents = await resolve_shared_whatsapp(supabase, response.data or [])
         agents = [a for a in agents if a.get("uazapi_base_url") and a.get("uazapi_token")]
 
-        _log(f"Encontrados {len(agents)} agentes com follow-up habilitado")
+        logger.info(f"[FOLLOW UP JOB] Encontrados {len(agents)} agentes com follow-up habilitado")
 
         for agent in agents:
             agent_name = agent.get("name", "Unknown")
@@ -372,14 +366,14 @@ async def force_run_follow_up() -> Dict[str, Any]:
                 total_stats["errors"] += agent_stats.get("errors", 0)
                 total_stats["agents_processed"] += 1
             except Exception as e:
-                _log_error(f"Erro ao processar agente {agent_name}: {e}")
+                logger.error(f"[FOLLOW UP JOB] Erro ao processar agente {agent_name}: {e}")
                 total_stats["errors"] += 1
 
-        _log(f"=== Job finalizado: {total_stats['sent']} enviados ===")
+        logger.info(f"[FOLLOW UP JOB] === Job finalizado: {total_stats['sent']} enviados ===")
         return {"status": "completed", "stats": total_stats}
 
     except Exception as e:
-        _log_error(f"Erro no processamento: {e}")
+        logger.error(f"[FOLLOW UP JOB] Erro no processamento: {e}")
         return {"status": "error", "error": str(e)}
 
     finally:

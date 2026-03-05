@@ -64,33 +64,23 @@ class ReprocessStats:
         logger.info(msg)
 
     def print_summary(self):
-        print("\n" + "=" * 60)
-        print("RESUMO DO REPROCESSAMENTO")
-        print("=" * 60)
-        print(f"Total de pagamentos encontrados no Asaas: {self.total_found}")
-        print(f"Criados (nao existiam localmente):        {self.created}")
-        print(f"Atualizados (status divergente):          {self.updated}")
-        print(f"Ja sincronizados (sem alteracao):         {self.already_synced}")
-        print(f"Clientes sincronizados:                   {self.customers_synced}")
-        print(f"Erros:                                    {self.errors}")
-        print("=" * 60)
+        logger.info("\n" + "=" * 60)
+        logger.info("RESUMO DO REPROCESSAMENTO")
+        logger.info("=" * 60)
+        logger.info(f"Total de pagamentos encontrados no Asaas: {self.total_found}")
+        logger.info(f"Criados (nao existiam localmente):        {self.created}")
+        logger.info(f"Atualizados (status divergente):          {self.updated}")
+        logger.info(f"Ja sincronizados (sem alteracao):         {self.already_synced}")
+        logger.info(f"Clientes sincronizados:                   {self.customers_synced}")
+        logger.info(f"Erros:                                    {self.errors}")
+        logger.info("=" * 60)
 
 
 # ============================================================================
 # FUNCOES AUXILIARES
 # ============================================================================
 
-def _log(msg: str) -> None:
-    """Log com prefixo do job."""
-    logger.info(f"[REPROCESS] {msg}")
 
-
-def _log_warn(msg: str) -> None:
-    logger.warning(f"[REPROCESS] {msg}")
-
-
-def _log_error(msg: str) -> None:
-    logger.error(f"[REPROCESS] {msg}")
 
 
 async def fetch_all_payments_paginated(
@@ -131,7 +121,7 @@ async def fetch_all_payments_paginated(
             has_more = response.get("hasMore", False)
             total_count = response.get("totalCount", 0)
 
-            _log(f"Pagina {offset // limit + 1}: {len(data)} payments (total: {len(all_payments)}/{total_count})")
+            logger.info(f"[REPROCESS ASAAS PAYMENTS] Pagina {offset // limit + 1}: {len(data)} payments (total: {len(all_payments)}/{total_count})")
 
             if not has_more or len(data) == 0:
                 break
@@ -140,14 +130,14 @@ async def fetch_all_payments_paginated(
             max_iterations -= 1
 
             if max_iterations <= 0:
-                _log_warn(f"Limite de paginacao atingido ({100 * limit} payments)")
+                logger.warning(f"[REPROCESS ASAAS PAYMENTS] Limite de paginacao atingido ({100 * limit} payments)")
                 break
 
             # Rate limiting
             await asyncio.sleep(REQUEST_DELAY)
 
         except Exception as e:
-            _log_error(f"Erro ao buscar pagamentos (offset={offset}): {e}")
+            logger.error(f"[REPROCESS ASAAS PAYMENTS] Erro ao buscar pagamentos (offset={offset}): {e}")
             break
 
     return all_payments
@@ -167,7 +157,7 @@ async def get_local_payment(supabase, payment_id: str, agent_id: str) -> Optiona
         )
         return result.data
     except Exception as e:
-        _log_error(f"Erro ao buscar payment local {payment_id}: {e}")
+        logger.error(f"[REPROCESS ASAAS PAYMENTS] Erro ao buscar payment local {payment_id}: {e}")
         return None
 
 
@@ -259,7 +249,7 @@ async def sync_customer(
         return customer_data.get("name", "Desconhecido")
 
     except Exception as e:
-        _log_error(f"Erro ao sincronizar cliente {customer_id}: {e}")
+        logger.error(f"[REPROCESS ASAAS PAYMENTS] Erro ao sincronizar cliente {customer_id}: {e}")
         return None
 
 
@@ -388,7 +378,7 @@ async def sync_payment(
 
     except Exception as e:
         stats.errors += 1
-        _log_error(f"Erro ao sincronizar payment {payment_id}: {e}")
+        logger.error(f"[REPROCESS ASAAS PAYMENTS] Erro ao sincronizar payment {payment_id}: {e}")
 
 
 async def process_agent(
@@ -406,10 +396,10 @@ async def process_agent(
     asaas_api_key = agent.get("asaas_api_key", "")
 
     if not asaas_api_key:
-        _log_warn(f"Agente {agent_name} ({agent_id}) sem asaas_api_key - pulando")
+        logger.warning(f"[REPROCESS ASAAS PAYMENTS] Agente {agent_name} ({agent_id}) sem asaas_api_key - pulando")
         return
 
-    _log(f"Processando agente: {agent_name} ({agent_id})")
+    logger.info(f"[REPROCESS ASAAS PAYMENTS] Processando agente: {agent_name} ({agent_id})")
 
     try:
         # Importar servico Asaas
@@ -417,10 +407,10 @@ async def process_agent(
         asaas_service = AsaasService(api_key=asaas_api_key)
 
         # Buscar todos os payments desde a data inicial
-        _log(f"Buscando pagamentos desde {start_date}...")
+        logger.info(f"[REPROCESS ASAAS PAYMENTS] Buscando pagamentos desde {start_date}...")
         payments = await fetch_all_payments_paginated(asaas_service, start_date)
 
-        _log(f"Encontrados {len(payments)} pagamentos para {agent_name}")
+        logger.info(f"[REPROCESS ASAAS PAYMENTS] Encontrados {len(payments)} pagamentos para {agent_name}")
         stats.total_found += len(payments)
 
         # Processar cada payment
@@ -432,7 +422,7 @@ async def process_agent(
                 await asyncio.sleep(REQUEST_DELAY)
 
     except Exception as e:
-        _log_error(f"Erro ao processar agente {agent_name}: {e}")
+        logger.error(f"[REPROCESS ASAAS PAYMENTS] Erro ao processar agente {agent_name}: {e}")
         stats.errors += 1
 
 
@@ -449,7 +439,7 @@ async def get_agents_with_asaas(supabase) -> List[Dict[str, Any]]:
         )
         return result.data or []
     except Exception as e:
-        _log_error(f"Erro ao buscar agentes: {e}")
+        logger.error(f"[REPROCESS ASAAS PAYMENTS] Erro ao buscar agentes: {e}")
         return []
 
 
@@ -470,17 +460,17 @@ async def run_reprocess(start_date: str, dry_run: bool = True) -> ReprocessStats
     stats = ReprocessStats()
 
     mode = "[DRY-RUN]" if dry_run else "[EXECUTANDO]"
-    _log(f"{mode} Iniciando reprocessamento desde {start_date}")
+    logger.info(f"[REPROCESS ASAAS PAYMENTS] {mode} Iniciando reprocessamento desde {start_date}")
 
     # Obter supabase
     supabase = get_supabase_service()
 
     # Buscar agentes com Asaas configurado
     agents = await get_agents_with_asaas(supabase)
-    _log(f"Encontrados {len(agents)} agentes com Asaas configurado")
+    logger.info(f"[REPROCESS ASAAS PAYMENTS] Encontrados {len(agents)} agentes com Asaas configurado")
 
     if not agents:
-        _log_warn("Nenhum agente com asaas_api_key encontrado!")
+        logger.warning("[REPROCESS ASAAS PAYMENTS] Nenhum agente com asaas_api_key encontrado!")
         return stats
 
     # Processar cada agente
@@ -518,21 +508,21 @@ def main():
     dry_run = not args.execute
 
     if dry_run:
-        print("\n" + "=" * 60)
-        print("MODO DRY-RUN: Nenhuma alteracao sera feita no banco")
-        print("Use --execute para aplicar as mudancas")
-        print("=" * 60 + "\n")
+        logger.info("\n" + "=" * 60)
+        logger.info("MODO DRY-RUN: Nenhuma alteracao sera feita no banco")
+        logger.info("Use --execute para aplicar as mudancas")
+        logger.info("=" * 60 + "\n")
     else:
-        print("\n" + "=" * 60)
-        print("MODO EXECUCAO: As alteracoes SERAO aplicadas no banco")
-        print("=" * 60)
+        logger.info("\n" + "=" * 60)
+        logger.info("MODO EXECUCAO: As alteracoes SERAO aplicadas no banco")
+        logger.info("=" * 60)
 
         # Confirmacao
         confirm = input("\nTem certeza que deseja continuar? (digite 'sim' para confirmar): ")
         if confirm.lower() != "sim":
-            print("Operacao cancelada.")
+            logger.info("Operacao cancelada.")
             sys.exit(0)
-        print()
+        logger.info("")
 
     # Executar
     start_time = time.time()
@@ -541,10 +531,10 @@ def main():
 
     # Imprimir resumo
     stats.print_summary()
-    print(f"\nTempo total: {elapsed:.2f} segundos")
+    logger.info(f"\nTempo total: {elapsed:.2f} segundos")
 
     if dry_run and (stats.created > 0 or stats.updated > 0):
-        print("\n>>> Para aplicar estas mudancas, execute novamente com --execute")
+        logger.info("\n>>> Para aplicar estas mudancas, execute novamente com --execute")
 
 
 if __name__ == "__main__":

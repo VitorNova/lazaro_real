@@ -45,12 +45,6 @@ def _log(msg: str, data: Any = None) -> None:
     logger.info(f"{msg}{extra}")
 
 
-def _log_warn(msg: str) -> None:
-    logger.warning(msg)
-
-
-def _log_error(msg: str) -> None:
-    logger.error(msg)
 
 
 # ============================================================================
@@ -210,7 +204,7 @@ def _parse_event_datetime(event: Dict[str, Any]) -> Optional[datetime]:
     try:
         return datetime.fromisoformat(dt_str)
     except ValueError:
-        _log_error(f"Erro ao parsear data: {dt_str}")
+        logger.error(f"[CONFIRMAR AGENDAMENTOS] Erro ao parsear data: {dt_str}")
         return None
 
 
@@ -236,7 +230,7 @@ async def _check_already_notified(
 
         return bool(result.data and len(result.data) > 0)
     except Exception as e:
-        _log_error(f"Erro ao verificar notificacao: {e}")
+        logger.error(f"[CONFIRMAR AGENDAMENTOS] Erro ao verificar notificacao: {e}")
         return False
 
 
@@ -261,7 +255,7 @@ async def _record_notification(
             "sent_at": datetime.utcnow().isoformat(),
         }).execute()
     except Exception as e:
-        _log_error(f"Erro ao registrar notificacao: {e}")
+        logger.error(f"[CONFIRMAR AGENDAMENTOS] Erro ao registrar notificacao: {e}")
 
 
 async def _send_reminder(
@@ -275,7 +269,7 @@ async def _send_reminder(
         result = await uazapi.send_signed_message(phone, message, agent_name)
         return result.get("success", False)
     except Exception as e:
-        _log_error(f"Erro ao enviar lembrete para {phone}: {e}")
+        logger.error(f"[CONFIRMAR AGENDAMENTOS] Erro ao enviar lembrete para {phone}: {e}")
         return False
 
 
@@ -301,7 +295,7 @@ async def _get_agents_with_calendar() -> List[Dict[str, Any]]:
             if a.get("google_credentials") and a.get("google_credentials", {}).get("refresh_token")
         ]
     except Exception as e:
-        _log_error(f"Erro ao buscar agentes com calendar: {e}")
+        logger.error(f"[CONFIRMAR AGENDAMENTOS] Erro ao buscar agentes com calendar: {e}")
         return []
 
 
@@ -315,7 +309,7 @@ async def _process_agent_calendar(agent: Dict[str, Any]) -> Dict[str, Any]:
 
     # Verificar se confirmacao esta habilitada
     if not agent.get("schedule_confirmation_enabled", True):
-        _log(f"Confirmacao desabilitada para {agent_name}")
+        logger.info(f"[CONFIRMAR AGENDAMENTOS] Confirmacao desabilitada para {agent_name}")
         return stats
 
     # Obter templates (customizados ou default)
@@ -328,7 +322,7 @@ async def _process_agent_calendar(agent: Dict[str, Any]) -> Dict[str, Any]:
     uazapi_token = agent.get("uazapi_token")
 
     if not uazapi_base_url or not uazapi_token:
-        _log_warn(f"Agente {agent_name} sem UAZAPI configurado")
+        logger.warning(f"[CONFIRMAR AGENDAMENTOS] Agente {agent_name} sem UAZAPI configurado")
         return stats
 
     uazapi = UazapiService(base_url=uazapi_base_url, api_key=uazapi_token)
@@ -346,7 +340,7 @@ async def _process_agent_calendar(agent: Dict[str, Any]) -> Dict[str, Any]:
             timezone=tz_str
         )
     except GoogleCalendarOAuthError as e:
-        _log_error(f"Erro ao conectar Calendar para {agent_name}: {e}")
+        logger.error(f"[CONFIRMAR AGENDAMENTOS] Erro ao conectar Calendar para {agent_name}: {e}")
         stats["errors"] += 1
         return stats
 
@@ -355,7 +349,7 @@ async def _process_agent_calendar(agent: Dict[str, Any]) -> Dict[str, Any]:
     now = datetime.now(tz_obj)
     time_max = now + timedelta(hours=48)
 
-    _log(f"Buscando eventos de {now.isoformat()} ate {time_max.isoformat()}")
+    logger.info(f"[CONFIRMAR AGENDAMENTOS] Buscando eventos de {now.isoformat()} ate {time_max.isoformat()}")
 
     try:
         events = calendar.list_events(
@@ -364,11 +358,11 @@ async def _process_agent_calendar(agent: Dict[str, Any]) -> Dict[str, Any]:
             timezone=tz_str
         )
     except Exception as e:
-        _log_error(f"Erro ao buscar eventos para {agent_name}: {e}")
+        logger.error(f"[CONFIRMAR AGENDAMENTOS] Erro ao buscar eventos para {agent_name}: {e}")
         stats["errors"] += 1
         return stats
 
-    _log(f"Encontrados {len(events)} eventos nas proximas 48h")
+    logger.info(f"[CONFIRMAR AGENDAMENTOS] Encontrados {len(events)} eventos nas proximas 48h")
 
     for event in events:
         event_id = event.get("id", "")
@@ -391,7 +385,7 @@ async def _process_agent_calendar(agent: Dict[str, Any]) -> Dict[str, Any]:
         # Extrair telefone
         phone = _extract_phone_from_event(event)
         if not phone:
-            _log(f"Evento \"{event_title}\" - sem telefone identificavel, pulando")
+            logger.info(f"[CONFIRMAR AGENDAMENTOS] Evento \"{event_title}\" - sem telefone identificavel, pulando")
             stats["skipped"] += 1
             continue
 
@@ -406,7 +400,7 @@ async def _process_agent_calendar(agent: Dict[str, Any]) -> Dict[str, Any]:
             # Verificar duplicata
             already = await _check_already_notified(agent_id, event_id, "24h")
             if already:
-                _log(f"Evento \"{event_title}\" - lembrete 24h ja enviado, pulando")
+                logger.info(f"[CONFIRMAR AGENDAMENTOS] Evento \"{event_title}\" - lembrete 24h ja enviado, pulando")
                 stats["skipped"] += 1
                 continue
 
@@ -416,8 +410,8 @@ async def _process_agent_calendar(agent: Dict[str, Any]) -> Dict[str, Any]:
                 event_date, event_time, location
             )
 
-            _log(f"Evento \"{event_title}\" - faltam {hours_until:.1f}h - enviando lembrete 24h")
-            _log(f"Enviando para {phone} ({agent_name})...")
+            logger.info(f"[CONFIRMAR AGENDAMENTOS] Evento \"{event_title}\" - faltam {hours_until:.1f}h - enviando lembrete 24h")
+            logger.info(f"[CONFIRMAR AGENDAMENTOS] Enviando para {phone} ({agent_name})...")
 
             success = await _send_reminder(uazapi, phone, message, agent_name)
             if success:
@@ -447,7 +441,7 @@ async def _process_agent_calendar(agent: Dict[str, Any]) -> Dict[str, Any]:
                 )
 
                 stats["sent_24h"] += 1
-                _log(f"✅ Lembrete 24h enviado para {phone}")
+                logger.info(f"[CONFIRMAR AGENDAMENTOS] ✅ Lembrete 24h enviado para {phone}")
             else:
                 # Log failure in unified dispatch_log table
                 dispatch_logger = get_dispatch_logger()
@@ -469,14 +463,14 @@ async def _process_agent_calendar(agent: Dict[str, Any]) -> Dict[str, Any]:
                 )
 
                 stats["errors"] += 1
-                _log_error(f"❌ Falha ao enviar lembrete 24h para {phone}")
+                logger.error(f"[CONFIRMAR AGENDAMENTOS] ❌ Falha ao enviar lembrete 24h para {phone}")
 
         # Verificar janela de 2h (entre 1h30 e 2h30)
         elif 1.5 <= hours_until <= 2.5:
             # Verificar duplicata
             already = await _check_already_notified(agent_id, event_id, "2h")
             if already:
-                _log(f"Evento \"{event_title}\" - lembrete 2h ja enviado, pulando")
+                logger.info(f"[CONFIRMAR AGENDAMENTOS] Evento \"{event_title}\" - lembrete 2h ja enviado, pulando")
                 stats["skipped"] += 1
                 continue
 
@@ -486,8 +480,8 @@ async def _process_agent_calendar(agent: Dict[str, Any]) -> Dict[str, Any]:
                 event_date, event_time, location
             )
 
-            _log(f"Evento \"{event_title}\" - faltam {hours_until:.1f}h - enviando lembrete 2h")
-            _log(f"Enviando para {phone} ({agent_name})...")
+            logger.info(f"[CONFIRMAR AGENDAMENTOS] Evento \"{event_title}\" - faltam {hours_until:.1f}h - enviando lembrete 2h")
+            logger.info(f"[CONFIRMAR AGENDAMENTOS] Enviando para {phone} ({agent_name})...")
 
             success = await _send_reminder(uazapi, phone, message, agent_name)
             if success:
@@ -517,7 +511,7 @@ async def _process_agent_calendar(agent: Dict[str, Any]) -> Dict[str, Any]:
                 )
 
                 stats["sent_2h"] += 1
-                _log(f"✅ Lembrete 2h enviado para {phone}")
+                logger.info(f"[CONFIRMAR AGENDAMENTOS] ✅ Lembrete 2h enviado para {phone}")
             else:
                 # Log failure in unified dispatch_log table
                 dispatch_logger = get_dispatch_logger()
@@ -539,10 +533,10 @@ async def _process_agent_calendar(agent: Dict[str, Any]) -> Dict[str, Any]:
                 )
 
                 stats["errors"] += 1
-                _log_error(f"❌ Falha ao enviar lembrete 2h para {phone}")
+                logger.error(f"[CONFIRMAR AGENDAMENTOS] ❌ Falha ao enviar lembrete 2h para {phone}")
 
         else:
-            _log(f"Evento \"{event_title}\" - faltam {hours_until:.1f}h - fora da janela (pulando)")
+            logger.info(f"[CONFIRMAR AGENDAMENTOS] Evento \"{event_title}\" - faltam {hours_until:.1f}h - fora da janela (pulando)")
             stats["skipped"] += 1
 
     return stats
@@ -560,11 +554,11 @@ async def run_calendar_confirmation_job() -> Dict[str, Any]:
     global _is_running
 
     if _is_running:
-        _log_warn("Job ja esta em execucao, pulando...")
+        logger.warning("[CONFIRMAR AGENDAMENTOS] Job ja esta em execucao, pulando...")
         return {"status": "skipped", "reason": "already_running"}
 
     _is_running = True
-    _log("Iniciando job de confirmacao de agenda...")
+    logger.info("[CONFIRMAR AGENDAMENTOS] Iniciando job de confirmacao de agenda...")
 
     total_stats = {
         "sent_24h": 0, "sent_2h": 0, "skipped": 0,
@@ -573,16 +567,16 @@ async def run_calendar_confirmation_job() -> Dict[str, Any]:
 
     try:
         agents = await _get_agents_with_calendar()
-        _log(f"Encontrados {len(agents)} agentes com Google Calendar configurado")
+        logger.info(f"[CONFIRMAR AGENDAMENTOS] Encontrados {len(agents)} agentes com Google Calendar configurado")
 
         if not agents:
-            _log("Nenhum agente com Calendar configurado encontrado")
+            logger.info("[CONFIRMAR AGENDAMENTOS] Nenhum agente com Calendar configurado encontrado")
             return {"status": "completed", "stats": total_stats, "message": "no_agents"}
 
         for agent in agents:
             agent_name = agent.get("name", "Unknown")
             agent_id = agent.get("id", "")
-            _log(f"Processando agente: {agent_name} ({agent_id})")
+            logger.info(f"[CONFIRMAR AGENDAMENTOS] Processando agente: {agent_name} ({agent_id})")
 
             try:
                 agent_stats = await _process_agent_calendar(agent)
@@ -591,10 +585,10 @@ async def run_calendar_confirmation_job() -> Dict[str, Any]:
                 total_stats["skipped"] += agent_stats.get("skipped", 0)
                 total_stats["errors"] += agent_stats.get("errors", 0)
                 total_stats["agents_processed"] += 1
-                _log(f"Agente {agent_name}: {agent_stats}")
+                logger.info(f"[CONFIRMAR AGENDAMENTOS] Agente {agent_name}: {agent_stats}")
             except Exception as e:
-                _log_error(f"Erro ao processar agente {agent_name}: {e}")
-                _log_error(traceback.format_exc())
+                logger.error(f"[CONFIRMAR AGENDAMENTOS] Erro ao processar agente {agent_name}: {e}")
+                logger.error(traceback.format_exc())
                 total_stats["errors"] += 1
 
         total_sent = total_stats["sent_24h"] + total_stats["sent_2h"]
@@ -607,8 +601,8 @@ async def run_calendar_confirmation_job() -> Dict[str, Any]:
         return {"status": "completed", "stats": total_stats}
 
     except Exception as e:
-        _log_error(f"Erro no processamento: {e}")
-        _log_error(traceback.format_exc())
+        logger.error(f"[CONFIRMAR AGENDAMENTOS] Erro no processamento: {e}")
+        logger.error(traceback.format_exc())
         return {"status": "error", "error": str(e)}
 
     finally:
@@ -628,11 +622,11 @@ async def _force_run_calendar_confirmation() -> Dict[str, Any]:
     global _is_running
 
     if _is_running:
-        _log_warn("Job ja esta em execucao, pulando...")
+        logger.warning("[CONFIRMAR AGENDAMENTOS] Job ja esta em execucao, pulando...")
         return {"status": "skipped", "reason": "already_running"}
 
     _is_running = True
-    _log("=== EXECUCAO FORCADA (debug/teste) ===")
+    logger.info("[CONFIRMAR AGENDAMENTOS] === EXECUCAO FORCADA (debug/teste) ===")
 
     total_stats = {
         "sent_24h": 0, "sent_2h": 0, "skipped": 0,
@@ -641,16 +635,16 @@ async def _force_run_calendar_confirmation() -> Dict[str, Any]:
 
     try:
         agents = await _get_agents_with_calendar()
-        _log(f"Encontrados {len(agents)} agentes com Google Calendar configurado")
+        logger.info(f"[CONFIRMAR AGENDAMENTOS] Encontrados {len(agents)} agentes com Google Calendar configurado")
 
         if not agents:
-            _log("Nenhum agente com Calendar configurado encontrado")
+            logger.info("[CONFIRMAR AGENDAMENTOS] Nenhum agente com Calendar configurado encontrado")
             return {"status": "completed", "stats": total_stats, "message": "no_agents"}
 
         for agent in agents:
             agent_name = agent.get("name", "Unknown")
             agent_id = agent.get("id", "")
-            _log(f"Processando agente: {agent_name} ({agent_id})")
+            logger.info(f"[CONFIRMAR AGENDAMENTOS] Processando agente: {agent_name} ({agent_id})")
 
             try:
                 agent_stats = await _process_agent_calendar(agent)
@@ -659,10 +653,10 @@ async def _force_run_calendar_confirmation() -> Dict[str, Any]:
                 total_stats["skipped"] += agent_stats.get("skipped", 0)
                 total_stats["errors"] += agent_stats.get("errors", 0)
                 total_stats["agents_processed"] += 1
-                _log(f"Agente {agent_name}: {agent_stats}")
+                logger.info(f"[CONFIRMAR AGENDAMENTOS] Agente {agent_name}: {agent_stats}")
             except Exception as e:
-                _log_error(f"Erro ao processar agente {agent_name}: {e}")
-                _log_error(traceback.format_exc())
+                logger.error(f"[CONFIRMAR AGENDAMENTOS] Erro ao processar agente {agent_name}: {e}")
+                logger.error(traceback.format_exc())
                 total_stats["errors"] += 1
 
         total_sent = total_stats["sent_24h"] + total_stats["sent_2h"]
@@ -675,8 +669,8 @@ async def _force_run_calendar_confirmation() -> Dict[str, Any]:
         return {"status": "completed", "stats": total_stats}
 
     except Exception as e:
-        _log_error(f"Erro no processamento: {e}")
-        _log_error(traceback.format_exc())
+        logger.error(f"[CONFIRMAR AGENDAMENTOS] Erro no processamento: {e}")
+        logger.error(traceback.format_exc())
         return {"status": "error", "error": str(e)}
 
     finally:

@@ -99,17 +99,7 @@ RECONCILIATION_JOB_LOCK_KEY = "lock:billing_reconciliation:global"
 RECONCILIATION_JOB_LOCK_TTL = 7200  # 2 horas
 
 
-def _log(msg: str) -> None:
-    """Log com prefixo do job."""
-    logger.info(f"[BILLING RECONCILIATION] {msg}")
 
-
-def _log_warn(msg: str) -> None:
-    logger.warning(f"[BILLING RECONCILIATION] {msg}")
-
-
-def _log_error(msg: str) -> None:
-    logger.error(f"[BILLING RECONCILIATION] {msg}")
 
 
 async def fetch_all_payments_from_asaas(
@@ -156,14 +146,14 @@ async def fetch_all_payments_from_asaas(
             page_count += 1
 
             if page_count >= max_pages:
-                _log_warn(f"Limite de paginacao atingido ({max_pages} paginas) para {status}")
+                logger.warning(f"[RECONCILIAR PAGAMENTOS] Limite de paginacao atingido ({max_pages} paginas) para {status}")
                 break
 
-        _log(f"Buscou {len(all_payments)} pagamentos {status} da API Asaas")
+        logger.info(f"[RECONCILIAR PAGAMENTOS] Buscou {len(all_payments)} pagamentos {status} da API Asaas")
         return all_payments
 
     except Exception as e:
-        _log_error(f"Erro ao buscar {status} da API Asaas: {e}")
+        logger.error(f"[RECONCILIAR PAGAMENTOS] Erro ao buscar {status} da API Asaas: {e}")
         return []
 
 
@@ -282,14 +272,14 @@ async def upsert_payment_to_cache(
                             ia_update["ia_recebeu_days_from_due"] = notif_res.data[0].get("days_from_due")
 
                         supabase.client.table("asaas_cobrancas").update(ia_update).eq("id", payment_id).execute()
-                        _log(f"[SAFETY NET] ia_recebeu marcado para {payment_id}")
+                        logger.info(f"[RECONCILIAR PAGAMENTOS] [SAFETY NET] ia_recebeu marcado para {payment_id}")
                     except Exception as e:
-                        _log_warn(f"Erro ao marcar ia_recebeu (safety net) para {payment_id}: {e}")
+                        logger.warning(f"[RECONCILIAR PAGAMENTOS] Erro ao marcar ia_recebeu (safety net) para {payment_id}: {e}")
 
         return divergence
 
     except Exception as e:
-        _log_error(f"Erro ao upsert payment {payment_id} no cache: {e}")
+        logger.error(f"[RECONCILIAR PAGAMENTOS] Erro ao upsert payment {payment_id} no cache: {e}")
         return None
 
 
@@ -314,10 +304,10 @@ async def reconcile_agent(agent: Dict[str, Any]) -> Dict[str, int]:
     asaas_api_key = agent.get("asaas_api_key")
 
     if not asaas_api_key:
-        _log_warn(f"Agente {agent_name} sem asaas_api_key, pulando reconciliacao")
+        logger.warning(f"[RECONCILIAR PAGAMENTOS] Agente {agent_name} sem asaas_api_key, pulando reconciliacao")
         return stats
 
-    _log(f"Reconciliando agente: {agent_name} ({agent_id[:8]}...)")
+    logger.info(f"[RECONCILIAR PAGAMENTOS] Reconciliando agente: {agent_name} ({agent_id[:8]}...)")
 
     try:
         asaas_service = create_asaas_service(api_key=asaas_api_key)
@@ -345,12 +335,12 @@ async def reconcile_agent(agent: Dict[str, Any]) -> Dict[str, int]:
 
                     if divergence:
                         stats["divergences_fixed"] += 1
-                        _log(f"Divergencia corrigida: {payment.get('id', 'unknown')} - {divergence}")
+                        logger.info(f"[RECONCILIAR PAGAMENTOS] Divergencia corrigida: {payment.get('id', 'unknown')} - {divergence}")
 
                     stats["payments_synced"] += 1
 
                 except Exception as e:
-                    _log_error(f"Erro ao processar payment {payment.get('id', 'unknown')}: {e}")
+                    logger.error(f"[RECONCILIAR PAGAMENTOS] Erro ao processar payment {payment.get('id', 'unknown')}: {e}")
                     stats["errors"] += 1
 
         _log(
@@ -359,7 +349,7 @@ async def reconcile_agent(agent: Dict[str, Any]) -> Dict[str, int]:
         )
 
     except Exception as e:
-        _log_error(f"Erro ao reconciliar agente {agent_name}: {e}")
+        logger.error(f"[RECONCILIAR PAGAMENTOS] Erro ao reconciliar agente {agent_name}: {e}")
         stats["errors"] += 1
 
     return stats
@@ -380,10 +370,10 @@ async def reconcile_billing_data() -> Dict[str, Any]:
         RECONCILIATION_JOB_LOCK_KEY, "1", nx=True, ex=RECONCILIATION_JOB_LOCK_TTL
     )
     if not lock_acquired:
-        _log_warn("Job ja esta em execucao em outra instancia, pulando...")
+        logger.warning("[RECONCILIAR PAGAMENTOS] Job ja esta em execucao em outra instancia, pulando...")
         return {"status": "skipped", "reason": "already_running"}
 
-    _log("Iniciando reconciliacao de cobrancas...")
+    logger.info("[RECONCILIAR PAGAMENTOS] Iniciando reconciliacao de cobrancas...")
 
     total_stats = {
         "agents_processed": 0,
@@ -405,7 +395,7 @@ async def reconcile_billing_data() -> Dict[str, Any]:
         )
 
         agents = response.data or []
-        _log(f"Encontrados {len(agents)} agentes com Asaas configurado")
+        logger.info(f"[RECONCILIAR PAGAMENTOS] Encontrados {len(agents)} agentes com Asaas configurado")
 
         for agent in agents:
             agent_stats = await reconcile_agent(agent)
@@ -427,7 +417,7 @@ async def reconcile_billing_data() -> Dict[str, Any]:
         return {"status": "completed", "stats": total_stats}
 
     except Exception as e:
-        _log_error(f"Erro no processamento de reconciliacao: {e}")
+        logger.error(f"[RECONCILIAR PAGAMENTOS] Erro no processamento de reconciliacao: {e}")
         return {"status": "error", "error": str(e)}
 
     finally:
@@ -437,7 +427,7 @@ async def reconcile_billing_data() -> Dict[str, Any]:
 
 async def run_billing_reconciliation_job() -> Dict[str, Any]:
     """Entry point para o scheduler / execucao manual."""
-    _log("Executando billing reconciliation job...")
+    logger.info("[RECONCILIAR PAGAMENTOS] Executando billing reconciliation job...")
     return await reconcile_billing_data()
 
 
@@ -452,5 +442,5 @@ async def _force_run_billing_reconciliation() -> Dict[str, Any]:
     Versao forcada do job - executa imediatamente.
     APENAS PARA DEBUG/TESTES.
     """
-    _log("=== EXECUCAO FORCADA (reconciliacao) ===")
+    logger.info("[RECONCILIAR PAGAMENTOS] === EXECUCAO FORCADA (reconciliacao) ===")
     return await reconcile_billing_data()
