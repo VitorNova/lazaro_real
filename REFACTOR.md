@@ -16,8 +16,9 @@ Regra absoluta: leia antes de agir. Uma fase por vez. Compile após cada mudanç
 
 ### FASE 2 — Quebrar Monolitos ✅ (parcial)
 - [x] mensagens.py agora chama domain/messaging/context/ em vez de funções locais
+- [x] pagamentos.py agora chama domain/billing/services/ em vez de funções locais
 - [ ] Remover funções locais duplicadas de mensagens.py (aguarda testes em produção)
-- [ ] Quebrar pagamentos.py → domain/billing/
+- [ ] Remover funções locais duplicadas de pagamentos.py (aguarda testes em produção)
 - [ ] Quebrar athena.py → domain/analytics/
 
 ### FASE 3 — Jobs Thin ⏳
@@ -40,6 +41,7 @@ Regra absoluta: leia antes de agir. Uma fase por vez. Compile após cada mudanç
 Solução necessária: inverter a dependência fazendo tools/ importar de ai/tools/ ou eliminar tools/.
 
 ## COMMITS FEITOS
+- d569fc4 refactor(fase-2): integrar domain/billing em pagamentos.py
 - 3b65c9b refactor(fase-2): integrar domain/messaging em mensagens.py
 - 67f99f6 refactor(fase-1.5): unificar utils em core/utils
 - 118fbba refactor(fase-1.4): remover stubs de api/
@@ -47,5 +49,5 @@ Solução necessária: inverter a dependência fazendo tools/ importar de ai/too
 - c57667d refactor(fase-1.1): adicionar metodos faltantes nos repositories
 
 ## COMO CONTINUAR
-Próxima ação: Fase 2 — quebrar pagamentos.py
+Próxima ação: Fase 2 — quebrar athena.py → domain/analytics/
 Comando de validação após cada mudança: python3 -m py_compile apps/ia/app/main.py
