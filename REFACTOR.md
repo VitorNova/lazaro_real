@@ -51,6 +51,7 @@ Regra absoluta: leia antes de agir. Uma fase por vez. Compile após cada mudanç
 Solução necessária: inverter a dependência fazendo tools/ importar de ai/tools/ ou eliminar tools/.
 
 ## COMMITS FEITOS
+- e3559fb refactor(fase-B): alinhar message_processor.py com Fase A
 - f9bf97a refactor(fase-A): integrar ai/tools/tool_registry em mensagens.py
 - 640d1f0 docs: mapear mensagens.py e auditar leadbox_handler
 - d4151f9 refactor(fase-3): notificar_manutencoes.py thin (868→115 linhas)
@@ -108,7 +109,11 @@ Deve ser movido para `ai/tools/handlers.py` como módulo independente.
    - Uso: `handlers = get_function_handlers(supabase, context)`
    - Método inline (1358 linhas) mantido como fallback até teste em produção
    - Commit: f9bf97a
-2. **Fase B**: Completar stubs em `domain/messaging/services/message_processor.py`
+2. **Fase B**: ✅ ALINHADO — `message_processor.py` atualizado para usar `get_function_handlers`
+   - Removido parâmetro `create_handlers_callback`
+   - Usa `get_function_handlers(supabase, context)` diretamente
+   - Commit: e3559fb
+   - Pendente: Integrar em `mensagens.py` (substituir `_process_buffered_messages`)
 3. **Fase C**: Completar `message_orchestrator.py` com lógica real de `handle_message`
 4. **Fase D**: Integrar módulos e testar em produção
 5. **Fase E**: Remover código duplicado de `mensagens.py` (inclui `_create_function_handlers`)
