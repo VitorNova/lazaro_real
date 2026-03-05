@@ -43,16 +43,17 @@ Regra absoluta: leia antes de agir. Uma fase por vez. Compile após cada mudanç
   - reconciliar_pagamentos, reengajar_leads, reprocess_asaas_payments, sync_billing
 - [x] Padrão: logger = logging.getLogger(__name__)
 
-### FASE 5 — Segurança ⏳ (iniciada)
+### FASE 5 — Segurança ✅
 - [x] Criar core/security/injection_guard.py
 - [x] Integrar injection_guard em webhooks/mensagens.py (antes do Gemini)
-- [ ] Validação Pydantic nos webhooks
+- [x] Validação Pydantic nos webhooks (api/models/webhook_models.py)
 
 ## PROBLEMA ABERTO
 1.3 BLOQUEADO: ai/tools/ importa de tools/ — dependência invertida.
 Solução necessária: inverter a dependência fazendo tools/ importar de ai/tools/ ou eliminar tools/.
 
 ## COMMITS FEITOS
+- 27e2db3 refactor(fase-5): validação Pydantic nos webhooks
 - 398632c refactor(fase-A): remover _create_function_handlers inline (1360 linhas)
 - 60810dc refactor(fase-4): logging unificado em jobs
 - e3559fb refactor(fase-B): alinhar message_processor.py com Fase A
@@ -153,5 +154,5 @@ Deve ser movido para `ai/tools/handlers.py` como módulo independente.
 ---
 
 ## COMO CONTINUAR
-Próxima ação: Fase 4 — Logging Unificado ou Fase 5 — Segurança
+Próxima ação: Fase B Integração (mensagens.py usa message_processor.py extraído)
 Comando de validação após cada mudança: python3 -m py_compile apps/ia/app/main.py
