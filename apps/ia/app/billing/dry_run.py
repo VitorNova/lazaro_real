@@ -7,14 +7,14 @@ from typing import Any, Dict, List
 
 # === IMPORTS EXATOS DO billing_job_v2.py ===
 from app.domain.billing.services.billing_rules import get_agents_with_asaas
-from app.utils.dias_uteis import get_today_brasilia
+from app.core.utils.dias_uteis import get_today_brasilia
 
 # === IMPORTS EXATOS DO agent_processor.py ===
 from app.billing.collector import collect_payments
 from app.billing.eligibility import run_eligibility_checks
 from app.billing.models import EligiblePayment, CollectorResult, RejectedPayment
 from app.billing.ruler import evaluate, DEFAULT_SCHEDULE
-from app.utils.dias_uteis import add_business_days, subtract_business_days
+from app.core.utils.dias_uteis import add_business_days, subtract_business_days
 
 logging.basicConfig(
     level=logging.INFO,

@@ -13,7 +13,7 @@ Funcionalidades:
 import re
 from typing import Any, Dict, Optional
 
-from app.utils.dias_uteis import format_date_br, parse_date
+from app.core.utils.dias_uteis import format_date_br, parse_date
 
 from app.domain.billing.models.billing_config import DEFAULT_MESSAGES
 

@@ -28,7 +28,7 @@ import pytz
 
 from app.services.supabase import get_supabase_service
 from app.services.whatsapp_api import UazapiService
-from app.utils.dias_uteis import (
+from app.core.utils.dias_uteis import (
     get_now_brasilia,
     get_today_brasilia,
     is_business_day,

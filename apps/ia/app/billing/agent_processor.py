@@ -8,7 +8,7 @@ from app.billing.dispatcher import dispatch_single
 from app.billing.eligibility import run_eligibility_checks
 from app.billing.models import EligiblePayment
 from app.billing.ruler import evaluate
-from app.utils.dias_uteis import add_business_days, subtract_business_days
+from app.core.utils.dias_uteis import add_business_days, subtract_business_days
 
 logger = logging.getLogger(__name__)
 

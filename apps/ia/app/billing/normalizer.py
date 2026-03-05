@@ -3,7 +3,7 @@ from datetime import date
 from typing import Any, Dict
 
 from app.billing.models import Payment
-from app.utils.dias_uteis import parse_date
+from app.core.utils.dias_uteis import parse_date
 
 
 def normalize_api_payment(payment: Dict[str, Any]) -> Dict[str, Any]:

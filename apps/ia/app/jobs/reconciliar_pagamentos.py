@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional
 from app.services.gateway_pagamento import AsaasService, create_asaas_service
 from app.services.redis import get_redis_service
 from app.services.supabase import get_supabase_service
-from app.utils.dias_uteis import get_today_brasilia
+from app.core.utils.dias_uteis import get_today_brasilia
 
 logger = logging.getLogger(__name__)
 

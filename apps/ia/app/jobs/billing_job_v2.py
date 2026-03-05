@@ -6,7 +6,7 @@ from app.billing.agent_processor import process_agent
 from app.domain.billing.models.billing_config import BILLING_JOB_LOCK_KEY, BILLING_JOB_LOCK_TTL
 from app.domain.billing.services.billing_rules import get_agents_with_asaas
 from app.services.redis import get_redis_service
-from app.utils.dias_uteis import get_today_brasilia, is_business_day, is_business_hours
+from app.core.utils.dias_uteis import get_today_brasilia, is_business_day, is_business_hours
 
 logger = logging.getLogger(__name__)
 

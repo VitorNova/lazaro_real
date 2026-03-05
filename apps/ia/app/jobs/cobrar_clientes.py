@@ -26,7 +26,7 @@ from app.services.leadbox_push import QUEUE_BILLING, leadbox_push_silent
 from app.services.redis import get_redis_service
 from app.services.supabase import get_supabase_service
 from app.services.whatsapp_api import UazapiService, sign_message
-from app.utils.dias_uteis import (
+from app.core.utils.dias_uteis import (
     add_business_days,
     anticipate_to_friday,
     format_date,

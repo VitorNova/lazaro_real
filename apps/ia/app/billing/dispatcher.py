@@ -15,7 +15,7 @@ from app.services.dispatch_logger import get_dispatch_logger
 from app.services.leadbox_push import leadbox_push_silent, QUEUE_BILLING
 from app.services.supabase import get_supabase_service
 from app.services.whatsapp_api import UazapiService, sign_message
-from app.utils.dias_uteis import format_date
+from app.core.utils.dias_uteis import format_date
 
 logger = logging.getLogger(__name__)
 

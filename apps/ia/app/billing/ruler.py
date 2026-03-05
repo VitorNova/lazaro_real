@@ -3,7 +3,7 @@ from datetime import date
 from typing import List, Optional
 
 from app.billing.models import RulerDecision
-from app.utils.dias_uteis import count_business_days
+from app.core.utils.dias_uteis import count_business_days
 
 DEFAULT_SCHEDULE = [-1, 0, 1, 3, 5, 7, 10, 12, 15]
 

@@ -497,7 +497,7 @@ async def get_pending_payments_today(
     agent_id: str,
 ) -> List[Dict[str, Any]]:
     """Busca cobrancas PENDING com vencimento hoje."""
-    from app.utils.dias_uteis import get_today_brasilia
+    from app.core.utils.dias_uteis import get_today_brasilia
     today = get_today_brasilia()
     return await get_pending_payments_by_due_date(agent_id, today)
 
