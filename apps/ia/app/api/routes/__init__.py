@@ -38,19 +38,19 @@ def register_routes(app: FastAPI) -> None:
     app.include_router(whatsapp_router, prefix="/api", tags=["webhooks"])
 
     # Dashboard API
-    from app.api.dashboard import router as dashboard_router
+    from app.api.routes.dashboard import router as dashboard_router
     app.include_router(dashboard_router, tags=["dashboard"])
 
     # Google OAuth
-    from app.api.google_oauth import router as google_oauth_router
+    from app.api.routes.google_oauth import router as google_oauth_router
     app.include_router(google_oauth_router, prefix="/api/google/oauth", tags=["google-oauth"])
 
     # Auth
-    from app.api.auth import router as auth_router
+    from app.api.routes.auth import router as auth_router
     app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 
     # Agents CRUD
-    from app.api.agentes import agents_router
+    from app.api.routes.agentes import agents_router
     app.include_router(agents_router, prefix="/api", tags=["agents"])
 
     # Dynamic webhook
@@ -64,11 +64,11 @@ def register_routes(app: FastAPI) -> None:
     app.include_router(leadbox_router)
 
     # Diana v2 - Prospecao ativa
-    from app.api.diana import router as diana_router
+    from app.api.routes.diana import router as diana_router
     app.include_router(diana_router, prefix="/api/diana", tags=["diana"])
 
     # Athena Oraculo - Analytics
-    from app.api.athena import router as athena_router
+    from app.api.routes.athena import router as athena_router
     app.include_router(athena_router, prefix="/api/athena", tags=["athena"])
 
     # Extracted routes
