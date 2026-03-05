@@ -14,12 +14,12 @@ Regra absoluta: leia antes de agir. Uma fase por vez. Compile após cada mudanç
 - [⏭️] 1.2 WhatsApp: pulado (risco sync/async)
 - [🔒] 1.3 Tools: bloqueado (dependência invertida — ai/tools/ importa de tools/)
 
-### FASE 2 — Quebrar Monolitos ✅ (parcial)
+### FASE 2 — Quebrar Monolitos ✅
 - [x] mensagens.py agora chama domain/messaging/context/ em vez de funções locais
 - [x] pagamentos.py agora chama domain/billing/services/ em vez de funções locais
 - [ ] Remover funções locais duplicadas de mensagens.py (aguarda testes em produção)
 - [ ] Remover funções locais duplicadas de pagamentos.py (aguarda testes em produção)
-- [ ] Quebrar athena.py → domain/analytics/
+- [🗑️] athena.py REMOVIDO do escopo (rota desativada, arquivo mantido para referência)
 
 ### FASE 3 — Jobs Thin ⏳
 - [ ] cobrar_clientes.py → lógica para domain/billing/ (já existe estrutura)
@@ -49,5 +49,5 @@ Solução necessária: inverter a dependência fazendo tools/ importar de ai/too
 - c57667d refactor(fase-1.1): adicionar metodos faltantes nos repositories
 
 ## COMO CONTINUAR
-Próxima ação: Fase 2 — quebrar athena.py → domain/analytics/
+Próxima ação: Fase 3 — Jobs thin (cobrar_clientes.py e reengajar_leads.py)
 Comando de validação após cada mudança: python3 -m py_compile apps/ia/app/main.py
