@@ -1,0 +1,9 @@
+Ola {nome}! Aqui e a ANA da Alugar Ar.
+
+Esta chegando a hora da manutencao preventiva do seu ar-condicionado!
+*Equipamento:* {marca} {btus} BTUs
+*Endereco:* {endereco}
+
+A manutencao e gratuita e esta inclusa no seu contrato.
+
+Quer agendar? Me fala um dia e horario de preferencia!
