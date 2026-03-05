@@ -5,6 +5,9 @@ THIN JOB: Logica de negocio delegada para domain/maintenance/services/notificati
 Template de mensagem em: prompts/maintenance/reminder_7d.txt
 
 Executa 09:00 dias uteis (seg-sex), timezone America/Cuiaba
+
+IMPORTANTE: Usa lock distribuido Redis para evitar execucao duplicada
+em ambientes com multiplas replicas (Docker Swarm).
 """
 
 import logging
@@ -18,35 +21,35 @@ from app.domain.maintenance.services import (
     test_maintenance_notification,
     AGENT_ID_LAZARO,
 )
+from app.domain.maintenance.services.maintenance_job_lock import (
+    acquire_maintenance_lock,
+    release_maintenance_lock,
+    is_maintenance_job_locked,
+)
 
 logger = logging.getLogger(__name__)
-
-# Estado do job (evita execucao concorrente)
-_is_running = False
 
 
 async def run_maintenance_notifier_job() -> Dict[str, Any]:
     """Entry point principal do job de notificacao de manutencao."""
-    global _is_running
 
-    if _is_running:
-        logger.warning("[MAINTENANCE JOB] Job ja esta em execucao, pulando...")
-        return {"status": "skipped", "reason": "already_running"}
+    # Lock distribuido - apenas uma instancia executa
+    if not await acquire_maintenance_lock():
+        return {"status": "skipped", "reason": "already_running_other_instance"}
 
     hoje = get_today_brasilia()
 
-    if not is_business_day(hoje):
-        logger.info("[MAINTENANCE JOB] Hoje nao e dia util, pulando")
-        return {"status": "skipped", "reason": "not_business_day"}
-
-    if not is_business_hours(8, 18):
-        logger.info("[MAINTENANCE JOB] Fora do horario comercial, pulando")
-        return {"status": "skipped", "reason": "outside_business_hours"}
-
-    _is_running = True
-    logger.info(f"[MAINTENANCE JOB] Iniciando (hoje={hoje})")
-
     try:
+        if not is_business_day(hoje):
+            logger.info("[MAINTENANCE JOB] Hoje nao e dia util, pulando")
+            return {"status": "skipped", "reason": "not_business_day"}
+
+        if not is_business_hours(8, 18):
+            logger.info("[MAINTENANCE JOB] Fora do horario comercial, pulando")
+            return {"status": "skipped", "reason": "outside_business_hours"}
+
+        logger.info(f"[MAINTENANCE JOB] Iniciando (hoje={hoje})")
+
         agent = await get_maintenance_agent()
 
         if not agent:
@@ -70,17 +73,16 @@ async def run_maintenance_notifier_job() -> Dict[str, Any]:
         return {"status": "error", "error": str(e)}
 
     finally:
-        _is_running = False
+        await release_maintenance_lock()
 
 
 async def _force_run_maintenance_notifier() -> Dict[str, Any]:
     """Versao forcada - ignora verificacoes de horario. APENAS PARA DEBUG."""
-    global _is_running
 
-    if _is_running:
-        return {"status": "skipped", "reason": "already_running"}
+    # Lock distribuido - apenas uma instancia executa
+    if not await acquire_maintenance_lock():
+        return {"status": "skipped", "reason": "already_running_other_instance"}
 
-    _is_running = True
     hoje = get_today_brasilia()
     logger.info(f"[MAINTENANCE JOB] === EXECUCAO FORCADA (hoje={hoje}) ===")
 
@@ -98,12 +100,12 @@ async def _force_run_maintenance_notifier() -> Dict[str, Any]:
         return {"status": "error", "error": str(e)}
 
     finally:
-        _is_running = False
+        await release_maintenance_lock()
 
 
-def is_maintenance_notifier_running() -> bool:
-    """Verifica se o job esta rodando."""
-    return _is_running
+async def is_maintenance_notifier_running() -> bool:
+    """Verifica se o job esta rodando (via lock distribuido)."""
+    return await is_maintenance_job_locked()
 
 
 # Re-export test function from service for backward compatibility
