@@ -53,6 +53,7 @@ Regra absoluta: leia antes de agir. Uma fase por vez. Compile após cada mudanç
 Solução necessária: inverter a dependência fazendo tools/ importar de ai/tools/ ou eliminar tools/.
 
 ## COMMITS FEITOS
+- ebf002f refactor(fase-B): integrar message_processor em mensagens.py (-698 linhas)
 - 27e2db3 refactor(fase-5): validação Pydantic nos webhooks
 - 398632c refactor(fase-A): remover _create_function_handlers inline (1360 linhas)
 - 60810dc refactor(fase-4): logging unificado em jobs
@@ -75,7 +76,7 @@ Solução necessária: inverter a dependência fazendo tools/ importar de ai/too
 - e21ac84 refactor(fase-1.1): marcar services/supabase.py como DEPRECATED
 - c57667d refactor(fase-1.1): adicionar metodos faltantes nos repositories
 
-## MAPEAMENTO: mensagens.py (4414 linhas)
+## MAPEAMENTO: mensagens.py (2375 linhas — era 4414)
 
 ### Métodos da classe WhatsAppWebhookHandler
 
@@ -85,10 +86,10 @@ Solução necessária: inverter a dependência fazendo tools/ importar de ai/too
 | `_extract_message_data` | 865-1013 | 148 | ⏳ Extrair → `domain/messaging/services/` |
 | `_handle_control_command` | 1015-1177 | 162 | ⏳ Extrair → `domain/messaging/handlers/` |
 | `_schedule_processing` | 1179-? | ~50 | ✅ Stub em `message_processor.py` |
-| `_process_buffered_messages` | ?-1917 | 738 | ✅ Stub em `message_processor.py` |
+| `_process_buffered_messages` | 1196-1250 | 54 | ✅ INTEGRADO → `message_processor.py` (Fase B) |
 | `_prepare_gemini_messages` | 1919-1955 | 36 | ✅ Stub em `message_processor.py` |
 | `_save_conversation_history` | 1957-2132 | 175 | ✅ Em `conversation_manager.py` |
-| `_create_function_handlers` | 2134-3492 | 1358 | ✅ INTEGRADO → `ai/tools/tool_registry.py` |
+| `_create_function_handlers` | — | — | ✅ REMOVIDO (Fase A) → `ai/tools/tool_registry.py` |
 | `handle_message` | 3498-4277 | 779 | ⏳ Stub incompleto em `message_orchestrator.py` |
 
 ### Funções standalone duplicadas
@@ -114,14 +115,14 @@ Deve ser movido para `ai/tools/handlers.py` como módulo independente.
    - Uso: `handlers = get_function_handlers(supabase, context)`
    - Método inline (1360 linhas) **REMOVIDO** de mensagens.py
    - Commits: f9bf97a (integração), 398632c (remoção inline)
-2. **Fase B**: ✅ ALINHADO — `message_processor.py` atualizado para usar `get_function_handlers`
-   - Removido parâmetro `create_handlers_callback`
-   - Usa `get_function_handlers(supabase, context)` diretamente
-   - Commit: e3559fb
-   - Pendente: Integrar em `mensagens.py` (substituir `_process_buffered_messages`)
+2. **Fase B**: ✅ COMPLETO — `_process_buffered_messages` → `message_processor.py`
+   - Import: `from app.domain.messaging.services.message_processor import process_buffered_messages`
+   - Método inline (750 linhas) **REMOVIDO** de mensagens.py
+   - mensagens.py: 3073 → 2375 linhas (-698 linhas, 23%)
+   - Commits: e3559fb (alinhamento), ebf002f (integração)
 3. **Fase C**: Completar `message_orchestrator.py` com lógica real de `handle_message`
 4. **Fase D**: Integrar módulos e testar em produção
-5. **Fase E**: Remover código duplicado de `mensagens.py` (inclui `_create_function_handlers`)
+5. **Fase E**: Remover funções duplicadas restantes de `mensagens.py`
 
 ---
 
