@@ -64,8 +64,22 @@ services:
         - traefik.http.routers.lazaro-webhooks.tls.certresolver=letsencryptresolver
         - traefik.http.routers.lazaro-webhooks.service=lazaro-ia
 
-        # IA service
-        - traefik.http.services.lazaro-ia.loadbalancer.server.url=http://172.17.0.1:8001
+        # IA service (lazaro-ia Docker em 3115)
+        - traefik.http.services.lazaro-ia.loadbalancer.server.url=http://172.17.0.1:3115
+
+        # ============================================
+        # API WEBHOOK WHATSAPP - Rota específica para IA (prioridade > API)
+        # ============================================
+        - traefik.http.routers.lazaro-api-webhook-http.rule=Host(`lazaro.fazinzz.com`) && PathPrefix(`/api/webhook`)
+        - traefik.http.routers.lazaro-api-webhook-http.entrypoints=web
+        - traefik.http.routers.lazaro-api-webhook-http.priority=20
+        - traefik.http.routers.lazaro-api-webhook-http.service=lazaro-ia
+
+        - traefik.http.routers.lazaro-api-webhook.rule=Host(`lazaro.fazinzz.com`) && PathPrefix(`/api/webhook`)
+        - traefik.http.routers.lazaro-api-webhook.entrypoints=websecure
+        - traefik.http.routers.lazaro-api-webhook.priority=20
+        - traefik.http.routers.lazaro-api-webhook.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.lazaro-api-webhook.service=lazaro-ia
 
         # ============================================
         # HEALTH - Rotas HTTP e HTTPS
