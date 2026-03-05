@@ -36,6 +36,9 @@ from app.domain.messaging.context import context_detector
 from app.domain.messaging.context import billing_context
 from app.domain.messaging.context import maintenance_context
 
+# Tool handlers extraídos (Fase A) - substitui _create_function_handlers inline
+from app.ai.tools.tool_registry import get_function_handlers
+
 # Security (Fase 5)
 from app.core.security.injection_guard import validate_user_input
 
@@ -1748,7 +1751,8 @@ Considere que ele já conhece o processo e pode estar retornando para acompanham
             logger.debug(f"[DEBUG 5/6] GEMINI INICIALIZADO com {len(function_declarations)} tools")
 
             # SEMPRE registrar handlers com contexto atual (para ter acesso a phone, handoff_triggers, etc)
-            handlers = self._create_function_handlers(context)
+            # Fase A: Usar handlers extraídos de ai/tools/ em vez do método inline
+            handlers = get_function_handlers(supabase, context)
             gemini.register_tool_handlers(handlers)
             logger.debug(f"[DEBUG 5/6] HANDLERS REGISTRADOS com contexto do agente")
 
