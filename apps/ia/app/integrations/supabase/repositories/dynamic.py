@@ -351,6 +351,113 @@ class DynamicRepository:
             },
         )
 
+    async def set_lead_paused(
+        self,
+        table_name: str,
+        remotejid: str,
+        paused: bool,
+        reason: Optional[str] = None,
+    ) -> Optional[DynamicLead]:
+        """
+        Pausa ou ativa o bot para um lead especifico.
+
+        Args:
+            table_name: Nome da tabela (LeadboxCRM_xxx)
+            remotejid: ID remoto WhatsApp
+            paused: True para pausar, False para ativar
+            reason: Motivo da pausa (opcional)
+
+        Returns:
+            Lead atualizado ou None
+        """
+        update_data: dict[str, Any] = {"pausar_ia": paused}
+
+        if paused and reason:
+            update_data["handoff_reason"] = reason
+            update_data["handoff_at"] = datetime.now().isoformat()
+        elif not paused:
+            update_data["handoff_reason"] = None
+            update_data["handoff_at"] = None
+
+        return await self.update_lead_by_remotejid(table_name, remotejid, update_data)
+
+    async def is_lead_paused(self, table_name: str, remotejid: str) -> bool:
+        """
+        Verifica se o bot esta pausado para um lead.
+
+        Args:
+            table_name: Nome da tabela (LeadboxCRM_xxx)
+            remotejid: ID remoto WhatsApp
+
+        Returns:
+            True se pausado, False caso contrario
+        """
+        lead = await self.find_lead_by_remotejid(table_name, remotejid)
+        if lead:
+            return bool(lead.get("pausar_ia", False))
+        return False
+
+    async def get_all_leads(
+        self,
+        table_name: str,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> list[DynamicLead]:
+        """
+        Busca todos os leads de uma tabela com paginacao.
+
+        Args:
+            table_name: Nome da tabela (LeadboxCRM_xxx)
+            limit: Numero maximo de leads por pagina
+            offset: Offset para paginacao
+
+        Returns:
+            Lista de leads
+        """
+        try:
+            response = (
+                self._table(table_name)
+                .select("*")
+                .order("id", desc=False)
+                .range(offset, offset + limit - 1)
+                .execute()
+            )
+            return response.data or []
+        except Exception as e:
+            logger.error(
+                "dynamic_get_all_leads_error",
+                table=table_name,
+                limit=limit,
+                offset=offset,
+                error=str(e),
+            )
+            raise
+
+    async def count_leads(self, table_name: str) -> int:
+        """
+        Conta o total de leads em uma tabela.
+
+        Args:
+            table_name: Nome da tabela (LeadboxCRM_xxx)
+
+        Returns:
+            Total de leads
+        """
+        try:
+            response = (
+                self._table(table_name)
+                .select("id", count="exact", head=True)
+                .execute()
+            )
+            return response.count or 0
+        except Exception as e:
+            logger.error(
+                "dynamic_count_leads_error",
+                table=table_name,
+                error=str(e),
+            )
+            return 0
+
     # ==========================================================================
     # MESSAGES (leadbox_messages_*)
     # ==========================================================================
@@ -721,6 +828,104 @@ class DynamicRepository:
                 error=str(e),
             )
             raise
+
+    # ==========================================================================
+    # LEAD SESSIONS (lead_sessions)
+    # ==========================================================================
+
+    async def ensure_session(
+        self,
+        agent_id: str,
+        remotejid: str,
+        inactivity_hours: int = 4,
+    ) -> int:
+        """
+        Verifica/cria sessao de atendimento e retorna total de sessoes do cliente.
+
+        Uma nova sessao e criada quando:
+        - Nao existe sessao anterior para este lead
+        - A ultima sessao e mais antiga que inactivity_hours
+
+        Args:
+            agent_id: ID do agente
+            remotejid: ID WhatsApp do lead
+            inactivity_hours: Horas de inatividade para considerar nova sessao
+
+        Returns:
+            Total de sessoes do cliente com este agente
+        """
+        from datetime import timedelta
+
+        try:
+            now = datetime.now()
+            cutoff = now - timedelta(hours=inactivity_hours)
+
+            # Buscar ultima sessao
+            result = (
+                self._client.table("lead_sessions")
+                .select("id, started_at, ended_at")
+                .eq("agent_id", agent_id)
+                .eq("remotejid", remotejid)
+                .order("started_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+
+            last_session = result.data[0] if result.data else None
+
+            # Verificar se precisa criar nova sessao
+            needs_new_session = False
+            if not last_session:
+                needs_new_session = True
+            else:
+                last_started_str = last_session["started_at"]
+                # Parse ISO datetime
+                last_started = datetime.fromisoformat(
+                    last_started_str.replace("Z", "+00:00")
+                ).replace(tzinfo=None)
+                if last_started < cutoff:
+                    needs_new_session = True
+
+            if needs_new_session:
+                # Fechar sessao anterior se estiver aberta
+                if last_session and not last_session.get("ended_at"):
+                    self._client.table("lead_sessions").update({
+                        "ended_at": now.isoformat()
+                    }).eq("id", last_session["id"]).execute()
+
+                # Criar nova sessao
+                self._client.table("lead_sessions").insert({
+                    "agent_id": agent_id,
+                    "remotejid": remotejid,
+                    "started_at": now.isoformat()
+                }).execute()
+
+                logger.info(
+                    "session_created",
+                    agent_id=agent_id[:8],
+                    remotejid=remotejid,
+                )
+
+            # Contar total de sessoes
+            count_result = (
+                self._client.table("lead_sessions")
+                .select("id", count="exact", head=True)
+                .eq("agent_id", agent_id)
+                .eq("remotejid", remotejid)
+                .execute()
+            )
+
+            return count_result.count if count_result.count else 1
+
+        except Exception as e:
+            logger.error(
+                "session_ensure_error",
+                agent_id=agent_id,
+                remotejid=remotejid,
+                error=str(e),
+            )
+            # Em caso de erro, retornar 1 para nao quebrar o fluxo
+            return 1
 
 
 # ==============================================================================

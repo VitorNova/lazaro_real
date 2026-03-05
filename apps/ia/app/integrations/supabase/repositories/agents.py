@@ -283,6 +283,61 @@ class AgentsRepository(BaseRepository[Agent]):
             )
             raise
 
+    async def get_google_credentials(self, agent_id: str) -> Optional[dict[str, Any]]:
+        """
+        Busca credenciais Google OAuth2 do agente.
+
+        Args:
+            agent_id: ID do agente
+
+        Returns:
+            Dict com credenciais Google ou None se nao configurado
+        """
+        try:
+            response = (
+                self.table.select(
+                    "google_credentials, google_calendar_id, google_calendar_enabled"
+                )
+                .eq("id", agent_id)
+                .single()
+                .execute()
+            )
+            if not response.data:
+                return None
+
+            agent_data = response.data
+
+            # Verificar se Google Calendar esta habilitado
+            if not agent_data.get("google_calendar_enabled", False):
+                logger.debug(
+                    "agents_google_calendar_disabled",
+                    agent_id=agent_id,
+                )
+                return None
+
+            credentials = agent_data.get("google_credentials")
+            if not credentials:
+                logger.debug(
+                    "agents_google_credentials_empty",
+                    agent_id=agent_id,
+                )
+                return None
+
+            # Adicionar calendar_id ao resultado
+            calendar_id = agent_data.get("google_calendar_id", "primary")
+            credentials["calendar_id"] = calendar_id
+
+            return credentials
+        except Exception as e:
+            if self._is_not_found(e):
+                return None
+            logger.error(
+                "agents_get_google_credentials_error",
+                agent_id=agent_id,
+                error=str(e),
+            )
+            return None
+
     async def get_tables(self, agent_id: str) -> Optional[tuple[str, str]]:
         """
         Retorna nomes das tabelas dinamicas do agente.
