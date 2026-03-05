@@ -22,7 +22,7 @@ Regra absoluta: leia antes de agir. Uma fase por vez. Compile após cada mudanç
 - [🗑️] athena.py DELETADO (api/routes/athena.py, domain/analytics/, services/athena/)
 
 ### FASE 3 — Jobs Thin ✅
-- [x] notificar_manutencoes.py → domain/maintenance/services/notification_service.py
+- [x] notificar_manutencoes.py (868→115 linhas) → domain/maintenance/services/notification_service.py
 - [x] Template de mensagem → prompts/maintenance/reminder_7d.txt
 - [x] cobrar_clientes.py (1839→163 linhas) → domain/billing/services/:
   - billing_orchestrator.py: process_agent_billing
@@ -51,6 +51,7 @@ Regra absoluta: leia antes de agir. Uma fase por vez. Compile após cada mudanç
 Solução necessária: inverter a dependência fazendo tools/ importar de ai/tools/ ou eliminar tools/.
 
 ## COMMITS FEITOS
+- d4151f9 refactor(fase-3): notificar_manutencoes.py thin (868→115 linhas)
 - 7537dbf refactor(fase-3): reengajar_leads.py como thin dispatcher
 - 7264b7c refactor(fase-3): atualizar __init__.py de leads/services
 - da8e8af refactor(fase-3): extrair follow_up_orchestrator para domain/leads/services
@@ -65,6 +66,76 @@ Solução necessária: inverter a dependência fazendo tools/ importar de ai/too
 - 118fbba refactor(fase-1.4): remover stubs de api/
 - e21ac84 refactor(fase-1.1): marcar services/supabase.py como DEPRECATED
 - c57667d refactor(fase-1.1): adicionar metodos faltantes nos repositories
+
+## MAPEAMENTO: mensagens.py (4414 linhas)
+
+### Métodos da classe WhatsAppWebhookHandler
+
+| Método | Linhas | Tamanho | Status Domain/ |
+|--------|--------|---------|----------------|
+| `__init__` | 844-863 | 19 | - |
+| `_extract_message_data` | 865-1013 | 148 | ⏳ Extrair → `domain/messaging/services/` |
+| `_handle_control_command` | 1015-1177 | 162 | ⏳ Extrair → `domain/messaging/handlers/` |
+| `_schedule_processing` | 1179-? | ~50 | ✅ Stub em `message_processor.py` |
+| `_process_buffered_messages` | ?-1917 | 738 | ✅ Stub em `message_processor.py` |
+| `_prepare_gemini_messages` | 1919-1955 | 36 | ✅ Stub em `message_processor.py` |
+| `_save_conversation_history` | 1957-2132 | 175 | ✅ Em `conversation_manager.py` |
+| `_create_function_handlers` | 2134-3492 | 1358 | ❌ **CRÍTICO** - mover → `ai/tools/handlers.py` |
+| `handle_message` | 3498-4277 | 779 | ⏳ Stub incompleto em `message_orchestrator.py` |
+
+### Funções standalone duplicadas
+
+| Função | Linhas | Status |
+|--------|--------|--------|
+| `get_context_prompt` | 65-129 | ✅ Duplicada (usar `context_detector.py`) |
+| `detect_conversation_context` | 136-219 | ✅ Duplicada (usar `context_detector.py`) |
+| `get_contract_data_for_maintenance` | 221-303 | ✅ Duplicada (usar `maintenance_context.py`) |
+| `build_maintenance_context_prompt` | 305-384 | ✅ Duplicada (usar `maintenance_context.py`) |
+| `get_billing_data_for_context` | 386-430 | ✅ Duplicada (usar `billing_context.py`) |
+| `build_billing_context_prompt` | 432-503 | ✅ Duplicada (usar `billing_context.py`) |
+| `prepare_system_prompt` | var | ✅ Duplicada (usar `context_detector.py`) |
+
+### Problema principal
+`_create_function_handlers` com 1358 linhas contém ALL function handlers do Gemini inline.
+Deve ser movido para `ai/tools/handlers.py` como módulo independente.
+
+### Plano de Extração (ordem de prioridade)
+
+1. **Fase A**: Extrair `_create_function_handlers` → `ai/tools/handlers.py` (1358 linhas)
+2. **Fase B**: Completar stubs em `domain/messaging/services/message_processor.py`
+3. **Fase C**: Completar `message_orchestrator.py` com lógica real de `handle_message`
+4. **Fase D**: Integrar módulos e testar em produção
+5. **Fase E**: Remover código duplicado de `mensagens.py`
+
+---
+
+## AUDITORIA: Leadbox Handler (2024-03-04)
+
+### Arquivos auditados
+- `api/handlers/leadbox_handler.py` (439 linhas)
+- `api/services/lead_intake_service.py` (446 linhas)
+
+### Funções mapeadas
+
+| Função | Arquivo | Linhas | Responsabilidade |
+|--------|---------|--------|------------------|
+| `handle_new_message` | leadbox_handler | 22-67 | Roteia mensagens humano/lead |
+| `handle_ticket_closed` | leadbox_handler | 69-145 | Reseta lead para IA |
+| `handle_queue_change` | leadbox_handler | 148-323 | Orquestração de roteamento de filas |
+| `_handle_ia_queue` | leadbox_handler | 326-438 | Reativação IA + injeção contexto |
+| `capture_human_message` | lead_intake_service | 23-106 | Salva msg humano no histórico |
+| `process_lead_message` | lead_intake_service | 109-219 | Converte payload e chama handler |
+| `create_lead_if_missing` | lead_intake_service | 222-278 | Cria lead (race condition) |
+| `inject_agnes_message` | lead_intake_service | 280-336 | Injeta "12" para AGNES |
+| `inject_return_context` | lead_intake_service | 339-446 | Injeta contexto retorno fila humana |
+
+### Conclusão
+- Lógica de devolução para IA **FUNCIONAL** em `handle_ticket_closed`
+- Roteamento de filas **completo** em `handle_queue_change`
+- **NÃO precisa** criar `domain/leads/services/queue_routing.py`
+- Candidato futuro para extração: `_handle_ia_queue` → `domain/leads/services/ia_queue_handler.py`
+
+---
 
 ## COMO CONTINUAR
 Próxima ação: Fase 4 — Logging Unificado ou Fase 5 — Segurança
