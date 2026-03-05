@@ -573,6 +573,20 @@ async def process_buffered_messages(
                         print(f"[CONTEXT DEBUG] FALLBACK ATIVADO: lead_origin='{lead_origin}' -> context='{conversation_context}'", flush=True)
                         logger.info(f"[CONTEXT] Fallback para lead_origin='{lead_origin}' -> context='{conversation_context}' (phone={phone})")
 
+                    # Fallback 2: verificar fila atual (queue 544=billing, 545=manutencao)
+                    if not conversation_context:
+                        current_q = lead_for_context.get("current_queue_id")
+                        if current_q:
+                            try:
+                                current_q_int = int(current_q)
+                                queue_to_context = {int(d.get("queueId")): n for n, d in dispatch_depts.items() if isinstance(d, dict) and d.get("queueId")}
+                                if current_q_int in queue_to_context:
+                                    conversation_context = queue_to_context[current_q_int]
+                                    print(f"[CONTEXT DEBUG] QUEUE FALLBACK: fila {current_q_int} -> context='{conversation_context}'", flush=True)
+                                    logger.info(f"[CONTEXT] Queue fallback: fila {current_q_int} -> context='{conversation_context}' (phone={phone})")
+                            except (ValueError, TypeError):
+                                pass
+
         # Injetar prompt dinamico se houver contexto especial (RAG simplificado)
         # Prompts sao carregados do campo context_prompts do agente (JSONB no Supabase)
         effective_system_prompt = context["system_prompt"]
