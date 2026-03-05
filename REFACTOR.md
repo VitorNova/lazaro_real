@@ -36,10 +36,12 @@ Regra absoluta: leia antes de agir. Uma fase por vez. Compile após cada mudanç
   - follow_up_throttle.py: rate limiting Redis
   - follow_up_recorder.py: registro de envios
 
-### FASE 4 — Logging Unificado ⏳
-- [ ] Substituir todos os print() por logger
-- [ ] Remover wrappers _log, _log_warn, _log_error
-- [ ] Padrão: from core.logging import get_logger; logger = get_logger(__name__)
+### FASE 4 — Logging Unificado ✅
+- [x] Substituir print() por logger em: inspect_image, reclassify_origins, reprocess_asaas_payments
+- [x] Remover wrappers _log, _log_warn, _log_error em 10 jobs:
+  - billing_job, cobrar_clientes, confirmar_agendamentos, follow_up_job
+  - reconciliar_pagamentos, reengajar_leads, reprocess_asaas_payments, sync_billing
+- [x] Padrão: logger = logging.getLogger(__name__)
 
 ### FASE 5 — Segurança ⏳ (iniciada)
 - [x] Criar core/security/injection_guard.py
@@ -51,6 +53,7 @@ Regra absoluta: leia antes de agir. Uma fase por vez. Compile após cada mudanç
 Solução necessária: inverter a dependência fazendo tools/ importar de ai/tools/ ou eliminar tools/.
 
 ## COMMITS FEITOS
+- 60810dc refactor(fase-4): logging unificado em jobs
 - e3559fb refactor(fase-B): alinhar message_processor.py com Fase A
 - f9bf97a refactor(fase-A): integrar ai/tools/tool_registry em mensagens.py
 - 640d1f0 docs: mapear mensagens.py e auditar leadbox_handler
