@@ -268,9 +268,19 @@ async def process_buffered_messages(
                                     except (ValueError, TypeError):
                                         realtime_queue = None
 
-                                if realtime_queue is not None and realtime_queue not in IA_QUEUES_LOCAL:
-                                    print(f"[LEADBOX REALTIME CHECK] Lead {phone} na fila {realtime_queue} - IGNORANDO (não está em filas IA {IA_QUEUES_LOCAL})", flush=True)
-                                    logger.info(f"[LEADBOX REALTIME CHECK] Lead {phone} na fila {realtime_queue} - IGNORANDO (não está em filas IA {IA_QUEUES_LOCAL})")
+                                # =============================================================
+                                # FAIL-SAFE: Só processa se CONFIRMOU que está em fila de IA
+                                # =============================================================
+                                if realtime_queue is None:
+                                    # API retornou mas sem queue_id - fail-safe: ignorar
+                                    print(f"[FAIL-SAFE] Lead {phone} - fila não confirmada (queue_id=None), IGNORANDO", flush=True)
+                                    logger.warning(f"[FAIL-SAFE] Lead {phone} - API retornou sem queue_id, ignorando")
+                                    await redis.buffer_clear(agent_id, phone)
+                                    return
+
+                                if realtime_queue not in IA_QUEUES_LOCAL:
+                                    print(f"[FAIL-SAFE] Lead {phone} na fila {realtime_queue} - IGNORANDO (não está em filas IA {IA_QUEUES_LOCAL})", flush=True)
+                                    logger.info(f"[FAIL-SAFE] Lead {phone} na fila {realtime_queue} - IGNORANDO (não está em filas IA {IA_QUEUES_LOCAL})")
                                     # Atualizar banco com dado real para próximas verificações
                                     try:
                                         update_fields = {"current_queue_id": str(realtime_queue)}
@@ -279,30 +289,45 @@ async def process_buffered_messages(
                                         if realtime_result.get("user_id"):
                                             update_fields["current_user_id"] = str(realtime_result["user_id"])
                                         supabase.update_lead_by_remotejid(table_leads, remotejid, update_fields)
-                                        logger.debug(f"[LEADBOX REALTIME CHECK] Banco atualizado: queue={realtime_queue}")
+                                        logger.debug(f"[FAIL-SAFE] Banco atualizado: queue={realtime_queue}")
                                     except Exception as update_err:
-                                        logger.warning(f"[LEADBOX REALTIME CHECK] Erro ao atualizar banco: {update_err}")
+                                        logger.warning(f"[FAIL-SAFE] Erro ao atualizar banco: {update_err}")
                                     await redis.buffer_clear(agent_id, phone)
                                     return
-                                else:
-                                    print(f"[LEADBOX REALTIME CHECK] Lead {phone} na fila {realtime_queue} - OK (está em filas IA {IA_QUEUES_LOCAL})", flush=True)
-                                    logger.info(f"[LEADBOX REALTIME CHECK] Lead {phone} na fila {realtime_queue} - OK, processando (filas IA: {IA_QUEUES_LOCAL})")
-                                    # Atualizar banco com dado real
-                                    if realtime_queue is not None and not fresh_queue_raw:
-                                        try:
-                                            update_fields = {"current_queue_id": str(realtime_queue)}
-                                            if realtime_result.get("ticket_id"):
-                                                update_fields["ticket_id"] = str(realtime_result["ticket_id"])
-                                            supabase.update_lead_by_remotejid(table_leads, remotejid, update_fields)
-                                            logger.debug(f"[LEADBOX REALTIME CHECK] Banco atualizado com fila IA: queue={realtime_queue}")
-                                        except Exception as update_err:
-                                            logger.warning(f"[LEADBOX REALTIME CHECK] Erro ao atualizar banco: {update_err}")
+
+                                # Confirmado em fila de IA - pode processar
+                                print(f"[FAIL-SAFE] Lead {phone} na fila {realtime_queue} - CONFIRMADO em fila IA, processando", flush=True)
+                                logger.info(f"[FAIL-SAFE] Lead {phone} na fila {realtime_queue} - OK, processando (filas IA: {IA_QUEUES_LOCAL})")
+                                # Atualizar banco com dado real
+                                if not fresh_queue_raw:
+                                    try:
+                                        update_fields = {"current_queue_id": str(realtime_queue)}
+                                        if realtime_result.get("ticket_id"):
+                                            update_fields["ticket_id"] = str(realtime_result["ticket_id"])
+                                        supabase.update_lead_by_remotejid(table_leads, remotejid, update_fields)
+                                        logger.debug(f"[FAIL-SAFE] Banco atualizado com fila IA: queue={realtime_queue}")
+                                    except Exception as update_err:
+                                        logger.warning(f"[FAIL-SAFE] Erro ao atualizar banco: {update_err}")
                             else:
-                                print(f"[LEADBOX REALTIME CHECK] Lead {phone} - API não retornou dados, prosseguindo (fail-open)", flush=True)
-                                logger.info(f"[LEADBOX REALTIME CHECK] Lead {phone} - API sem dados, fail-open")
+                                # =============================================================
+                                # FAIL-SAFE: API não retornou dados - NÃO processar
+                                # IMPORTANTE: Se API Leadbox estiver fora, isso vai ignorar msgs
+                                # Monitorar com: grep "FAIL-SAFE.*sem resposta" nos logs
+                                # =============================================================
+                                print(f"[FAIL-SAFE] Lead {phone} - API Leadbox sem resposta, IGNORANDO", flush=True)
+                                logger.warning(f"[FAIL-SAFE] Lead {phone} - API sem dados, ignorando (fail-safe ativo)")
+                                await redis.buffer_clear(agent_id, phone)
+                                return
                         except Exception as lb_err:
-                            print(f"[LEADBOX REALTIME CHECK] Lead {phone} - Erro na API ({lb_err}), prosseguindo (fail-open)", flush=True)
-                            logger.warning(f"[LEADBOX REALTIME CHECK] Lead {phone} - Erro ao consultar Leadbox: {lb_err} - prosseguindo")
+                            # =============================================================
+                            # FAIL-SAFE: Erro na API - NÃO processar
+                            # IMPORTANTE: Se API Leadbox estiver fora, isso vai ignorar msgs
+                            # Monitorar com: grep "FAIL-SAFE.*erro" nos logs
+                            # =============================================================
+                            print(f"[FAIL-SAFE] Lead {phone} - Erro na API Leadbox ({lb_err}), IGNORANDO", flush=True)
+                            logger.warning(f"[FAIL-SAFE] Lead {phone} - Erro ao consultar Leadbox: {lb_err} - ignorando (fail-safe ativo)")
+                            await redis.buffer_clear(agent_id, phone)
+                            return
 
                 # Check 2: Atendimento_Finalizado (defesa extra)
                 if fresh_lead.get("Atendimento_Finalizado") == "true":
