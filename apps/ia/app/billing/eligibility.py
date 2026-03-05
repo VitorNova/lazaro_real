@@ -94,18 +94,37 @@ async def check_no_exception(
     """Check 6: Nao ter excecao ativa (opt-out/pausa). BUG FIX #6."""
     supabase = get_supabase_service()
 
-    result = (
+    # Query por remotejid
+    result1 = (
         supabase.client.table("billing_exceptions")
         .select("id, reason")
         .eq("agent_id", agent_id)
-        .eq("active", True)
-        .or_(f"remotejid.eq.{remotejid},payment_id.eq.{payment.id}")
+        .eq("active", "true")
+        .eq("remotejid", remotejid)
         .maybe_single()
         .execute()
     )
 
-    if result.data:
-        reason = result.data.get("reason", "manual")
+    # Query por payment_id
+    result2 = (
+        supabase.client.table("billing_exceptions")
+        .select("id, reason")
+        .eq("agent_id", agent_id)
+        .eq("active", "true")
+        .eq("payment_id", payment.id)
+        .maybe_single()
+        .execute()
+    )
+
+    # Verificar ambos os resultados
+    result_data = None
+    if result1 and result1.data:
+        result_data = result1.data
+    elif result2 and result2.data:
+        result_data = result2.data
+
+    if result_data:
+        reason = result_data.get("reason", "manual")
         return False, f"exception_{reason}"
     return True, None
 
