@@ -1,0 +1,83 @@
+# Lazaro-Real — Contexto do Sistema
+
+## O que é este projeto
+Plataforma de automação WhatsApp para Aluga Ar (locação de ar-condicionado em Rondonópolis/MT).
+Composto por:
+- **Painel web** (`apps/web/`) — gestão em lazaro.fazinzz.com
+- **API TypeScript** (`apps/api/`) — backend do painel
+- **Agente IA Ana** (`apps/ia/`) — agente WhatsApp da Ana, em produção na porta 3115
+
+## Produção
+```
+PM2: lazaro-ia          → apps/ia/  porta 3115
+PM2: lazaro-painel      → apps/web/
+Traefik: lazaro.fazinzz.com → lazaro-ia (porta 3115)
+PM2: agente-ia          → /var/www/phant/agente-ia/ porta 3005 (LEGADO — outros agentes)
+```
+
+## Agente Ana
+- **Agent ID:** `14e6e5ce-4627-4e38-aac8-f0191669ff53`
+- **WhatsApp:** via UAZAPI
+- **Pagamentos:** Asaas
+- **Google Calendar:** DESABILITADO (`google_calendar_enabled = false`)
+- **Filas Leadbox:**
+  - 537 → IA genérica
+  - 544 → Billing (injeta prompt de cobrança)
+  - 545 → Manutenção (injeta prompt de manutenção preventiva)
+
+## Jobs Ativos (apps/ia/)
+| Job | Arquivo | Horário | Timezone |
+|-----|---------|---------|---------|
+| billing_reconciliation | jobs/reconciliar_pagamentos.py | 06:00 seg-sex | São Paulo |
+| billing_v2 | jobs/billing_job_v2.py | 09:00 seg-sex | São Paulo |
+| maintenance_notifier | jobs/notificar_manutencoes.py | 09:00 seg-sex | Cuiabá |
+| calendar_confirmation | jobs/confirmar_agendamentos.py | cada 30min | — |
+
+## Scheduler
+- Arquivo: `apps/ia/app/jobs/scheduler.py`
+- **misfire_grace_time: 3600** — job executa mesmo se app reiniciar até 1h depois do horário
+- Configurado em: `AsyncIOScheduler(job_defaults={'misfire_grace_time': 3600})`
+
+## Billing Pipeline (apps/ia/app/billing/)
+```
+billing_job_v2.py
+  → collector.py       — busca pagamentos PENDING/OVERDUE do Asaas
+  → eligibility.py     — 6 checks de elegibilidade
+  → ruler.py           — determina fase: "reminder" | "due_date" | "overdue"
+  → dispatcher.py      — envia mensagem via UAZAPI/Leadbox
+  → agent_processor.py — orquestra por agente
+```
+
+### Valores válidos de notification_type
+**CORRETO:** `"reminder"`, `"due_date"`, `"overdue"`
+**ERRADO (antigo):** `"pre"`, `"due"`, `"post"` — causa constraint violation no banco
+
+### Bugs já corrigidos (não reverter)
+1. `eligibility.py` — `.eq("active", "true")` — boolean Python causava HTTP 406
+2. `eligibility.py` — `.or_()` com `@` no remotejid causava HTTP 406 — separado em duas queries
+3. `ruler.py` — notification_type alinhado com constraint do banco
+4. `scheduler.py` — misfire_grace_time: 3600
+
+## Prompt Injection (apps/ia/app/domain/messaging/)
+Quando lead responde, `message_processor.py`:
+1. Consulta fila atual do lead via Leadbox API → `realtime_queue`
+2. Mapeia fila → contexto via `queue_to_context`:
+   - fila 544 → `"billing"`
+   - fila 545 → `"manutencao"`
+3. Injeta `context_prompt` correspondente do campo `context_prompts` (JSONB) na tabela `agents`
+4. Fallback: `detect_conversation_context()` escaneia histórico
+
+## Tabelas Supabase (Ana)
+- `LeadboxCRM_Ana_14e6e5ce` — leads
+- `leadbox_messages_Ana_14e6e5ce` — mensagens
+- `agents` — config do agente
+- `asaas_clientes`, `asaas_contratos`, `asaas_cobrancas` — dados Asaas
+- `billing_notifications` — controle de notificações (constraint: notification_type IN ('reminder','due_date','overdue','sent','failed'))
+- `billing_exceptions` — opt-out/pausa de cobrança
+
+## Regras para o Claude Code
+- NUNCA editar `/var/www/phant/agente-ia/` sem instrução explícita
+- SEMPRE fazer py_compile antes de commit
+- NUNCA reverter os bugs corrigidos listados acima
+- Um fix por commit
+- Antes de qualquer deploy, verificar divergências entre lazaro-real e phant
