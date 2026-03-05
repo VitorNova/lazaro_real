@@ -385,6 +385,12 @@ class DynamicRepository:
         """
         Verifica se o bot esta pausado para um lead.
 
+        Verifica múltiplos indicadores em ordem de prioridade:
+        1. current_state == 'human' ou 'paused'
+        2. Atendimento_Finalizado == 'true'
+        3. ticket_id + current_user_id ativos (ticket com humano)
+        4. pausar_ia == True (compatibilidade legada)
+
         Args:
             table_name: Nome da tabela (LeadboxCRM_xxx)
             remotejid: ID remoto WhatsApp
@@ -392,10 +398,38 @@ class DynamicRepository:
         Returns:
             True se pausado, False caso contrario
         """
-        lead = await self.find_lead_by_remotejid(table_name, remotejid)
-        if lead:
-            return bool(lead.get("pausar_ia", False))
-        return False
+        try:
+            lead = await self.find_lead_by_remotejid(table_name, remotejid)
+            if lead:
+                # Check 1: current_state (campo correto do Leadbox)
+                current_state = lead.get("current_state", "ai")
+                if current_state in ("human", "paused"):
+                    logger.debug(f"[IS_PAUSED] Lead {remotejid} pausado: current_state={current_state}")
+                    return True
+
+                # Check 2: Atendimento_Finalizado (flag de pausa explícita)
+                if lead.get("Atendimento_Finalizado") == "true":
+                    logger.debug(f"[IS_PAUSED] Lead {remotejid} pausado: Atendimento_Finalizado=true")
+                    return True
+
+                # Check 3: Ticket ativo com atendente humano
+                ticket_id = lead.get("ticket_id")
+                current_user_id = lead.get("current_user_id")
+                if ticket_id and current_user_id:
+                    logger.debug(f"[IS_PAUSED] Lead {remotejid} pausado: ticket_id={ticket_id}, user_id={current_user_id}")
+                    return True
+
+                # Check 4: Fallback para pausar_ia (compatibilidade legada)
+                if bool(lead.get("pausar_ia", False)):
+                    logger.debug(f"[IS_PAUSED] Lead {remotejid} pausado: pausar_ia=True")
+                    return True
+
+            return False
+
+        except Exception as e:
+            logger.error(f"Erro ao verificar se lead esta pausado: {e}")
+            # Fail-safe: em caso de erro, assumir que está pausado
+            return True
 
     async def get_all_leads(
         self,
