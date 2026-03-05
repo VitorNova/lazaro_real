@@ -1,22 +1,10 @@
 """
 Maintenance Notifier Job - Notificacao de manutencao preventiva via WhatsApp.
 
-Logica:
-- Calcula proxima_manutencao DINAMICAMENTE com base em data_inicio + ciclos de 6 meses
-- Nao depende da coluna proxima_manutencao (defasada/estatica)
-- Se proxima_manutencao - 7 dias == hoje, envia notificacao D-7
-- Executa 09:00 dias uteis (seg-sex), timezone America/Cuiaba
+REFATORADO: Logica movida para domain/maintenance/services/notification_service.py
+Template de mensagem em: prompts/maintenance/reminder_7d.txt
 
-Calculo do proximo ciclo:
-    proxima_manutencao = data_inicio + (N * 6 meses)
-    Onde N e o menor inteiro tal que data_inicio + (N * 6 meses) >= hoje
-
-Exemplo:
-    data_inicio = 2024-06-15
-    Hoje = 2026-02-17
-    Ciclos: 2024-06-15, 2024-12-15, 2025-06-15, 2025-12-15, 2026-06-15
-    Proxima manutencao = 2026-06-15
-    D-7 = 2026-06-08 -> notifica quando hoje == 2026-06-08
+Funcoes locais mantidas para compatibilidade, mas redirecionam para os services.
 """
 
 import logging
@@ -35,6 +23,19 @@ from app.core.utils.dias_uteis import (
     get_today_brasilia,
     is_business_day,
     is_business_hours,
+)
+
+# Domain services (Fase 3 refactoring)
+from app.domain.maintenance.services import (
+    calcular_proxima_manutencao as _calcular_proxima_manutencao,
+    get_customer_phone as _get_customer_phone_service,
+    format_maintenance_message as _format_maintenance_message_service,
+    extract_equipamento_info as _extract_equipamento_info_service,
+    fetch_contracts_for_maintenance as _fetch_contracts_service,
+    mark_notification_sent as _mark_notification_sent_service,
+    already_notified_this_cycle as _already_notified_this_cycle_service,
+    get_maintenance_agent as _get_maintenance_agent_service,
+    process_maintenance_notifications as _process_maintenance_notifications_service,
 )
 
 logger = logging.getLogger(__name__)
@@ -656,7 +657,8 @@ async def run_maintenance_notifier_job() -> Dict[str, Any]:
     total_stats = {"sent": 0, "skipped": 0, "errors": 0}
 
     try:
-        agent = await get_maintenance_agent()
+        # Usa service extraido (Fase 3)
+        agent = await _get_maintenance_agent_service()
 
         if not agent:
             _log_warn(f"Agente {AGENT_ID_LAZARO} nao encontrado ou inativo")
@@ -664,7 +666,8 @@ async def run_maintenance_notifier_job() -> Dict[str, Any]:
 
         _log(f"Agente: {agent.get('name')} ({agent['id'][:8]}...)")
 
-        agent_stats = await process_maintenance_notifications(agent["id"], agent)
+        # Usa service extraido (Fase 3)
+        agent_stats = await _process_maintenance_notifications_service(agent["id"], agent, hoje)
         total_stats["sent"] += agent_stats["sent"]
         total_stats["skipped"] += agent_stats["skipped"]
         total_stats["errors"] += agent_stats["errors"]
@@ -703,13 +706,15 @@ async def _force_run_maintenance_notifier() -> Dict[str, Any]:
     total_stats = {"sent": 0, "skipped": 0, "errors": 0}
 
     try:
-        agent = await get_maintenance_agent()
+        # Usa service extraido (Fase 3)
+        agent = await _get_maintenance_agent_service()
 
         if not agent:
             _log_warn(f"Agente {AGENT_ID_LAZARO} nao encontrado ou inativo")
             return {"status": "skipped", "reason": "agent_not_found"}
 
-        agent_stats = await process_maintenance_notifications(agent["id"], agent)
+        # Usa service extraido (Fase 3)
+        agent_stats = await _process_maintenance_notifications_service(agent["id"], agent, hoje)
         total_stats["sent"] += agent_stats["sent"]
         total_stats["skipped"] += agent_stats["skipped"]
         total_stats["errors"] += agent_stats["errors"]
