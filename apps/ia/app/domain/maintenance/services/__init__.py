@@ -17,7 +17,10 @@ from .notification_service import (
     already_notified_this_cycle,
     get_maintenance_agent,
     process_maintenance_notifications,
+    test_maintenance_notification,
     NOTIFY_DAYS_BEFORE,
+    AGENT_ID_LAZARO,
+    DEFAULT_MAINTENANCE_MESSAGE,
 )
 
 from .slots_service import (
@@ -49,7 +52,10 @@ __all__ = [
     "already_notified_this_cycle",
     "get_maintenance_agent",
     "process_maintenance_notifications",
+    "test_maintenance_notification",
     "NOTIFY_DAYS_BEFORE",
+    "AGENT_ID_LAZARO",
+    "DEFAULT_MAINTENANCE_MESSAGE",
     # Slots
     "TIMEZONE_LAZARO",
     "AGENT_ID_LAZARO",

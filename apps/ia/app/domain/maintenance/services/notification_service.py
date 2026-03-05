@@ -1,29 +1,26 @@
 """
-Maintenance Notification Service - Logica de notificacao de manutencao preventiva.
+Notification Service - Logica de notificacao de manutencao preventiva D-7.
 
-Extraido de: jobs/notificar_manutencoes.py (Fase 3)
-
+Extraido de jobs/notificar_manutencoes.py na Fase 3 da refatoracao.
 Responsabilidades:
-- Calcular proxima manutencao (ciclos de 6 meses)
-- Buscar contratos elegiveis
-- Formatar e enviar notificacoes D-7
-- Registrar envios no banco
+- Calculo de ciclos de manutencao (6 em 6 meses)
+- Formatacao de mensagens
+- Envio via WhatsApp (PUSH + UAZAPI fallback)
+- Registro de envios no banco
 """
 
 import logging
 import re
 from datetime import date, datetime, timedelta
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from dateutil.relativedelta import relativedelta
 
-from app.integrations.supabase import get_supabase_service
+from app.core.utils.dias_uteis import format_date_br, get_today_brasilia
 from app.services.dispatch_logger import get_dispatch_logger
 from app.services.leadbox_push import QUEUE_MAINTENANCE, leadbox_push_silent
+from app.services.supabase import get_supabase_service
 from app.services.whatsapp_api import UazapiService, sign_message
-from app.core.utils.dias_uteis import format_date_br
-
 
 logger = logging.getLogger(__name__)
 
@@ -33,24 +30,15 @@ AGENT_ID_LAZARO = "14e6e5ce-4627-4e38-aac8-f0191669ff53"
 # Quantos dias antes da manutencao notificar
 NOTIFY_DAYS_BEFORE = 7
 
-# Caminho do template de mensagem
-PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "maintenance" / "reminder_7d.txt"
-
-
-def _load_message_template() -> str:
-    """Carrega template de mensagem do arquivo."""
-    try:
-        return PROMPT_PATH.read_text(encoding="utf-8")
-    except Exception as e:
-        logger.warning(f"Erro ao carregar template: {e}. Usando fallback.")
-        return (
-            "Ola {nome}! Aqui e a ANA da Alugar Ar.\n\n"
-            "Esta chegando a hora da manutencao preventiva do seu ar-condicionado!\n"
-            "*Equipamento:* {marca} {btus} BTUs\n"
-            "*Endereco:* {endereco}\n\n"
-            "A manutencao e gratuita e esta inclusa no seu contrato.\n\n"
-            "Quer agendar? Me fala um dia e horario de preferencia!"
-        )
+# Template padrao da mensagem de manutencao
+DEFAULT_MAINTENANCE_MESSAGE = (
+    "Ola {nome}! Aqui e a ANA da Alugar Ar.\n\n"
+    "Esta chegando a hora da manutencao preventiva do seu ar-condicionado!\n"
+    "*Equipamento:* {marca} {btus} BTUs\n"
+    "*Endereco:* {endereco}\n\n"
+    "A manutencao e gratuita e esta inclusa no seu contrato.\n\n"
+    "Quer agendar? Me fala um dia e horario de preferencia!"
+)
 
 
 def calcular_proxima_manutencao(data_inicio: date, hoje: date) -> date:
@@ -59,13 +47,6 @@ def calcular_proxima_manutencao(data_inicio: date, hoje: date) -> date:
 
     Encontra o menor N inteiro >= 1 tal que:
         data_inicio + (N * 6 meses) >= hoje
-
-    Args:
-        data_inicio: Data de inicio do contrato
-        hoje: Data de hoje
-
-    Returns:
-        Data do proximo ciclo de manutencao
     """
     n = 1
     while True:
@@ -113,7 +94,7 @@ def extract_equipamento_info(equipamentos: Any) -> Tuple[str, int]:
     Extrai marca e BTUs do primeiro equipamento da lista.
 
     Returns:
-        Tupla (marca, btus)
+        Tupla (marca, btus) - fallback para strings vazias se nao encontrado
     """
     if not equipamentos:
         return ("ar-condicionado", 0)
@@ -137,9 +118,6 @@ async def fetch_contracts_for_maintenance(agent_id: str) -> List[Dict[str, Any]]
 
     Faz JOIN manual em Python pois customer_id (text) referencia asaas_clientes.id
     sem FK declarada no banco.
-
-    Returns:
-        Lista de contratos enriquecidos com nome e telefone do cliente
     """
     supabase = get_supabase_service()
 
@@ -182,7 +160,7 @@ async def fetch_contracts_for_maintenance(agent_id: str) -> List[Dict[str, Any]]
         except Exception as e:
             logger.warning(f"[MAINTENANCE] Erro ao buscar clientes: {e}")
 
-    # Enriquecer contratos
+    # Enriquecer contratos com dados dos clientes
     result = []
     for contract in contracts:
         customer_id = contract.get("customer_id", "")
@@ -203,12 +181,11 @@ async def mark_notification_sent(
     proxima_manutencao: date,
     customer_phone: str,
     message_sent: str,
-    agent_id: str = AGENT_ID_LAZARO,
 ) -> None:
     """
     Registra o envio da notificacao no banco de dados.
 
-    Atualiza contract_details e salva no conversation_history.
+    Atualiza contract_details e salva no conversation_history para contexto da IA.
     """
     supabase = get_supabase_service()
     now_iso = datetime.utcnow().isoformat()
@@ -223,12 +200,12 @@ async def mark_notification_sent(
     except Exception as e:
         logger.error(f"[MAINTENANCE] Erro ao atualizar contract_details: {e}")
 
-    # Salvar no conversation_history
+    # Salvar no conversation_history para contexto da IA
     try:
         phone_jid = f"{customer_phone}@s.whatsapp.net" if customer_phone else None
 
         if phone_jid:
-            table_name = f"leadbox_messages_{agent_id.replace('-', '_')}"
+            table_name = f"leadbox_messages_{AGENT_ID_LAZARO.replace('-', '_')}"
 
             result = supabase.client.table(table_name).select(
                 "id, conversation_history"
@@ -259,6 +236,8 @@ async def mark_notification_sent(
                 }).eq("id", lead_id).execute()
 
                 logger.info(f"[MAINTENANCE] Mensagem salva no conversation_history")
+            else:
+                logger.info(f"[MAINTENANCE] Lead nao encontrado para {phone_jid[:15]}...")
 
     except Exception as e:
         logger.warning(f"[MAINTENANCE] Erro ao salvar no conversation_history: {e}")
@@ -292,7 +271,7 @@ def already_notified_this_cycle(
         return False
 
 
-async def get_maintenance_agent(agent_id: str = AGENT_ID_LAZARO) -> Optional[Dict[str, Any]]:
+async def get_maintenance_agent() -> Optional[Dict[str, Any]]:
     """
     Busca o agente configurado para notificacoes de manutencao.
     """
@@ -301,7 +280,7 @@ async def get_maintenance_agent(agent_id: str = AGENT_ID_LAZARO) -> Optional[Dic
         response = (
             supabase.client.table("agents")
             .select("id, name, uazapi_base_url, uazapi_token, uazapi_instance_id, table_leads, table_messages")
-            .eq("id", agent_id)
+            .eq("id", AGENT_ID_LAZARO)
             .eq("status", "active")
             .limit(1)
             .execute()
@@ -316,15 +295,14 @@ async def get_maintenance_agent(agent_id: str = AGENT_ID_LAZARO) -> Optional[Dic
 async def process_maintenance_notifications(
     agent_id: str,
     agent: Dict[str, Any],
-    hoje: date,
+    hoje: Optional[date] = None,
 ) -> Dict[str, int]:
     """
-    Processa notificacoes de manutencao preventiva D-7 para todos os contratos do agente.
-
-    Returns:
-        Dict com contadores: sent, skipped, errors
+    Processa notificacoes de manutencao preventiva D-7 para todos os contratos.
     """
     stats = {"sent": 0, "skipped": 0, "errors": 0}
+    if hoje is None:
+        hoje = get_today_brasilia()
 
     contracts = await fetch_contracts_for_maintenance(agent_id)
     if not contracts:
@@ -332,17 +310,16 @@ async def process_maintenance_notifications(
         return stats
 
     agent_name = agent.get("name", "Assistente")
-    logger.info(f"[MAINTENANCE] Processando {len(contracts)} contratos para: {agent_name}")
+    logger.info(f"[MAINTENANCE] Processando {len(contracts)} contratos")
 
     uazapi_base_url = agent.get("uazapi_base_url")
     uazapi_token = agent.get("uazapi_token")
 
     if not uazapi_base_url or not uazapi_token:
-        logger.error(f"[MAINTENANCE] Config UAZAPI incompleta")
+        logger.error(f"[MAINTENANCE] Configuracao UAZAPI incompleta")
         return stats
 
     uazapi = UazapiService(base_url=uazapi_base_url, api_key=uazapi_token)
-    template = _load_message_template()
 
     for contract in contracts:
         contract_id = contract["id"]
@@ -353,7 +330,6 @@ async def process_maintenance_notifications(
             stats["skipped"] += 1
             continue
 
-        # Parse data_inicio
         try:
             if isinstance(data_inicio_raw, str):
                 data_inicio = date.fromisoformat(data_inicio_raw)
@@ -366,44 +342,44 @@ async def process_maintenance_notifications(
             stats["skipped"] += 1
             continue
 
-        # Calcular proxima manutencao
         proxima_manutencao = calcular_proxima_manutencao(data_inicio, hoje)
         data_notificacao = proxima_manutencao - timedelta(days=NOTIFY_DAYS_BEFORE)
 
-        # Verificar se hoje e D-7
         if hoje != data_notificacao:
             continue
 
-        # Verificar se ja notificou
+        logger.info(
+            f"[MAINTENANCE] Contrato {contract_id} ({customer_name}): "
+            f"proxima_manutencao={proxima_manutencao} -> NOTIFICAR"
+        )
+
         if already_notified_this_cycle(contract, proxima_manutencao):
+            logger.info(f"[MAINTENANCE] Contrato {contract_id}: ja notificado neste ciclo")
             stats["skipped"] += 1
             continue
 
-        # Obter telefone
         phone = get_customer_phone(contract)
         if not phone:
+            logger.warning(f"[MAINTENANCE] Contrato {contract_id}: sem telefone valido")
             stats["skipped"] += 1
             continue
 
-        # Extrair info do equipamento
         marca, btus = extract_equipamento_info(contract.get("equipamentos"))
         endereco = contract.get("endereco_instalacao") or "endereco nao informado"
 
-        # Montar mensagem
         message = format_maintenance_message(
-            template=template,
+            template=DEFAULT_MAINTENANCE_MESSAGE,
             nome=customer_name.split()[0] if customer_name else "Cliente",
             marca=marca,
             btus=btus,
             endereco=endereco,
         )
 
-        # Enviar via WhatsApp
         try:
             signed = sign_message(message, agent_name)
 
             push_result = await leadbox_push_silent(
-                phone, QUEUE_MAINTENANCE, agent_id, message=signed
+                phone, QUEUE_MAINTENANCE, AGENT_ID_LAZARO, message=signed
             )
 
             if push_result.get("ticket_check_failed") or not push_result.get("message_sent_via_push"):
@@ -416,7 +392,7 @@ async def process_maintenance_notifications(
             if result.get("success"):
                 logger.info(
                     f"[MAINTENANCE] Notificacao enviada: {customer_name} | "
-                    f"manutencao={format_date_br(proxima_manutencao)}"
+                    f"telefone={phone[:8]}*** | manutencao={format_date_br(proxima_manutencao)}"
                 )
 
                 await mark_notification_sent(
@@ -424,10 +400,8 @@ async def process_maintenance_notifications(
                     proxima_manutencao=proxima_manutencao,
                     customer_phone=phone,
                     message_sent=message,
-                    agent_id=agent_id,
                 )
 
-                # Log dispatch
                 dispatch_logger = get_dispatch_logger()
                 await dispatch_logger.log_dispatch(
                     job_type="maintenance",
@@ -493,3 +467,103 @@ async def process_maintenance_notifications(
             stats["errors"] += 1
 
     return stats
+
+
+async def test_maintenance_notification(phone: str = "556697194084") -> Dict[str, Any]:
+    """
+    Envia notificacao de teste para um numero especifico.
+    APENAS PARA DEBUG/TESTES.
+    """
+    phone = phone.replace("@s.whatsapp.net", "")
+    logger.info(f"[MAINTENANCE] === TESTE para {phone} ===")
+
+    try:
+        agent = await get_maintenance_agent()
+        if not agent:
+            return {"success": False, "error": "Agente nao encontrado"}
+
+        agent_name = agent.get("name", "Ana")
+        uazapi_base_url = agent.get("uazapi_base_url")
+        uazapi_token = agent.get("uazapi_token")
+
+        if not uazapi_base_url or not uazapi_token:
+            return {"success": False, "error": "Config UAZAPI incompleta"}
+
+        uazapi = UazapiService(base_url=uazapi_base_url, api_key=uazapi_token)
+
+        message = format_maintenance_message(
+            template=DEFAULT_MAINTENANCE_MESSAGE,
+            nome="TESTE",
+            marca="Teste Marca",
+            btus="12000",
+            endereco="Endereco de Teste, 123",
+        )
+
+        signed = sign_message(message, agent_name)
+
+        push_result = await leadbox_push_silent(
+            phone, QUEUE_MAINTENANCE, AGENT_ID_LAZARO, message=signed
+        )
+
+        if push_result.get("ticket_check_failed"):
+            result = await uazapi.send_text_message(phone, signed)
+            if not result.get("success"):
+                return {"success": False, "error": result.get("error")}
+            result["via"] = "uazapi_fallback"
+        elif not push_result.get("message_sent_via_push"):
+            result = await uazapi.send_text_message(phone, signed)
+            if not result.get("success"):
+                return {"success": False, "error": result.get("error")}
+            result["via"] = "uazapi"
+        else:
+            result = {"success": True, "via": "push"}
+
+        # Salvar no conversation_history para testar injecao de prompt
+        context_saved = False
+        try:
+            supabase = get_supabase_service()
+            phone_jid = f"{phone}@s.whatsapp.net"
+            table_name = agent.get("table_messages")
+            now_iso = datetime.utcnow().isoformat()
+
+            if table_name:
+                lead_result = supabase.client.table(table_name).select(
+                    "id, conversation_history"
+                ).eq("remotejid", phone_jid).limit(1).execute()
+
+                if lead_result.data and len(lead_result.data) > 0:
+                    lead_id = lead_result.data[0]["id"]
+                    raw_history = lead_result.data[0].get("conversation_history")
+
+                    if isinstance(raw_history, dict):
+                        messages_list = raw_history.get("messages", [])
+                    elif isinstance(raw_history, list):
+                        messages_list = raw_history
+                    else:
+                        messages_list = []
+
+                    new_message = {
+                        "role": "model",
+                        "text": signed,
+                        "timestamp": now_iso,
+                        "context": "manutencao_preventiva",
+                        "contract_id": "TEST-CONTRACT-ID",
+                    }
+                    messages_list.append(new_message)
+
+                    supabase.client.table(table_name).update({
+                        "conversation_history": {"messages": messages_list},
+                    }).eq("id", lead_id).execute()
+
+                    context_saved = True
+                    logger.info(f"[MAINTENANCE] Contexto salvo (lead {str(lead_id)[:8]}...)")
+
+        except Exception as e:
+            logger.warning(f"[MAINTENANCE] Erro ao salvar contexto: {e}")
+
+        logger.info(f"[MAINTENANCE] === TESTE CONCLUIDO: {result} ===")
+        return {"success": True, "result": result, "phone": phone, "context_saved": context_saved}
+
+    except Exception as e:
+        logger.error(f"[MAINTENANCE] Erro no teste: {e}")
+        return {"success": False, "error": str(e)}
