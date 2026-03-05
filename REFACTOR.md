@@ -41,10 +41,10 @@ Regra absoluta: leia antes de agir. Uma fase por vez. Compile após cada mudanç
 - [ ] Remover wrappers _log, _log_warn, _log_error
 - [ ] Padrão: from core.logging import get_logger; logger = get_logger(__name__)
 
-### FASE 5 — Segurança ⏳
-- [ ] Criar core/security/injection_guard.py
+### FASE 5 — Segurança ⏳ (iniciada)
+- [x] Criar core/security/injection_guard.py
+- [x] Integrar injection_guard em webhooks/mensagens.py (antes do Gemini)
 - [ ] Validação Pydantic nos webhooks
-- [ ] Integrar injection_guard antes de qualquer chamada ao Gemini
 
 ## PROBLEMA ABERTO
 1.3 BLOQUEADO: ai/tools/ importa de tools/ — dependência invertida.
