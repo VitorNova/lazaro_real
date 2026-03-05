@@ -31,6 +31,11 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
 # Models extraídos (Fase 2.1)
 from app.domain.messaging.models import ExtractedMessage, ProcessingContext
 
+# Context modules extraídos (Fase 2.2, 2.3, 2.4) - usados em vez das funções locais
+from app.domain.messaging.context import context_detector
+from app.domain.messaging.context import billing_context
+from app.domain.messaging.context import maintenance_context
+
 from app.config import settings
 from app.services.ia_gemini import GeminiService, get_gemini_service
 from app.services.redis import (
@@ -1596,7 +1601,7 @@ class WhatsAppWebhookHandler:
             # Job D-7 adiciona context='manutencao_preventiva' nas mensagens
             # ================================================================
             print(f"[CONTEXT DEBUG] Iniciando deteccao de contexto para phone={phone}", flush=True)
-            conversation_context, contract_id = detect_conversation_context(history)
+            conversation_context, contract_id = context_detector.detect_conversation_context(history)
             print(f"[CONTEXT DEBUG] Resultado: conversation_context='{conversation_context}' contract_id='{contract_id}'", flush=True)
 
             # Fallback: verificar lead_origin se context expirou ou histórico vazio
@@ -1624,7 +1629,7 @@ class WhatsAppWebhookHandler:
             effective_system_prompt = context["system_prompt"]
             print(f"[CONTEXT DEBUG] conversation_context final='{conversation_context}' context_prompts existe={bool(context.get('context_prompts'))}", flush=True)
             if conversation_context:
-                context_prompt = get_context_prompt(context.get("context_prompts"), conversation_context)
+                context_prompt = context_detector.get_context_prompt(context.get("context_prompts"), conversation_context)
                 if context_prompt:
                     effective_system_prompt = context["system_prompt"] + "\n\n" + context_prompt
                     print(f"[PROMPT DEBUG] SUCESSO! Prompt injetado ({len(context_prompt)} chars)", flush=True)
@@ -1656,9 +1661,9 @@ class WhatsAppWebhookHandler:
                     # ================================================================
                     if contract_id and conversation_context == "manutencao_preventiva":
                         print(f"[CONTRACT DEBUG] Buscando dados do contrato {contract_id} para injetar no prompt", flush=True)
-                        contract_data = get_contract_data_for_maintenance(supabase, contract_id)
+                        contract_data = maintenance_context.get_contract_data_for_maintenance(supabase, contract_id)
                         if contract_data:
-                            contract_prompt = build_maintenance_context_prompt(contract_data)
+                            contract_prompt = maintenance_context.build_maintenance_context_prompt(contract_data)
                             effective_system_prompt = effective_system_prompt + "\n\n" + contract_prompt
                             print(f"[CONTRACT DEBUG] Dados do contrato injetados! Cliente: {contract_data.get('cliente_nome')}", flush=True)
                             logger.info(f"[CONTRACT] Dados do contrato {contract_id} injetados para {phone}: {contract_data.get('cliente_nome')}, {len(contract_data.get('equipamentos', []))} equipamento(s)")
@@ -1672,14 +1677,14 @@ class WhatsAppWebhookHandler:
                     # ================================================================
                     if conversation_context in ["disparo_billing", "billing"]:
                         print(f"[BILLING DEBUG] Buscando dados do cliente para injetar no prompt", flush=True)
-                        billing_data = await get_billing_data_for_context(
+                        billing_data = await billing_context.get_billing_data_for_context(
                             supabase,
                             phone,
                             table_leads=context.get("table_leads"),
                             remotejid=remotejid,
                         )
                         if billing_data:
-                            billing_prompt = build_billing_context_prompt(billing_data)
+                            billing_prompt = billing_context.build_billing_context_prompt(billing_data)
                             effective_system_prompt = effective_system_prompt + "\n\n" + billing_prompt
                             print(f"[BILLING DEBUG] Dados do cliente injetados! Cliente: {billing_data.get('cliente_nome')}", flush=True)
                             logger.info(f"[BILLING] Dados do cliente injetados para {phone}: {billing_data.get('cliente_nome')}, {len(billing_data.get('cobrancas_pendentes', []))} cobrança(s)")
@@ -3826,7 +3831,7 @@ Observacoes: {description or 'Nenhuma'}
         # Obter system prompt e substituir variáveis dinâmicas
         raw_system_prompt = agent.get("system_prompt") or "Voce e um assistente virtual prestativo."
         agent_timezone = agent.get("timezone") or "America/Cuiaba"
-        system_prompt = prepare_system_prompt(raw_system_prompt, agent_timezone)
+        system_prompt = context_detector.prepare_system_prompt(raw_system_prompt, agent_timezone)
 
         # Criar ou obter lead
         # Primeiro verificar se ja existe para detectar leads novos

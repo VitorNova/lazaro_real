@@ -9,7 +9,7 @@ Extraido de mensagens.py (Fase 2.3)
 import logging
 from typing import Any, Dict, Optional
 
-from app.services.supabase_service import SupabaseService
+from app.services.supabase import SupabaseService
 
 logger = logging.getLogger(__name__)
 
