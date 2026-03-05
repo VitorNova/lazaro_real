@@ -1,10 +1,112 @@
 # Lazaro-v2 Refactor Log
 
 ## Status Atual
-**Fase**: 8 - Organizar domínios restantes ✅ COMPLETA
-**Última Atualização**: 2026-03-03
+**Fase**: 9 - Limpeza Final 🔄 EM ANDAMENTO
+**Última Atualização**: 2026-03-04
 **Responsável**: Claude Code
-**Próximo Passo**: Fase 9 - Limpeza Final (remover arquivos-ponte, atualizar imports em produção)
+**Próximo Passo**: Testes em produção antes de integrar módulos nos monolitos
+
+---
+
+## Fase 9: Limpeza Final 🔄 EM ANDAMENTO
+
+### Objetivo
+Remover código duplicado, substituir monolitos pelos módulos refatorados, limpar pastas legadas.
+
+### Checklist
+- [x] 9.1 Substituir main.py por main_refactored.py (2068L → 51L)
+- [x] 9.2 Converter services/athena/ em ponte → domain/analytics/
+- [x] 9.3 Converter services/diana/ em ponte → domain/campaigns/
+- [x] 9.4 Converter services/observer/ em ponte → domain/monitoring/
+- [x] 9.5 Remover pasta production/ (cópia desnecessária)
+- [ ] 9.6 Remover tools/ (usar ai/tools/) ⚠️ ADIADO - dependência invertida
+- [x] 9.7 Mover utils/dias_uteis.py → core/utils/ + ponte
+- [x] 9.8 Remover shared/ (não usada)
+- [x] 9.9 Mover api/*.py → api/routes/ + pontes
+- [ ] 9.10 Atualizar imports nos monolitos ⚠️ ADIADO (aguardando testes em produção)
+- [x] 9.11 Quebrar api/agents/index.ts em route groups (parcial)
+- [x] 9.12 Criar repositórios Asaas (asaas_customers, asaas_contracts, asaas_payments)
+
+### Concluído - 9.1 main.py substituído
+| Arquivo | Antes | Depois |
+|---------|-------|--------|
+| main.py | 2068 linhas | 51 linhas (97.5% redução) |
+| main_refactored.py | 51 linhas | removido (consolidado em main.py) |
+
+### Concluído - 9.2, 9.3, 9.4 Pastas legadas convertidas em pontes
+| Pasta Legada | Ponte Para | Arquivos Removidos |
+|--------------|------------|-------------------|
+| services/athena/ | domain/analytics/ | metrics.py, prompts.py, tools.py |
+| services/diana/ | domain/campaigns/ | campaign_service.py, message_service.py, phone_formatter.py, types.py |
+| services/observer/ | domain/monitoring/ | observer.py |
+
+> As pastas legadas agora contêm apenas `__init__.py` com re-exports para compatibilidade.
+
+### Concluído - 9.5 pasta production/ removida
+- Removida pasta `/production/agente-ia/` com código duplicado e documentação antiga
+
+### Adiado - 9.6 tools/ não pode ser removido
+- `ai/tools/*.py` IMPORTA de `tools/*.py` (dependência invertida)
+- Requer refatoração dos imports em ai/tools/ primeiro
+
+### Concluído - 9.7 utils/dias_uteis.py movido
+| Antes | Depois |
+|-------|--------|
+| utils/dias_uteis.py | core/utils/dias_uteis.py |
+| — | utils/dias_uteis.py (ponte) |
+
+### Concluído - 9.8 shared/ removido
+- Pasta `shared/` removida (não era usada por nenhum módulo)
+- `format_brl` já existe em `domain/billing/services/billing_formatter.py`
+
+### Concluído - 9.9 api/*.py movidos para api/routes/
+| Arquivo | Linhas | Novo Local |
+|---------|--------|------------|
+| api/athena.py | 1860 | api/routes/athena.py + ponte |
+| api/agentes.py | 905 | api/routes/agentes.py + ponte |
+| api/auth.py | 700 | api/routes/auth.py + ponte |
+| api/dashboard.py | 679 | api/routes/dashboard.py + ponte |
+| api/google_oauth.py | 550 | api/routes/google_oauth.py + ponte |
+| api/diana.py | 228 | api/routes/diana.py + ponte |
+
+> Pontes criadas em api/*.py para compatibilidade com imports existentes
+
+### Concluído - 9.11 api/agents/index.ts quebrado (parcial)
+| Arquivo | Linhas | Descrição |
+|---------|--------|-----------|
+| index.ts | 68 | Orquestrador - importa e registra route groups |
+| crud.routes.ts | 191 | CRUD de agentes (create, get, update, delete, list, statuses) |
+| connection.routes.ts | 198 | QR Code, webhook config, Evolution, UAZAPI |
+| index.legacy.ts | 1789 | Rotas restantes (a serem extraídas incrementalmente) |
+
+> Migração incremental - rotas extraídas são removidas do index.legacy.ts progressivamente
+
+### Concluído - 9.12 Repositórios Asaas criados
+| Repositório | Linhas | Descrição |
+|-------------|--------|-----------|
+| asaas_customers.py | ~270 | AsaasCustomersRepository (upsert, find, cache, soft delete) |
+| asaas_contracts.py | ~280 | AsaasContractsRepository (upsert, find by customer/agent, soft delete) |
+| asaas_payments.py | ~420 | AsaasPaymentsRepository (upsert, find overdue/pending, recalculate days) |
+
+> Centraliza queries Asaas em repositories seguindo o padrão existente (BaseRepository).
+> Substituem queries inline em domain/billing/services/*.py.
+
+### Adiado - 9.10 Integração nos monolitos
+**Decisão**: Manter código duplicado até testes em produção
+
+**Código duplicado identificado em mensagens.py (~700 linhas)**:
+- `get_context_prompt` → `domain/messaging/context/context_detector.py`
+- `detect_conversation_context` → `domain/messaging/context/context_detector.py`
+- `prepare_system_prompt` → `domain/messaging/context/context_detector.py`
+- `get_contract_data_for_maintenance` → `domain/messaging/context/maintenance_context.py`
+- `build_maintenance_context_prompt` → `domain/messaging/context/maintenance_context.py`
+- `get_billing_data_for_context` → `domain/messaging/context/billing_context.py`
+- `build_billing_context_prompt` → `domain/messaging/context/billing_context.py`
+
+**Próximos passos para integração (quando for seguro)**:
+1. Adicionar imports de `app.domain.messaging.context` no topo de mensagens.py
+2. Remover implementações locais duplicadas
+3. Testar em staging antes de produção
 
 ---
 

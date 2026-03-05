@@ -6,10 +6,10 @@ Responsavel por:
 - Processar delecao de contratos (soft delete)
 
 Extraido de: app/webhooks/pagamentos.py (Fase 3.4)
+Refatorado para usar AsaasContractsRepository (Fase 9.12)
 """
 
 import logging
-from datetime import datetime
 from typing import Any, Dict
 
 from app.services.gateway_pagamento import AsaasService
@@ -17,6 +17,10 @@ from app.domain.billing.services.customer_sync_service import (
     sincronizar_cliente,
     get_cached_customer,
     resolve_customer_name,
+)
+from app.integrations.supabase.repositories import (
+    asaas_contracts_repository,
+    asaas_customers_repository,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,10 +47,6 @@ async def sincronizar_contrato(
     try:
         # ========================================================================
         # OTIMIZACAO: CACHE-FIRST, API COMO FALLBACK
-        # ========================================================================
-        # Verifica se o cliente ja esta cacheado localmente com dados frescos.
-        # Evita chamadas redundantes a API do Asaas em processamento em lote.
-        # Se cache miss ou stale, busca via API e sincroniza.
         # ========================================================================
 
         customer_name = "Desconhecido"
@@ -118,21 +118,16 @@ async def sincronizar_contrato(
                         customer_id,
                         e
                     )
-                    # Continua o processamento mesmo se falhar a sincronizacao do cliente
 
-        # Fallback 1: Se nao conseguiu nome via API, buscar do cache local
+        # Fallback 1: Se nao conseguiu nome via API, buscar do cache local via repository
         if customer_name == "Desconhecido" and customer_id:
             try:
-                existing = (
-                    supabase.client
-                    .table("asaas_clientes")
-                    .select("name")
-                    .eq("id", customer_id)
-                    .maybe_single()
-                    .execute()
+                name = await asaas_customers_repository.find_name(
+                    customer_id=customer_id,
+                    agent_id=agent_id,
                 )
-                if existing.data and existing.data.get("name"):
-                    customer_name = existing.data["name"]
+                if name:
+                    customer_name = name
                     logger.debug(
                         "[SINCRONIZAR CONTRATO] Nome do cliente obtido do cache local: %s",
                         customer_name
@@ -143,18 +138,12 @@ async def sincronizar_contrato(
         # Fallback 2: Se nao encontrou, tenta buscar de outro contrato do mesmo cliente
         if customer_name == "Desconhecido" and customer_id:
             try:
-                existing = (
-                    supabase.client
-                    .table("asaas_contratos")
-                    .select("customer_name")
-                    .eq("customer_id", customer_id)
-                    .neq("customer_name", "Desconhecido")
-                    .limit(1)
-                    .maybe_single()
-                    .execute()
+                name = await asaas_contracts_repository.find_name_by_customer_id(
+                    customer_id=customer_id,
+                    agent_id=agent_id,
                 )
-                if existing.data and existing.data.get("customer_name"):
-                    customer_name = existing.data["customer_name"]
+                if name:
+                    customer_name = name
                     logger.debug(
                         "[SINCRONIZAR CONTRATO] Nome do cliente obtido de outro contrato: %s",
                         customer_name
@@ -167,28 +156,13 @@ async def sincronizar_contrato(
             supabase, customer_id, customer_name, agent_id
         )
 
-        now = datetime.utcnow().isoformat()
-
-        record = {
-            "id": subscription_id,
-            "agent_id": agent_id,
-            "customer_id": customer_id,
-            "customer_name": customer_name,
-            "value": subscription.get("value"),
-            "status": subscription.get("status"),
-            "cycle": subscription.get("cycle"),
-            "next_due_date": subscription.get("nextDueDate"),
-            "description": subscription.get("description"),
-            "billing_type": subscription.get("billingType"),
-            "updated_at": now,
-            "deleted_at": None,
-            "deleted_from_asaas": False,
-        }
-
-        supabase.client.table("asaas_contratos").upsert(
-            record,
-            on_conflict="id"
-        ).execute()
+        # Usar repositorio para upsert
+        await asaas_contracts_repository.upsert(
+            subscription_id=subscription_id,
+            agent_id=agent_id,
+            data=subscription,
+            customer_name=customer_name,
+        )
 
         logger.info(
             "[SINCRONIZAR CONTRATO] Contrato %s sincronizado: R$ %.2f (%s)",
@@ -218,14 +192,8 @@ async def processar_contrato_deletado(
         return
 
     try:
-        now = datetime.utcnow().isoformat()
-
-        supabase.client.table("asaas_contratos").update({
-            "status": "INACTIVE",
-            "deleted_at": now,
-            "deleted_from_asaas": True,
-            "updated_at": now,
-        }).eq("id", subscription_id).execute()
+        # Usar repositorio para soft delete
+        await asaas_contracts_repository.soft_delete(subscription_id)
 
         logger.info("[CONTRATO DELETADO] Contrato %s marcado como INACTIVE", subscription_id)
 

@@ -137,6 +137,12 @@ from .repositories import (
     agents_repository,
     DynamicRepository,
     dynamic_repository,
+    AsaasCustomersRepository,
+    asaas_customers_repository,
+    AsaasContractsRepository,
+    asaas_contracts_repository,
+    AsaasPaymentsRepository,
+    asaas_payments_repository,
 )
 
 # ==============================================================================
@@ -216,4 +222,11 @@ __all__ = [
     "agents_repository",
     "DynamicRepository",
     "dynamic_repository",
+    # Asaas Repositories
+    "AsaasCustomersRepository",
+    "asaas_customers_repository",
+    "AsaasContractsRepository",
+    "asaas_contracts_repository",
+    "AsaasPaymentsRepository",
+    "asaas_payments_repository",
 ]

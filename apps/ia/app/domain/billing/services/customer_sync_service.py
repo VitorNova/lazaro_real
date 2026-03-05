@@ -8,15 +8,21 @@ Responsavel por:
 - Resolucao de nomes de clientes
 
 Extraido de: app/webhooks/pagamentos.py (Fase 3.3)
+Refatorado para usar AsaasCustomersRepository (Fase 9.12)
 """
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 from app.services.gateway_pagamento import AsaasService
 from app.domain.billing.models.payment import CUSTOMER_CACHE_TTL_MINUTES
+from app.integrations.supabase.repositories import (
+    asaas_customers_repository,
+    asaas_contracts_repository,
+    asaas_payments_repository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +65,7 @@ async def sincronizar_cliente(
         result = (
             supabase.client
             .table("agents")
-            .select("asaas_api_key")
+            .select("asaas_api_key, table_leads")
             .eq("id", agent_id)
             .maybe_single()
             .execute()
@@ -77,35 +83,12 @@ async def sincronizar_cliente(
             except Exception as e:
                 logger.warning("[SINCRONIZAR CLIENTE] Erro ao buscar via API, usando dados do webhook: %s", e)
 
-        now = datetime.utcnow().isoformat()
-
-        record = {
-            "id": customer_id,
-            "agent_id": agent_id,
-            "name": customer_data.get("name"),
-            "cpf_cnpj": customer_data.get("cpfCnpj"),
-            "email": customer_data.get("email"),
-            "phone": customer_data.get("phone"),
-            "mobile_phone": customer_data.get("mobilePhone"),
-            "address": customer_data.get("address"),
-            "address_number": customer_data.get("addressNumber"),
-            "complement": customer_data.get("complement"),
-            "province": customer_data.get("province"),
-            "city": customer_data.get("city"),
-            "state": customer_data.get("state"),
-            "postal_code": customer_data.get("postalCode"),
-            "date_created": customer_data.get("dateCreated"),
-            "external_reference": customer_data.get("externalReference"),
-            "observations": customer_data.get("observations"),
-            "updated_at": now,
-            "deleted_at": None,
-            "deleted_from_asaas": False,
-        }
-
-        supabase.client.table("asaas_clientes").upsert(
-            record,
-            on_conflict="id,agent_id"
-        ).execute()
+        # Usar repositorio para upsert
+        await asaas_customers_repository.upsert(
+            customer_id=customer_id,
+            agent_id=agent_id,
+            data=customer_data,
+        )
 
         logger.info("[SINCRONIZAR CLIENTE] Cliente %s sincronizado: %s", customer_id, customer_data.get("name"))
 
@@ -114,13 +97,16 @@ async def sincronizar_cliente(
         # Tenta vincular o cliente recem-criado a um lead existente
         # ================================================================
         try:
-            await match_lead_to_customer(
-                supabase=supabase,
-                agent_id=agent_id,
-                customer_id=customer_id,
-                cpf_cnpj=customer_data.get("cpfCnpj"),
-                mobile_phone=customer_data.get("mobilePhone"),
-            )
+            table_leads = result.data.get("table_leads") if result.data else None
+            if table_leads:
+                await match_lead_to_customer(
+                    supabase=supabase,
+                    agent_id=agent_id,
+                    customer_id=customer_id,
+                    cpf_cnpj=customer_data.get("cpfCnpj"),
+                    mobile_phone=customer_data.get("mobilePhone"),
+                    table_leads=table_leads,
+                )
         except Exception as match_err:
             logger.warning("[SINCRONIZAR CLIENTE] Erro no match lead->cliente (best-effort): %s", match_err)
 
@@ -134,6 +120,7 @@ async def match_lead_to_customer(
     customer_id: str,
     cpf_cnpj: Optional[str],
     mobile_phone: Optional[str],
+    table_leads: Optional[str] = None,
 ) -> bool:
     """
     Tenta vincular um cliente Asaas recem-criado a um lead existente.
@@ -153,20 +140,22 @@ async def match_lead_to_customer(
     if not agent_id:
         return False
 
-    # Buscar table_leads do agente
-    agent_result = (
-        supabase.client.table("agents")
-        .select("table_leads")
-        .eq("id", agent_id)
-        .maybe_single()
-        .execute()
-    )
+    # Buscar table_leads do agente se nao fornecido
+    if not table_leads:
+        agent_result = (
+            supabase.client.table("agents")
+            .select("table_leads")
+            .eq("id", agent_id)
+            .maybe_single()
+            .execute()
+        )
 
-    if not agent_result.data or not agent_result.data.get("table_leads"):
-        logger.debug("[CONVERSAO] Agente %s nao tem table_leads configurado", agent_id[:8])
-        return False
+        if not agent_result.data or not agent_result.data.get("table_leads"):
+            logger.debug("[CONVERSAO] Agente %s nao tem table_leads configurado", agent_id[:8])
+            return False
 
-    table_leads = agent_result.data["table_leads"]
+        table_leads = agent_result.data["table_leads"]
+
     now = datetime.utcnow().isoformat()
 
     # ================================================================
@@ -255,7 +244,7 @@ async def get_cached_customer(
     Busca cliente no cache local (asaas_clientes) se estiver fresco.
 
     Args:
-        supabase: Cliente Supabase
+        supabase: Cliente Supabase (mantido para compatibilidade, nao usado)
         customer_id: ID do cliente no Asaas
         agent_id: ID do agente
         ttl_minutes: Tempo maximo desde ultima atualizacao (minutos)
@@ -263,61 +252,12 @@ async def get_cached_customer(
     Returns:
         Dict com dados do cliente se cacheado e fresco, None se nao encontrado ou stale
     """
-    if not customer_id:
-        return None
-
-    try:
-        result = (
-            supabase.client
-            .table("asaas_clientes")
-            .select("name, updated_at")
-            .eq("id", customer_id)
-            .eq("agent_id", agent_id)
-            .maybe_single()
-            .execute()
-        )
-
-        if not result.data:
-            return None
-
-        # Verificar se esta dentro do TTL
-        updated_at = result.data.get("updated_at")
-        if updated_at:
-            try:
-                # Parse ISO format datetime
-                if isinstance(updated_at, str):
-                    last_update = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
-                else:
-                    last_update = updated_at
-
-                # Verificar se esta dentro do TTL
-                now = datetime.now(timezone.utc)
-                if last_update.tzinfo is None:
-                    last_update = last_update.replace(tzinfo=timezone.utc)
-
-                age_minutes = (now - last_update).total_seconds() / 60
-
-                if age_minutes <= ttl_minutes:
-                    name = result.data.get("name")
-                    if name and not _is_invalid_customer_name(name):
-                        logger.debug(
-                            "[CACHE] Cliente %s encontrado no cache (%.1f min)",
-                            customer_id, age_minutes
-                        )
-                        return result.data
-                else:
-                    logger.debug(
-                        "[CACHE] Cliente %s stale (%.1f min > %d min TTL)",
-                        customer_id, age_minutes, ttl_minutes
-                    )
-            except Exception as e:
-                logger.debug("[CACHE] Erro ao parsear updated_at: %s", e)
-
-        return None
-
-    except Exception as e:
-        logger.debug("[CACHE] Erro ao buscar cliente %s no cache: %s", customer_id, e)
-        return None
+    # Usar repositorio com cache TTL
+    return await asaas_customers_repository.find_cached(
+        customer_id=customer_id,
+        agent_id=agent_id,
+        ttl_minutes=ttl_minutes,
+    )
 
 
 async def resolve_customer_name(
@@ -330,7 +270,7 @@ async def resolve_customer_name(
     Resolve o nome do cliente usando hierarquia de fontes.
 
     Args:
-        supabase: Cliente do Supabase
+        supabase: Cliente do Supabase (mantido para compatibilidade, parcialmente usado)
         customer_id: ID do cliente no Asaas
         proposed_name: Nome proposto (pode ser fallback)
         agent_id: ID do agente (opcional, para filtrar por agente)
@@ -345,66 +285,39 @@ async def resolve_customer_name(
     if not customer_id:
         return proposed_name or "Desconhecido"
 
-    # 2. Busca em asaas_clientes
+    # 2. Busca em asaas_clientes via repository
     try:
-        query = supabase.client.table("asaas_clientes").select("name").eq("id", customer_id)
-        if agent_id:
-            query = query.eq("agent_id", agent_id)
-        result = query.maybe_single().execute()
-
-        if result.data and result.data.get("name"):
-            name = result.data["name"]
-            if not _is_invalid_customer_name(name):
-                logger.debug("[RESOLVE_NAME] Nome obtido de asaas_clientes: %s", name)
-                return name
+        name = await asaas_customers_repository.find_name(
+            customer_id=customer_id,
+            agent_id=agent_id,
+        )
+        if name:
+            logger.debug("[RESOLVE_NAME] Nome obtido de asaas_clientes: %s", name)
+            return name
     except Exception as e:
         logger.debug("[RESOLVE_NAME] Erro ao buscar em asaas_clientes: %s", e)
 
-    # 3. Busca em asaas_cobrancas (nome existente valido)
+    # 3. Busca em asaas_cobrancas via repository
     try:
-        query = (
-            supabase.client
-            .table("asaas_cobrancas")
-            .select("customer_name")
-            .eq("customer_id", customer_id)
-            .neq("customer_name", "Desconhecido")
-            .neq("customer_name", "Sem nome")
-            .neq("customer_name", "")
-            .limit(1)
+        name = await asaas_payments_repository.find_name_by_customer_id(
+            customer_id=customer_id,
+            agent_id=agent_id,
         )
-        if agent_id:
-            query = query.eq("agent_id", agent_id)
-        result = query.maybe_single().execute()
-
-        if result.data and result.data.get("customer_name"):
-            name = result.data["customer_name"]
-            if not _is_invalid_customer_name(name):
-                logger.debug("[RESOLVE_NAME] Nome obtido de asaas_cobrancas: %s", name)
-                return name
+        if name:
+            logger.debug("[RESOLVE_NAME] Nome obtido de asaas_cobrancas: %s", name)
+            return name
     except Exception as e:
         logger.debug("[RESOLVE_NAME] Erro ao buscar em asaas_cobrancas: %s", e)
 
-    # 4. Busca em asaas_contratos (nome existente valido)
+    # 4. Busca em asaas_contratos via repository
     try:
-        query = (
-            supabase.client
-            .table("asaas_contratos")
-            .select("customer_name")
-            .eq("customer_id", customer_id)
-            .neq("customer_name", "Desconhecido")
-            .neq("customer_name", "Sem nome")
-            .neq("customer_name", "")
-            .limit(1)
+        name = await asaas_contracts_repository.find_name_by_customer_id(
+            customer_id=customer_id,
+            agent_id=agent_id,
         )
-        if agent_id:
-            query = query.eq("agent_id", agent_id)
-        result = query.maybe_single().execute()
-
-        if result.data and result.data.get("customer_name"):
-            name = result.data["customer_name"]
-            if not _is_invalid_customer_name(name):
-                logger.debug("[RESOLVE_NAME] Nome obtido de asaas_contratos: %s", name)
-                return name
+        if name:
+            logger.debug("[RESOLVE_NAME] Nome obtido de asaas_contratos: %s", name)
+            return name
     except Exception as e:
         logger.debug("[RESOLVE_NAME] Erro ao buscar em asaas_contratos: %s", e)
 

@@ -6,10 +6,11 @@ Responsavel por:
 - Processar delecao de cobrancas (soft delete)
 
 Extraido de: app/webhooks/pagamentos.py (Fase 3.6)
+Refatorado para usar AsaasPaymentsRepository (Fase 9.12)
 """
 
 import logging
-from datetime import datetime, date
+from datetime import datetime
 from typing import Any, Dict
 
 from app.services.gateway_pagamento import AsaasService
@@ -17,6 +18,10 @@ from app.domain.billing.services.customer_sync_service import (
     sincronizar_cliente,
     get_cached_customer,
     resolve_customer_name,
+)
+from app.integrations.supabase.repositories import (
+    asaas_payments_repository,
+    asaas_customers_repository,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,7 +45,6 @@ async def sincronizar_cobranca(
     """
     payment_id = payment.get("id")
     customer_id = payment.get("customer")
-    subscription_id = payment.get("subscription")
 
     if not payment_id:
         logger.warning("[SINCRONIZAR COBRANCA] payment_id ausente")
@@ -49,10 +53,6 @@ async def sincronizar_cobranca(
     try:
         # ========================================================================
         # OTIMIZACAO: CACHE-FIRST, API COMO FALLBACK
-        # ========================================================================
-        # Verifica se o cliente ja esta cacheado localmente com dados frescos.
-        # Evita chamadas redundantes a API do Asaas em processamento em lote.
-        # Se cache miss ou stale, busca via API e sincroniza.
         # ========================================================================
 
         customer_name = "Desconhecido"
@@ -124,21 +124,16 @@ async def sincronizar_cobranca(
                         customer_id,
                         e
                     )
-                    # Continua o processamento mesmo se falhar a sincronizacao do cliente
 
-        # Fallback: Se nao conseguiu nome via API, buscar do cache local
+        # Fallback: Se nao conseguiu nome via API, buscar do cache local via repository
         if customer_name == "Desconhecido" and customer_id:
             try:
-                existing = (
-                    supabase.client
-                    .table("asaas_clientes")
-                    .select("name")
-                    .eq("id", customer_id)
-                    .maybe_single()
-                    .execute()
+                name = await asaas_customers_repository.find_name(
+                    customer_id=customer_id,
+                    agent_id=agent_id,
                 )
-                if existing.data and existing.data.get("name"):
-                    customer_name = existing.data["name"]
+                if name:
+                    customer_name = name
                     logger.debug(
                         "[SINCRONIZAR COBRANCA] Nome do cliente obtido do cache local: %s",
                         customer_name
@@ -146,21 +141,15 @@ async def sincronizar_cobranca(
             except Exception:
                 pass
 
-        # Fallback: Buscar de outra cobranca do mesmo cliente
+        # Fallback: Buscar de outra cobranca do mesmo cliente via repository
         if customer_name == "Desconhecido" and customer_id:
             try:
-                existing = (
-                    supabase.client
-                    .table("asaas_cobrancas")
-                    .select("customer_name")
-                    .eq("customer_id", customer_id)
-                    .neq("customer_name", "Desconhecido")
-                    .limit(1)
-                    .maybe_single()
-                    .execute()
+                name = await asaas_payments_repository.find_name_by_customer_id(
+                    customer_id=customer_id,
+                    agent_id=agent_id,
                 )
-                if existing.data and existing.data.get("customer_name"):
-                    customer_name = existing.data["customer_name"]
+                if name:
+                    customer_name = name
                     logger.debug(
                         "[SINCRONIZAR COBRANCA] Nome do cliente obtido de outra cobranca: %s",
                         customer_name
@@ -173,55 +162,20 @@ async def sincronizar_cobranca(
             supabase, customer_id, customer_name, agent_id
         )
 
-        # Calcular dias de atraso se vencido
-        dias_atraso = 0
-        status = payment.get("status", "")
-        due_date = payment.get("dueDate")
-
-        if status == "OVERDUE" and due_date:
-            try:
-                hoje = date.today()
-                venc = datetime.strptime(due_date, "%Y-%m-%d").date()
-                diff = (hoje - venc).days
-                dias_atraso = diff if diff > 0 else 0
-            except Exception:
-                pass
-
-        now = datetime.utcnow().isoformat()
-
-        record = {
-            "id": payment_id,
-            "agent_id": agent_id,
-            "customer_id": customer_id,
-            "customer_name": customer_name,
-            "subscription_id": subscription_id,
-            "value": payment.get("value"),
-            "net_value": payment.get("netValue"),
-            "status": status,
-            "billing_type": payment.get("billingType"),
-            "due_date": due_date,
-            "payment_date": payment.get("paymentDate"),
-            "date_created": payment.get("dateCreated"),
-            "description": payment.get("description"),
-            "invoice_url": payment.get("invoiceUrl"),
-            "bank_slip_url": payment.get("bankSlipUrl"),
-            "dias_atraso": dias_atraso,
-            "updated_at": now,
-            "deleted_at": None,
-            "deleted_from_asaas": False,
-        }
-
-        supabase.client.table("asaas_cobrancas").upsert(
-            record,
-            on_conflict="id"
-        ).execute()
+        # Usar repositorio para upsert (calcula dias_atraso automaticamente)
+        await asaas_payments_repository.upsert(
+            payment_id=payment_id,
+            agent_id=agent_id,
+            data=payment,
+            customer_name=customer_name,
+        )
 
         logger.info(
             "[SINCRONIZAR COBRANCA] Cobranca %s sincronizada: R$ %.2f | %s | venc: %s | cliente: %s",
             payment_id,
             payment.get("value", 0),
-            status,
-            due_date,
+            payment.get("status", ""),
+            payment.get("dueDate"),
             customer_name
         )
 
@@ -246,18 +200,14 @@ async def processar_cobranca_deletada(
         return
 
     try:
-        now = datetime.utcnow().isoformat()
-
-        supabase.client.table("asaas_cobrancas").update({
-            "deleted_at": now,
-            "deleted_from_asaas": True,
-            "updated_at": now,
-        }).eq("id", payment_id).execute()
+        # Usar repositorio para soft delete
+        await asaas_payments_repository.soft_delete(payment_id)
 
         logger.info("[COBRANCA DELETADA] Cobranca %s marcada como deletada", payment_id)
 
         # Tambem atualiza billing_notifications se existir
         try:
+            now = datetime.utcnow().isoformat()
             supabase.client.table("billing_notifications").update({
                 "status": "deleted",
                 "updated_at": now,
