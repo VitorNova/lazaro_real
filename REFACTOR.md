@@ -53,6 +53,7 @@ Regra absoluta: leia antes de agir. Uma fase por vez. Compile após cada mudanç
 Solução necessária: inverter a dependência fazendo tools/ importar de ai/tools/ ou eliminar tools/.
 
 ## COMMITS FEITOS
+- 1b0fb6d refactor(pagamentos): extrair webhook_handler para domain/billing/handlers (-138 linhas)
 - 442bc51 refactor(fase-E): remover funções dead code de mensagens.py (-760 linhas)
 - ebf002f refactor(fase-B): integrar message_processor em mensagens.py (-698 linhas)
 - 27e2db3 refactor(fase-5): validação Pydantic nos webhooks
@@ -160,6 +161,39 @@ Agora usa `ai/tools/tool_registry.py` com handlers modulares.
 
 ---
 
+## MAPEAMENTO: pagamentos.py (2892 linhas — era 3030, redução de 5%)
+
+### Fase F: ✅ COMPLETO — Webhook handler centralizado
+
+**Arquivo criado:** `domain/billing/handlers/webhook_handler.py` (290 linhas)
+
+| Evento Asaas | Service | Função |
+|---|---|---|
+| CUSTOMER_CREATED | customer_sync_service | sincronizar_cliente + bg |
+| CUSTOMER_UPDATED | customer_sync_service | sincronizar_cliente |
+| CUSTOMER_DELETED | customer_deletion_service | processar_cliente_deletado |
+| SUBSCRIPTION_CREATED | contract_sync_service | sincronizar_contrato + bg |
+| SUBSCRIPTION_UPDATED | contract_sync_service | sincronizar_contrato |
+| SUBSCRIPTION_DELETED | contract_sync_service | processar_contrato_deletado |
+| PAYMENT_CREATED | payment_sync_service | sincronizar_cobranca |
+| PAYMENT_CONFIRMED | payment_confirmed_service | processar_pagamento_confirmado |
+| PAYMENT_RECEIVED | payment_confirmed_service | processar_pagamento_recebido |
+| PAYMENT_OVERDUE | payment_events_service | processar_pagamento_vencido |
+| PAYMENT_REFUNDED | payment_events_service | processar_pagamento_estornado |
+| ... (20+ eventos) | payment_events_service | ... |
+
+**Manutenibilidade:** 8/10
+- Roteamento centralizado em um único arquivo
+- Logs consistentes com prefixo [WEBHOOK_HANDLER]
+- Fácil de adicionar novos eventos
+
+**Próximos passos para pagamentos.py:**
+1. Remover funções duplicadas locais (aguarda testes em produção)
+2. Extrair funções auxiliares (PDF extraction, etc.) ainda inline
+
+---
+
 ## COMO CONTINUAR
-Próxima ação: Fase B Integração (mensagens.py usa message_processor.py extraído)
-Comando de validação após cada mudança: python3 -m py_compile apps/ia/app/main.py
+Próxima ação: Testar webhook_handler em produção
+Após validação: Remover funções locais duplicadas de pagamentos.py
+Comando de validação: python3 -m py_compile apps/ia/app/webhooks/pagamentos.py
