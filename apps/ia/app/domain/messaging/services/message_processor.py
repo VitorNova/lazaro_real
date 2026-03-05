@@ -36,6 +36,9 @@ from app.services.supabase import ConversationHistory, SupabaseService
 from app.services.whatsapp_api import UazapiService
 from app.tools.cobranca import get_function_declarations
 
+# Tool handlers extraídos (Fase A) - usados diretamente em vez de callback
+from app.ai.tools.tool_registry import get_function_handlers
+
 logger = logging.getLogger(__name__)
 
 
@@ -124,7 +127,6 @@ async def process_buffered_messages(
     uazapi: UazapiService,
     save_history_callback: Callable,
     queue_failed_send_callback: Callable,
-    create_handlers_callback: Callable,
 ) -> None:
     """
     Processa todas as mensagens acumuladas no buffer.
@@ -148,7 +150,6 @@ async def process_buffered_messages(
         uazapi: Servico UAZAPI
         save_history_callback: Callback para salvar historico
         queue_failed_send_callback: Callback para enfileirar envios falhos
-        create_handlers_callback: Callback para criar function handlers
     """
     print(f"[PROCESS] Iniciando processamento para {phone} (agente: {agent_id[:8]})", flush=True)
 
@@ -653,7 +654,8 @@ Considere que ele já conhece o processo e pode estar retornando para acompanham
         logger.debug(f"[DEBUG 5/6] GEMINI INICIALIZADO com {len(function_declarations)} tools")
 
         # SEMPRE registrar handlers com contexto atual (para ter acesso a phone, handoff_triggers, etc)
-        handlers = create_handlers_callback(context)
+        # Fase A: Usar handlers extraídos de ai/tools/ diretamente
+        handlers = get_function_handlers(supabase, context)
         gemini.register_tool_handlers(handlers)
         logger.debug(f"[DEBUG 5/6] HANDLERS REGISTRADOS com contexto do agente")
 
