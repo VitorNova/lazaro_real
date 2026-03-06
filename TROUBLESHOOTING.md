@@ -392,10 +392,10 @@ docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 1000 2>&1 | 
 
 ```bash
 # Reiniciar sem perder histórico
-pm2 restart lazaro-ia
+docker compose -f /var/www/lazaro-real/docker-compose.yml restart
 
 # Reiniciar com atualização de ambiente
-pm2 restart lazaro-ia --update-env
+docker compose -f /var/www/lazaro-real/docker-compose.yml pull && docker compose up -d --force-recreate
 
 # Ver top 30 erros das últimas 24h
 docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 5000 2>&1 | \
@@ -403,13 +403,13 @@ docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 5000 2>&1 | 
   grep -iE "error|exception|traceback" | tail -30
 
 # Checar memória e CPU
-pm2 monit
+docker stats lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --no-stream
 
 # Status detalhado
-pm2 describe lazaro-ia
+docker inspect lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7
 
 # Forçar rebuild se código mudou
-cd /var/www/lazaro-real && pm2 restart lazaro-ia
+cd /var/www/lazaro-real && docker compose -f /var/www/lazaro-real/docker-compose.yml restart
 ```
 
 ---
