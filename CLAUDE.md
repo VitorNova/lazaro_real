@@ -123,3 +123,111 @@ Ao diagnosticar qualquer problema, consulte SEMPRE primeiro:
 `/var/www/lazaro-real/TROUBLESHOOTING.md`
 
 Nunca tente adivinhar comandos de log ou queries SQL — o guia já tem tudo mapeado.
+
+---
+
+## Arquitetura de Produção
+
+- **lazaro-real** (`/var/www/lazaro-real/`) — PRODUÇÃO. É o que está rodando agora.
+- **lazaro-v2** (`/var/www/lazaro-v2/`) — refatoração em progresso. NÃO está em produção.
+- **phant** (`/var/www/phant/agente-ia/`) — LEGADO. Outros agentes (Agnes, Salvador, Diana). NUNCA editar sem instrução explícita.
+
+### Como Roda em Produção
+O lazaro-ia roda via **PM2** (não Docker):
+```
+PM2: lazaro-ia
+  script: /var/www/phant/agente-ia/venv/bin/uvicorn
+  args: app.main:app --host 0.0.0.0 --port 3115
+  cwd: /var/www/lazaro-real/apps/ia
+```
+
+O **Docker Swarm** (`lazaro` stack) é usado APENAS para Traefik routing labels:
+- Stack name: `lazaro`
+- Service: `lazaro_lazaro-router` (imagem: traefik/whoami — placeholder para labels)
+- O serviço Swarm NÃO roda a aplicação — só fornece labels de roteamento ao Traefik
+
+## Deploy Procedure
+
+NUNCA faça deploy sem seguir estes passos:
+```bash
+# 1. Verificar que está no branch main e sem mudanças pendentes
+cd /var/www/lazaro-real
+git status
+git log --oneline -3
+
+# 2. Validar Python antes de tudo
+find apps/ia -name "*.py" | xargs -I{} python3 -m py_compile {} && echo "✓ Syntax OK"
+
+# 3. Reiniciar o PM2 para carregar as mudanças
+pm2 restart lazaro-ia
+
+# 4. Verificar que subiu
+sleep 5
+pm2 show lazaro-ia | grep -E "status|uptime|restarts"
+curl -s https://lazaro.fazinzz.com/health && echo " ✓ UP" || echo " ✗ DOWN"
+```
+
+Se o health check falhar após o deploy, execute o rollback imediatamente.
+
+## Rollback Procedure
+```bash
+# Rollback via git para versão anterior
+cd /var/www/lazaro-real
+git log --oneline -5          # identificar commit anterior
+git checkout <commit-anterior>
+pm2 restart lazaro-ia
+
+# Verificar
+sleep 5
+curl -s https://lazaro.fazinzz.com/health && echo " ✓ Rollback OK" || echo " ✗ Ainda com problema"
+
+# Se precisar voltar para main após rollback
+git checkout main
+```
+
+## Atualizar Variáveis de Ambiente (.env)
+```bash
+# 1. Editar o .env
+nano /var/www/lazaro-real/.env
+
+# 2. Reiniciar para carregar as novas envs
+pm2 restart lazaro-ia
+
+# 3. Verificar que subiu com as novas envs
+pm2 show lazaro-ia | grep -E "status|uptime"
+curl -s https://lazaro.fazinzz.com/health && echo " ✓ UP"
+```
+
+## PM2 vs Docker Swarm — Arquitetura Atual
+
+| Componente | Gerenciado por | Função |
+|------------|----------------|--------|
+| lazaro-ia (app Python) | PM2 | Roda a aplicação na porta 3115 |
+| lazaro_lazaro-router (Swarm) | Docker Swarm | Apenas labels de roteamento Traefik |
+| Traefik | Docker Swarm | Proxy reverso, SSL, roteamento |
+
+### Comandos PM2 (uso diário)
+| Ação | Comando |
+|------|---------|
+| Ver logs | `pm2 logs lazaro-ia` |
+| Logs sem stream | `pm2 logs lazaro-ia --lines 200 --nostream` |
+| Reiniciar | `pm2 restart lazaro-ia` |
+| Status | `pm2 show lazaro-ia` |
+| Listar todos | `pm2 list` |
+
+### Comandos Swarm (só para debug de roteamento)
+| Ação | Comando |
+|------|---------|
+| Ver serviço de routing | `docker service inspect lazaro_lazaro-router --pretty` |
+| Ver labels Traefik | `docker service inspect lazaro_lazaro-router --pretty \| grep traefik` |
+
+## Variáveis de Ambiente Disponíveis
+```
+API_BASE_URL, APP_ENV, DEFAULT_AGENT_SHORT_ID, DEFAULT_AGENT_UUID,
+FRONTEND_URL, GEMINI_MAX_TOKENS, GEMINI_MODEL, GEMINI_TEMPERATURE,
+GOOGLE_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, HOST,
+JWT_SECRET, LEADBOX_API_KEY, LEADBOX_API_UUID, LEADBOX_BASE_URL,
+LOG_FORMAT, LOG_LEVEL, MESSAGE_BUFFER_DELAY_SECONDS,
+MESSAGE_BUFFER_TTL_SECONDS, PORT, REDIS_URL, SUPABASE_ANON_KEY,
+SUPABASE_SERVICE_KEY, SUPABASE_URL, UAZAPI_API_KEY, UAZAPI_BASE_URL
+```
