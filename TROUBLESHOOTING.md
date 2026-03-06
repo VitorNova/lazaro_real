@@ -1,7 +1,7 @@
 # TROUBLESHOOTING — Aluga Ar / Lazaro-Real
 
 > **Última atualização:** 2026-03-06
-> **Serviço:** Docker `lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7`
+> **Serviço:** Docker Swarm service `lazaro_lazaro-router`
 > **Logs:** `docker service logs lazaro_lazaro-router 2>&1`
 
 ---
@@ -25,7 +25,7 @@ docker service logs lazaro_lazaro-router --tail 5
 
 ```bash
 # Todos os logs (stream)
-docker logs -f lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7
+docker service logs -f lazaro_lazaro-router
 
 # Últimas N linhas (sem stream)
 docker service logs lazaro_lazaro-router --tail 200
