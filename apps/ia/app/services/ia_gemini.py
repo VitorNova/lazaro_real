@@ -712,19 +712,25 @@ class GeminiService:
                             },
                         )
 
-                        # Audit logging (fire-and-forget)
+                        # Audit logging (with timeout to ensure completion)
                         if self._execution_context.get("agent_id"):
-                            asyncio.create_task(
-                                get_audit_logger().log_tool_execution(
-                                    agent_id=self._execution_context["agent_id"],
-                                    lead_id=self._execution_context.get("lead_id"),
-                                    tool_name=name,
-                                    tool_input=args,
-                                    tool_output=_summarize_tool_response(result),
-                                    success=(status == "sucesso"),
-                                    duration_ms=int(tool_duration * 1000),
+                            try:
+                                await asyncio.wait_for(
+                                    get_audit_logger().log_tool_execution(
+                                        agent_id=self._execution_context["agent_id"],
+                                        lead_id=self._execution_context.get("lead_id"),
+                                        tool_name=name,
+                                        tool_input=args,
+                                        tool_output=_summarize_tool_response(result),
+                                        success=(status == "sucesso"),
+                                        duration_ms=int(tool_duration * 1000),
+                                    ),
+                                    timeout=2.0
                                 )
-                            )
+                            except asyncio.TimeoutError:
+                                logger.warning(f"[AUDIT] Timeout logging tool {name}")
+                            except Exception as audit_err:
+                                logger.warning(f"[AUDIT] Failed to log tool {name}: {audit_err}")
 
                 except asyncio.TimeoutError:
                     tool_duration = time.time() - tool_start_time
@@ -745,20 +751,26 @@ class GeminiService:
                         },
                     })
 
-                    # Audit logging for timeout (fire-and-forget)
+                    # Audit logging for timeout (with timeout to ensure completion)
                     if self._execution_context.get("agent_id"):
-                        asyncio.create_task(
-                            get_audit_logger().log_tool_execution(
-                                agent_id=self._execution_context["agent_id"],
-                                lead_id=self._execution_context.get("lead_id"),
-                                tool_name=name,
-                                tool_input=args,
-                                tool_output={"error": "timeout", "timeout": True},
-                                success=False,
-                                duration_ms=int(tool_duration * 1000),
-                                error_message=f"Tool exceeded {TOOL_TIMEOUT_SECONDS}s timeout",
+                        try:
+                            await asyncio.wait_for(
+                                get_audit_logger().log_tool_execution(
+                                    agent_id=self._execution_context["agent_id"],
+                                    lead_id=self._execution_context.get("lead_id"),
+                                    tool_name=name,
+                                    tool_input=args,
+                                    tool_output={"error": "timeout", "timeout": True},
+                                    success=False,
+                                    duration_ms=int(tool_duration * 1000),
+                                    error_message=f"Tool exceeded {TOOL_TIMEOUT_SECONDS}s timeout",
+                                ),
+                                timeout=2.0
                             )
-                        )
+                        except asyncio.TimeoutError:
+                            logger.warning(f"[AUDIT] Timeout logging tool timeout for {name}")
+                        except Exception as audit_err:
+                            logger.warning(f"[AUDIT] Failed to log tool timeout for {name}: {audit_err}")
 
                 except Exception as e:
                     tool_duration = time.time() - tool_start_time
@@ -777,20 +789,26 @@ class GeminiService:
                         "response": {"error": str(e)},
                     })
 
-                    # Audit logging for error (fire-and-forget)
+                    # Audit logging for error (with timeout to ensure completion)
                     if self._execution_context.get("agent_id"):
-                        asyncio.create_task(
-                            get_audit_logger().log_tool_execution(
-                                agent_id=self._execution_context["agent_id"],
-                                lead_id=self._execution_context.get("lead_id"),
-                                tool_name=name,
-                                tool_input=args,
-                                tool_output={"error": str(e)},
-                                success=False,
-                                duration_ms=int(tool_duration * 1000),
-                                error_message=str(e)[:500],
+                        try:
+                            await asyncio.wait_for(
+                                get_audit_logger().log_tool_execution(
+                                    agent_id=self._execution_context["agent_id"],
+                                    lead_id=self._execution_context.get("lead_id"),
+                                    tool_name=name,
+                                    tool_input=args,
+                                    tool_output={"error": str(e)},
+                                    success=False,
+                                    duration_ms=int(tool_duration * 1000),
+                                    error_message=str(e)[:500],
+                                ),
+                                timeout=2.0
                             )
-                        )
+                        except asyncio.TimeoutError:
+                            logger.warning(f"[AUDIT] Timeout logging tool error for {name}")
+                        except Exception as audit_err:
+                            logger.warning(f"[AUDIT] Failed to log tool error for {name}: {audit_err}")
 
             # Captura tool_interactions para histórico (ANTES de enviar ao Gemini)
             for i, fr in enumerate(function_responses):
