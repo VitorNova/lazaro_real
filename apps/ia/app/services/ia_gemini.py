@@ -26,6 +26,7 @@ from google.generativeai.types import (
 )
 
 from app.config import settings
+from app.core.audit_logger import get_audit_logger
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,9 @@ class GeminiService:
         self._tools: Optional[List[Dict[str, Any]]] = None
         self._tool_handlers: Dict[str, Callable[..., Any]] = {}
 
+        # Execution context for audit logging (agent_id, lead_id, etc.)
+        self._execution_context: Dict[str, Any] = {}
+
         # Safety settings - BLOCK_NONE para todas as categorias
         self._safety_settings = {
             HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
@@ -128,6 +132,27 @@ class GeminiService:
                 "model": self._model_name,
                 "temperature": self._temperature,
                 "max_tokens": self._max_tokens,
+            },
+        )
+
+    def set_execution_context(self, context: Dict[str, Any]) -> None:
+        """
+        Set execution context for audit logging.
+
+        Should be called before send_message() to enable tool execution tracing.
+
+        Args:
+            context: Dict with agent_id, phone/remotejid, and other relevant info
+        """
+        self._execution_context = {
+            "agent_id": context.get("agent_id"),
+            "lead_id": context.get("remotejid") or context.get("phone"),
+        }
+        logger.debug(
+            "[AUDIT] Execution context set",
+            extra={
+                "agent_id": self._execution_context.get("agent_id", "")[:8],
+                "lead_id": self._execution_context.get("lead_id"),
             },
         )
 
@@ -687,6 +712,20 @@ class GeminiService:
                             },
                         )
 
+                        # Audit logging (fire-and-forget)
+                        if self._execution_context.get("agent_id"):
+                            asyncio.create_task(
+                                get_audit_logger().log_tool_execution(
+                                    agent_id=self._execution_context["agent_id"],
+                                    lead_id=self._execution_context.get("lead_id"),
+                                    tool_name=name,
+                                    tool_input=args,
+                                    tool_output=_summarize_tool_response(result),
+                                    success=(status == "sucesso"),
+                                    duration_ms=int(tool_duration * 1000),
+                                )
+                            )
+
                 except asyncio.TimeoutError:
                     tool_duration = time.time() - tool_start_time
                     logger.error(
@@ -706,6 +745,21 @@ class GeminiService:
                         },
                     })
 
+                    # Audit logging for timeout (fire-and-forget)
+                    if self._execution_context.get("agent_id"):
+                        asyncio.create_task(
+                            get_audit_logger().log_tool_execution(
+                                agent_id=self._execution_context["agent_id"],
+                                lead_id=self._execution_context.get("lead_id"),
+                                tool_name=name,
+                                tool_input=args,
+                                tool_output={"error": "timeout", "timeout": True},
+                                success=False,
+                                duration_ms=int(tool_duration * 1000),
+                                error_message=f"Tool exceeded {TOOL_TIMEOUT_SECONDS}s timeout",
+                            )
+                        )
+
                 except Exception as e:
                     tool_duration = time.time() - tool_start_time
                     logger.error(
@@ -722,6 +776,21 @@ class GeminiService:
                         "name": name,
                         "response": {"error": str(e)},
                     })
+
+                    # Audit logging for error (fire-and-forget)
+                    if self._execution_context.get("agent_id"):
+                        asyncio.create_task(
+                            get_audit_logger().log_tool_execution(
+                                agent_id=self._execution_context["agent_id"],
+                                lead_id=self._execution_context.get("lead_id"),
+                                tool_name=name,
+                                tool_input=args,
+                                tool_output={"error": str(e)},
+                                success=False,
+                                duration_ms=int(tool_duration * 1000),
+                                error_message=str(e)[:500],
+                            )
+                        )
 
             # Captura tool_interactions para histórico (ANTES de enviar ao Gemini)
             for i, fr in enumerate(function_responses):
