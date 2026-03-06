@@ -13,11 +13,12 @@ Uso:
 """
 
 import asyncio
-import logging
 import re
+import uuid
 from typing import Any, Dict, List, Optional, Union
 
 import httpx
+import structlog
 
 from .types import (
     DEFAULT_TIMEOUT,
@@ -32,7 +33,7 @@ from .types import (
     PresenceType,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class UazapiClient:
@@ -79,7 +80,9 @@ class UazapiClient:
             "apikey": self.api_key,
         }
 
-        logger.info(f"[UazapiClient] Inicializado: {self.base_url}")
+        logger.info("uazapi_client_initialized",
+            integration="uazapi",
+            base_url=self.base_url)
 
     # ========================================================================
     # HTTP CORE
@@ -122,20 +125,31 @@ class UazapiClient:
 
                 # Não retry para erros de cliente (exceto 429)
                 if status in {400, 401, 403, 404}:
-                    logger.error(f"[UazapiClient] {method} {endpoint} -> {status}")
+                    logger.error("uazapi_request_client_error",
+                        integration="uazapi",
+                        method=method,
+                        endpoint=endpoint,
+                        status_code=status)
                     raise
 
                 # Retry para erros transientes
                 if status in RETRYABLE_STATUS_CODES and attempt < retries:
                     delay = RETRY_DELAY_S * (2 ** (attempt - 1))  # Backoff exponencial
-                    logger.warning(
-                        f"[UazapiClient] {method} {endpoint} -> {status}, "
-                        f"retry {attempt} em {delay}s"
-                    )
+                    logger.warning("uazapi_request_retry",
+                        integration="uazapi",
+                        method=method,
+                        endpoint=endpoint,
+                        status_code=status,
+                        attempt=attempt,
+                        delay_seconds=delay)
                     await asyncio.sleep(delay)
                     continue
 
-                logger.error(f"[UazapiClient] {method} {endpoint} -> {status}")
+                logger.error("uazapi_request_failed",
+                    integration="uazapi",
+                    method=method,
+                    endpoint=endpoint,
+                    status_code=status)
                 raise
 
             except httpx.RequestError as e:
@@ -144,14 +158,21 @@ class UazapiClient:
 
                 if attempt < retries:
                     delay = RETRY_DELAY_S * (2 ** (attempt - 1))
-                    logger.warning(
-                        f"[UazapiClient] {method} {endpoint} {error_type}, "
-                        f"retry {attempt} em {delay}s"
-                    )
+                    logger.warning("uazapi_request_network_retry",
+                        integration="uazapi",
+                        method=method,
+                        endpoint=endpoint,
+                        error_type=error_type,
+                        attempt=attempt,
+                        delay_seconds=delay)
                     await asyncio.sleep(delay)
                     continue
 
-                logger.error(f"[UazapiClient] {method} {endpoint} erro: {e}")
+                logger.error("uazapi_request_network_failed",
+                    integration="uazapi",
+                    method=method,
+                    endpoint=endpoint,
+                    error=str(e))
                 raise
 
         raise last_error or Exception("UazapiClient request failed")
@@ -249,7 +270,10 @@ class UazapiClient:
             )
 
         except Exception as e:
-            logger.error(f"[UazapiClient] Erro ao enviar texto para {phone}: {e}")
+            logger.error("uazapi_send_text_failed",
+                integration="uazapi",
+                phone=phone[:8] + "***" if len(phone) > 8 else phone,
+                error=str(e))
             return MessageResponse(
                 success=False,
                 message_id=None,
@@ -453,7 +477,11 @@ class UazapiClient:
             )
 
         except Exception as e:
-            logger.error(f"[UazapiClient] Erro ao enviar mídia para {phone}: {e}")
+            logger.error("uazapi_send_media_failed",
+                integration="uazapi",
+                phone=phone[:8] + "***" if len(phone) > 8 else phone,
+                media_type=media_type,
+                error=str(e))
             return MessageResponse(
                 success=False,
                 message_id=None,
@@ -498,7 +526,11 @@ class UazapiClient:
             )
 
         except Exception as e:
-            logger.error(f"[UazapiClient] Erro ao enviar áudio para {phone}: {e}")
+            logger.error("uazapi_send_audio_failed",
+                integration="uazapi",
+                phone=phone[:8] + "***" if len(phone) > 8 else phone,
+                ptt=ptt,
+                error=str(e))
             return MessageResponse(
                 success=False,
                 message_id=None,
@@ -562,7 +594,11 @@ class UazapiClient:
             )
 
         except Exception as e:
-            logger.error(f"[UazapiClient] Erro ao enviar botões para {phone}: {e}")
+            logger.error("uazapi_send_buttons_failed",
+                integration="uazapi",
+                phone=phone[:8] + "***" if len(phone) > 8 else phone,
+                button_count=len(buttons),
+                error=str(e))
             return MessageResponse(
                 success=False,
                 message_id=None,
@@ -619,7 +655,11 @@ class UazapiClient:
             )
 
         except Exception as e:
-            logger.error(f"[UazapiClient] Erro ao enviar lista para {phone}: {e}")
+            logger.error("uazapi_send_list_failed",
+                integration="uazapi",
+                phone=phone[:8] + "***" if len(phone) > 8 else phone,
+                section_count=len(sections),
+                error=str(e))
             return MessageResponse(
                 success=False,
                 message_id=None,
@@ -656,7 +696,10 @@ class UazapiClient:
         try:
             return await self._post("/message/downloadMedia", payload)
         except Exception as e:
-            logger.error(f"[UazapiClient] Erro ao baixar mídia {message_id}: {e}")
+            logger.error("uazapi_download_media_failed",
+                integration="uazapi",
+                message_id=message_id,
+                error=str(e))
             return {"error": str(e)}
 
     # ========================================================================
@@ -678,7 +721,11 @@ class UazapiClient:
             await self._post("/message/markAsRead", payload)
             return True
         except Exception as e:
-            logger.error(f"[UazapiClient] Erro ao marcar como lida: {e}")
+            logger.error("uazapi_mark_as_read_failed",
+                integration="uazapi",
+                phone=phone[:8] + "***" if len(phone) > 8 else phone,
+                message_id=message_id,
+                error=str(e))
             return False
 
     async def send_typing(self, phone: str, duration: int = 2000) -> bool:
@@ -700,7 +747,10 @@ class UazapiClient:
             await self._post("/chat/sendPresence", {"number": phone, "presence": "composing"})
             return True
         except Exception as e:
-            logger.debug(f"[UazapiClient] Erro ao enviar typing: {e}")
+            logger.debug("uazapi_send_typing_failed",
+                integration="uazapi",
+                phone=phone[:8] + "***" if len(phone) > 8 else phone,
+                error=str(e))
             return False
 
     async def send_presence(
@@ -727,7 +777,11 @@ class UazapiClient:
             await self._post("/chat/sendPresence", payload)
             return True
         except Exception as e:
-            logger.debug(f"[UazapiClient] Erro ao enviar presença: {e}")
+            logger.debug("uazapi_send_presence_failed",
+                integration="uazapi",
+                phone=phone[:8] + "***" if len(phone) > 8 else phone,
+                presence=presence,
+                error=str(e))
             return False
 
     # ========================================================================
@@ -754,7 +808,9 @@ class UazapiClient:
             )
 
         except Exception as e:
-            logger.error(f"[UazapiClient] Erro ao obter status: {e}")
+            logger.error("uazapi_get_status_failed",
+                integration="uazapi",
+                error=str(e))
             return InstanceStatus(
                 connected=False,
                 phone_number=None,
@@ -782,7 +838,9 @@ class UazapiClient:
             result = await self._get("/instance/qrcode")
             return result.get("qrcode")
         except Exception as e:
-            logger.error(f"[UazapiClient] Erro ao obter QR code: {e}")
+            logger.error("uazapi_get_qrcode_failed",
+                integration="uazapi",
+                error=str(e))
             return None
 
     async def health_check(self) -> bool:
@@ -809,7 +867,10 @@ class UazapiClient:
             result = await self._get(f"/chat/contact/{phone}")
             return result
         except Exception as e:
-            logger.error(f"[UazapiClient] Erro ao obter contato {phone}: {e}")
+            logger.error("uazapi_get_contact_failed",
+                integration="uazapi",
+                phone=phone[:8] + "***" if len(phone) > 8 else phone,
+                error=str(e))
             return None
 
     async def check_phone_exists(self, phone: str) -> bool:
@@ -823,7 +884,10 @@ class UazapiClient:
             numbers = result.get("data", [])
             return len(numbers) > 0 and numbers[0].get("exists", False)
         except Exception as e:
-            logger.error(f"[UazapiClient] Erro ao verificar número {phone}: {e}")
+            logger.error("uazapi_check_phone_failed",
+                integration="uazapi",
+                phone=phone[:8] + "***" if len(phone) > 8 else phone,
+                error=str(e))
             return False
 
     # ========================================================================
