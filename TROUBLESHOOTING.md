@@ -1,8 +1,8 @@
 # TROUBLESHOOTING — Aluga Ar / Lazaro-Real
 
 > **Última atualização:** 2026-03-06
-> **Serviço:** PM2 `lazaro-ia` (porta 3115)
-> **Logs:** `/root/.pm2/logs/lazaro-ia-*.log`
+> **Serviço:** Docker `lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7`
+> **Logs:** `docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 2>&1`
 
 ---
 
@@ -10,13 +10,13 @@
 
 ```bash
 # Status do serviço
-pm2 status lazaro-ia
+docker ps --format 'table {{.Names}}	{{.Status}}	{{.Ports}}'
 
 # Health check da API
 curl -s https://lazaro.fazinzz.com/health && echo " ✓ API UP" || echo " ✗ API DOWN"
 
 # Últimas 5 linhas de log
-pm2 logs lazaro-ia --lines 5 --nostream
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 5
 ```
 
 ---
@@ -25,24 +25,24 @@ pm2 logs lazaro-ia --lines 5 --nostream
 
 ```bash
 # Todos os logs (stream)
-pm2 logs lazaro-ia
+docker logs -f lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7
 
 # Últimas N linhas (sem stream)
-pm2 logs lazaro-ia --lines 200 --nostream
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 200
 
 # Só erros
-pm2 logs lazaro-ia --lines 500 --nostream 2>&1 | grep -iE "error|exception|traceback"
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "error|exception|traceback"
 
 # Por integração
-pm2 logs lazaro-ia --lines 500 --nostream 2>&1 | grep -iE "uazapi"
-pm2 logs lazaro-ia --lines 500 --nostream 2>&1 | grep -iE "asaas|pagamento"
-pm2 logs lazaro-ia --lines 500 --nostream 2>&1 | grep -iE "calendar|agendamento|oauth"
-pm2 logs lazaro-ia --lines 500 --nostream 2>&1 | grep -iE "leadbox|transfer"
-pm2 logs lazaro-ia --lines 500 --nostream 2>&1 | grep -iE "\[BILLING"
-pm2 logs lazaro-ia --lines 500 --nostream 2>&1 | grep -iE "_error|_failed"
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "uazapi"
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "asaas|pagamento"
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "calendar|agendamento|oauth"
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "leadbox|transfer"
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "\[BILLING"
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "_error|_failed"
 
 # Exportar logs de hoje
-pm2 logs lazaro-ia --lines 10000 --nostream 2>&1 | grep "$(date '+%Y-%m-%d')" > /tmp/logs-$(date '+%Y%m%d').txt
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 10000 2>&1 | grep "$(date '+%Y-%m-%d')" > /tmp/logs-$(date '+%Y%m%d').txt
 ```
 
 ---
@@ -54,7 +54,7 @@ pm2 logs lazaro-ia --lines 10000 --nostream 2>&1 | grep "$(date '+%Y-%m-%d')" > 
 **Eventos structlog:** `uazapi_*`
 
 ```bash
-pm2 logs lazaro-ia --lines 500 --nostream 2>&1 | grep -iE "uazapi_"
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "uazapi_"
 ```
 
 | Evento | Significado |
@@ -73,7 +73,7 @@ pm2 logs lazaro-ia --lines 500 --nostream 2>&1 | grep -iE "uazapi_"
 **Prefixo legado:** `[ASAAS WEBHOOK]`
 
 ```bash
-pm2 logs lazaro-ia --lines 500 --nostream 2>&1 | grep -iE "asaas_|\[ASAAS"
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "asaas_|\[ASAAS"
 ```
 
 | Evento | Significado |
@@ -92,7 +92,7 @@ pm2 logs lazaro-ia --lines 500 --nostream 2>&1 | grep -iE "asaas_|\[ASAAS"
 **Prefixo legado:** `[GoogleOAuth]`, `[CONFIRMAR AGENDAMENTOS]`
 
 ```bash
-pm2 logs lazaro-ia --lines 500 --nostream 2>&1 | grep -iE "calendar_|GoogleOAuth|\[CONFIRMAR"
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "calendar_|GoogleOAuth|\[CONFIRMAR"
 ```
 
 | Evento | Significado |
@@ -109,7 +109,7 @@ pm2 logs lazaro-ia --lines 500 --nostream 2>&1 | grep -iE "calendar_|GoogleOAuth
 **Prefixo legado:** `[LEADBOX HANDLER]`, `[LEADBOX DISPATCH]`
 
 ```bash
-pm2 logs lazaro-ia --lines 500 --nostream 2>&1 | grep -iE "leadbox_|\[LEADBOX"
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "leadbox_|\[LEADBOX"
 ```
 
 | Evento | Significado |
@@ -134,7 +134,7 @@ pm2 logs lazaro-ia --lines 500 --nostream 2>&1 | grep -iE "leadbox_|\[LEADBOX"
 **Prefixos:** `[BILLING JOB]`, `[BILLING CONTEXT]`, `[SYNC BILLING]`
 
 ```bash
-pm2 logs lazaro-ia --lines 1000 --nostream 2>&1 | grep -iE "\[BILLING"
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 1000 2>&1 | grep -iE "\[BILLING"
 ```
 
 | Prefixo | Significado |
@@ -149,7 +149,7 @@ pm2 logs lazaro-ia --lines 1000 --nostream 2>&1 | grep -iE "\[BILLING"
 **Prefixos:** `[WEBHOOK]`, `[ASAAS WEBHOOK]`
 
 ```bash
-pm2 logs lazaro-ia --lines 500 --nostream 2>&1 | grep -iE "\[WEBHOOK\]"
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "\[WEBHOOK\]"
 ```
 
 | Prefixo | Significado |
@@ -161,7 +161,7 @@ pm2 logs lazaro-ia --lines 500 --nostream 2>&1 | grep -iE "\[WEBHOOK\]"
 ### AI Tools
 
 ```bash
-pm2 logs lazaro-ia --lines 500 --nostream 2>&1 | grep -iE "_error|tool_|TOOL"
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "_error|tool_|TOOL"
 ```
 
 | Evento | Significado |
@@ -175,7 +175,7 @@ pm2 logs lazaro-ia --lines 500 --nostream 2>&1 | grep -iE "_error|tool_|TOOL"
 ### Jobs Agendados
 
 ```bash
-pm2 logs lazaro-ia --lines 500 --nostream 2>&1 | grep -iE "Adding job|Scheduler|JOB\]"
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "Adding job|Scheduler|JOB\]"
 ```
 
 | Job | Horário | Prefixo |
@@ -318,7 +318,7 @@ ORDER BY bn.created_at DESC;
 ### ❌ Mensagem não chegou para o cliente
 
 ```bash
-pm2 logs lazaro-ia --lines 1000 --nostream 2>&1 | grep -iE "uazapi_send|send_text"
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 1000 2>&1 | grep -iE "uazapi_send|send_text"
 ```
 
 - [ ] Log mostra tentativa de envio?
@@ -330,7 +330,7 @@ pm2 logs lazaro-ia --lines 1000 --nostream 2>&1 | grep -iE "uazapi_send|send_tex
 ### ❌ Billing não disparou hoje
 
 ```bash
-pm2 logs lazaro-ia --lines 2000 --nostream 2>&1 | grep -iE "\[BILLING JOB\]"
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 2000 2>&1 | grep -iE "\[BILLING JOB\]"
 ```
 
 - [ ] Job aparece nos logs às 9h BRT?
@@ -342,9 +342,9 @@ pm2 logs lazaro-ia --lines 2000 --nostream 2>&1 | grep -iE "\[BILLING JOB\]"
 ### ❌ Ana não está respondendo
 
 ```bash
-pm2 status lazaro-ia
+docker ps --format 'table {{.Names}}	{{.Status}}	{{.Ports}}'
 curl -s https://lazaro.fazinzz.com/health
-pm2 logs lazaro-ia --lines 100 --nostream 2>&1 | grep -iE "error|traceback"
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 100 2>&1 | grep -iE "error|traceback"
 ```
 
 - [ ] Serviço está `online`?
@@ -356,7 +356,7 @@ pm2 logs lazaro-ia --lines 100 --nostream 2>&1 | grep -iE "error|traceback"
 ### ❌ Tool falhou silenciosamente
 
 ```bash
-pm2 logs lazaro-ia --lines 1000 --nostream 2>&1 | grep -iE "_error|_failed|tool.*fail"
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 1000 2>&1 | grep -iE "_error|_failed|tool.*fail"
 ```
 
 - [ ] Query `agent_audit_logs WHERE success = false`
@@ -367,7 +367,7 @@ pm2 logs lazaro-ia --lines 1000 --nostream 2>&1 | grep -iE "_error|_failed|tool.
 ### ❌ Prompt não injetado / agente sem contexto
 
 ```bash
-pm2 logs lazaro-ia --lines 500 --nostream 2>&1 | grep -iE "\[BILLING CONTEXT\]|\[CONTEXT\]"
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "\[BILLING CONTEXT\]|\[CONTEXT\]"
 ```
 
 - [ ] Webhook Asaas chegou com `payment_id` válido?
@@ -378,7 +378,7 @@ pm2 logs lazaro-ia --lines 500 --nostream 2>&1 | grep -iE "\[BILLING CONTEXT\]|\
 ### ❌ Lead não transferido para humano
 
 ```bash
-pm2 logs lazaro-ia --lines 1000 --nostream 2>&1 | grep -iE "transfer|leadbox_transfer"
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 1000 2>&1 | grep -iE "transfer|leadbox_transfer"
 ```
 
 - [ ] Queue ID correto? (verificar `[LEADBOX DISPATCH] PUT confirmacao`)
@@ -398,7 +398,7 @@ pm2 restart lazaro-ia
 pm2 restart lazaro-ia --update-env
 
 # Ver top 30 erros das últimas 24h
-pm2 logs lazaro-ia --lines 5000 --nostream 2>&1 | \
+docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 5000 2>&1 | \
   grep "$(date '+%Y-%m-%d')" | \
   grep -iE "error|exception|traceback" | tail -30
 
