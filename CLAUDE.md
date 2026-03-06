@@ -117,3 +117,9 @@ ORDER BY calls DESC;
 - NUNCA reverter os bugs corrigidos listados acima
 - Um fix por commit
 - Antes de qualquer deploy, verificar divergências entre lazaro-real e phant
+
+## Debugging
+Ao diagnosticar qualquer problema, consulte SEMPRE primeiro:
+`/var/www/lazaro-real/TROUBLESHOOTING.md`
+
+Nunca tente adivinhar comandos de log ou queries SQL — o guia já tem tudo mapeado.
