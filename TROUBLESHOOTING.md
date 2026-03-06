@@ -2,7 +2,7 @@
 
 > **Última atualização:** 2026-03-06
 > **Serviço:** Docker `lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7`
-> **Logs:** `docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 2>&1`
+> **Logs:** `docker service logs lazaro_lazaro-router 2>&1`
 
 ---
 
@@ -16,7 +16,7 @@ docker ps --format 'table {{.Names}}	{{.Status}}	{{.Ports}}'
 curl -s https://lazaro.fazinzz.com/health && echo " ✓ API UP" || echo " ✗ API DOWN"
 
 # Últimas 5 linhas de log
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 5
+docker service logs lazaro_lazaro-router --tail 5
 ```
 
 ---
@@ -28,21 +28,21 @@ docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 5
 docker logs -f lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7
 
 # Últimas N linhas (sem stream)
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 200
+docker service logs lazaro_lazaro-router --tail 200
 
 # Só erros
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "error|exception|traceback"
+docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "error|exception|traceback"
 
 # Por integração
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "uazapi"
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "asaas|pagamento"
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "calendar|agendamento|oauth"
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "leadbox|transfer"
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "\[BILLING"
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "_error|_failed"
+docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "uazapi"
+docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "asaas|pagamento"
+docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "calendar|agendamento|oauth"
+docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "leadbox|transfer"
+docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "\[BILLING"
+docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "_error|_failed"
 
 # Exportar logs de hoje
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 10000 2>&1 | grep "$(date '+%Y-%m-%d')" > /tmp/logs-$(date '+%Y%m%d').txt
+docker service logs lazaro_lazaro-router --tail 10000 2>&1 | grep "$(date '+%Y-%m-%d')" > /tmp/logs-$(date '+%Y%m%d').txt
 ```
 
 ---
@@ -54,7 +54,7 @@ docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 10000 2>&1 |
 **Eventos structlog:** `uazapi_*`
 
 ```bash
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "uazapi_"
+docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "uazapi_"
 ```
 
 | Evento | Significado |
@@ -73,7 +73,7 @@ docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | g
 **Prefixo legado:** `[ASAAS WEBHOOK]`
 
 ```bash
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "asaas_|\[ASAAS"
+docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "asaas_|\[ASAAS"
 ```
 
 | Evento | Significado |
@@ -92,7 +92,7 @@ docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | g
 **Prefixo legado:** `[GoogleOAuth]`, `[CONFIRMAR AGENDAMENTOS]`
 
 ```bash
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "calendar_|GoogleOAuth|\[CONFIRMAR"
+docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "calendar_|GoogleOAuth|\[CONFIRMAR"
 ```
 
 | Evento | Significado |
@@ -109,7 +109,7 @@ docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | g
 **Prefixo legado:** `[LEADBOX HANDLER]`, `[LEADBOX DISPATCH]`
 
 ```bash
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "leadbox_|\[LEADBOX"
+docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "leadbox_|\[LEADBOX"
 ```
 
 | Evento | Significado |
@@ -134,7 +134,7 @@ docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | g
 **Prefixos:** `[BILLING JOB]`, `[BILLING CONTEXT]`, `[SYNC BILLING]`
 
 ```bash
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 1000 2>&1 | grep -iE "\[BILLING"
+docker service logs lazaro_lazaro-router --tail 1000 2>&1 | grep -iE "\[BILLING"
 ```
 
 | Prefixo | Significado |
@@ -149,7 +149,7 @@ docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 1000 2>&1 | 
 **Prefixos:** `[WEBHOOK]`, `[ASAAS WEBHOOK]`
 
 ```bash
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "\[WEBHOOK\]"
+docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "\[WEBHOOK\]"
 ```
 
 | Prefixo | Significado |
@@ -161,7 +161,7 @@ docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | g
 ### AI Tools
 
 ```bash
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "_error|tool_|TOOL"
+docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "_error|tool_|TOOL"
 ```
 
 | Evento | Significado |
@@ -175,7 +175,7 @@ docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | g
 ### Jobs Agendados
 
 ```bash
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "Adding job|Scheduler|JOB\]"
+docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "Adding job|Scheduler|JOB\]"
 ```
 
 | Job | Horário | Prefixo |
@@ -318,7 +318,7 @@ ORDER BY bn.created_at DESC;
 ### ❌ Mensagem não chegou para o cliente
 
 ```bash
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 1000 2>&1 | grep -iE "uazapi_send|send_text"
+docker service logs lazaro_lazaro-router --tail 1000 2>&1 | grep -iE "uazapi_send|send_text"
 ```
 
 - [ ] Log mostra tentativa de envio?
@@ -330,7 +330,7 @@ docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 1000 2>&1 | 
 ### ❌ Billing não disparou hoje
 
 ```bash
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 2000 2>&1 | grep -iE "\[BILLING JOB\]"
+docker service logs lazaro_lazaro-router --tail 2000 2>&1 | grep -iE "\[BILLING JOB\]"
 ```
 
 - [ ] Job aparece nos logs às 9h BRT?
@@ -344,7 +344,7 @@ docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 2000 2>&1 | 
 ```bash
 docker ps --format 'table {{.Names}}	{{.Status}}	{{.Ports}}'
 curl -s https://lazaro.fazinzz.com/health
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 100 2>&1 | grep -iE "error|traceback"
+docker service logs lazaro_lazaro-router --tail 100 2>&1 | grep -iE "error|traceback"
 ```
 
 - [ ] Serviço está `online`?
@@ -356,7 +356,7 @@ docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 100 2>&1 | g
 ### ❌ Tool falhou silenciosamente
 
 ```bash
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 1000 2>&1 | grep -iE "_error|_failed|tool.*fail"
+docker service logs lazaro_lazaro-router --tail 1000 2>&1 | grep -iE "_error|_failed|tool.*fail"
 ```
 
 - [ ] Query `agent_audit_logs WHERE success = false`
@@ -367,7 +367,7 @@ docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 1000 2>&1 | 
 ### ❌ Prompt não injetado / agente sem contexto
 
 ```bash
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | grep -iE "\[BILLING CONTEXT\]|\[CONTEXT\]"
+docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "\[BILLING CONTEXT\]|\[CONTEXT\]"
 ```
 
 - [ ] Webhook Asaas chegou com `payment_id` válido?
@@ -378,7 +378,7 @@ docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 500 2>&1 | g
 ### ❌ Lead não transferido para humano
 
 ```bash
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 1000 2>&1 | grep -iE "transfer|leadbox_transfer"
+docker service logs lazaro_lazaro-router --tail 1000 2>&1 | grep -iE "transfer|leadbox_transfer"
 ```
 
 - [ ] Queue ID correto? (verificar `[LEADBOX DISPATCH] PUT confirmacao`)
@@ -398,15 +398,15 @@ docker compose -f /var/www/lazaro-real/docker-compose.yml restart
 docker compose -f /var/www/lazaro-real/docker-compose.yml pull && docker compose up -d --force-recreate
 
 # Ver top 30 erros das últimas 24h
-docker logs lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --tail 5000 2>&1 | \
+docker service logs lazaro_lazaro-router --tail 5000 2>&1 | \
   grep "$(date '+%Y-%m-%d')" | \
   grep -iE "error|exception|traceback" | tail -30
 
 # Checar memória e CPU
-docker stats lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7 --no-stream
+docker stats $(docker ps -q -f name=lazaro_lazaro-router) --no-stream
 
 # Status detalhado
-docker inspect lazaro_lazaro-router.1.axvzdos4nm4zql9sknvy3lcd7
+docker service inspect lazaro_lazaro-router
 
 # Forçar rebuild se código mudou
 cd /var/www/lazaro-real && docker compose -f /var/www/lazaro-real/docker-compose.yml restart
