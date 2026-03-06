@@ -74,6 +74,42 @@ Quando lead responde, `message_processor.py`:
 - `asaas_clientes`, `asaas_contratos`, `asaas_cobrancas` — dados Asaas
 - `billing_notifications` — controle de notificações (constraint: notification_type IN ('reminder','due_date','overdue','sent','failed'))
 - `billing_exceptions` — opt-out/pausa de cobrança
+- `agent_audit_logs` — **audit trail de tool calls** (novo)
+- `dispatch_log` — log de dispatches de notificações
+
+## Audit Logging (Tool Execution Tracing)
+Toda execução de tool do Gemini é logada em `agent_audit_logs`:
+
+```sql
+-- Ver últimas execuções de tools
+SELECT * FROM v_recent_tool_executions LIMIT 50;
+
+-- Execuções de um lead específico (última hora)
+SELECT tool_name, success, duration_ms, error_message, created_at
+FROM agent_audit_logs
+WHERE lead_id LIKE '5566%'
+  AND created_at > now() - interval '1 hour'
+ORDER BY created_at DESC;
+
+-- Tools que falharam hoje
+SELECT tool_name, error_message, tool_input, created_at
+FROM agent_audit_logs
+WHERE success = false
+  AND created_at > now() - interval '1 day'
+ORDER BY created_at DESC;
+
+-- Tempo médio por tool
+SELECT tool_name,
+       COUNT(*) as calls,
+       AVG(duration_ms)::int as avg_ms,
+       MAX(duration_ms) as max_ms
+FROM agent_audit_logs
+WHERE created_at > now() - interval '7 days'
+GROUP BY tool_name
+ORDER BY calls DESC;
+```
+
+**Implementação:** `app/core/audit_logger.py` + integração em `services/ia_gemini.py`
 
 ## Regras para o Claude Code
 - NUNCA editar `/var/www/phant/agente-ia/` sem instrução explícita
