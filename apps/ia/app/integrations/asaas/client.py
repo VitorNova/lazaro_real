@@ -11,10 +11,10 @@ Baseado em apps/api/src/services/asaas/client.ts para paridade.
 """
 
 import asyncio
-import logging
 from typing import Any, Dict, List, Optional
 
 import httpx
+import structlog
 
 from .rate_limiter import RateLimiter, get_rate_limiter
 from .types import (
@@ -37,7 +37,7 @@ from .types import (
     UpdateSubscriptionInput,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class AsaasClient:
@@ -85,7 +85,9 @@ class AsaasClient:
             "access_token": self.api_key,
         }
 
-        logger.info(f"[AsaasClient] Inicializado: {self.base_url}")
+        logger.info("asaas_client_initialized",
+            integration="asaas",
+            base_url=self.base_url)
 
     # ========================================================================
     # HTTP CORE
@@ -132,28 +134,35 @@ class AsaasClient:
                 if status == 429:
                     # Backoff exponencial até 30s
                     wait_time = min(30.0, RETRY_DELAY_S * (3 ** attempt))
-                    logger.warning(
-                        f"[AsaasClient] Rate limited pela API (429). "
-                        f"Aguardando {wait_time:.1f}s (tentativa {attempt}/{MAX_RETRIES})"
-                    )
+                    logger.warning("asaas_rate_limited",
+                        integration="asaas",
+                        wait_time_seconds=wait_time,
+                        endpoint=endpoint,
+                        attempt=attempt,
+                        max_retries=MAX_RETRIES)
                     await asyncio.sleep(wait_time)
                     continue
 
                 # Retry para outros erros transientes
                 if status in RETRYABLE_STATUS_CODES and attempt < MAX_RETRIES:
                     delay = RETRY_DELAY_S * attempt
-                    logger.warning(
-                        f"[AsaasClient] {method} {endpoint} -> {status}, "
-                        f"retry {attempt} em {delay}s"
-                    )
+                    logger.warning("asaas_request_retry",
+                        integration="asaas",
+                        method=method,
+                        endpoint=endpoint,
+                        status_code=status,
+                        attempt=attempt,
+                        delay_seconds=delay)
                     await asyncio.sleep(delay)
                     continue
 
                 # Log erro e re-raise
-                logger.error(
-                    f"[AsaasClient] {method} {endpoint} -> {status}",
-                    extra={"response_text": e.response.text[:500]},
-                )
+                logger.error("asaas_request_failed",
+                    integration="asaas",
+                    method=method,
+                    endpoint=endpoint,
+                    status_code=status,
+                    response_text=e.response.text[:500])
                 raise
 
             except httpx.RequestError as e:
@@ -162,14 +171,21 @@ class AsaasClient:
 
                 if attempt < MAX_RETRIES:
                     delay = RETRY_DELAY_S * attempt
-                    logger.warning(
-                        f"[AsaasClient] {method} {endpoint} {error_type}, "
-                        f"retry {attempt} em {delay}s"
-                    )
+                    logger.warning("asaas_request_network_retry",
+                        integration="asaas",
+                        method=method,
+                        endpoint=endpoint,
+                        error_type=error_type,
+                        attempt=attempt,
+                        delay_seconds=delay)
                     await asyncio.sleep(delay)
                     continue
 
-                logger.error(f"[AsaasClient] {method} {endpoint} erro: {e}")
+                logger.error("asaas_request_network_failed",
+                    integration="asaas",
+                    method=method,
+                    endpoint=endpoint,
+                    error=str(e))
                 raise
 
         raise last_error or Exception("AsaasClient request failed")
@@ -255,14 +271,31 @@ class AsaasClient:
 
     async def create_payment(self, data: CreatePaymentInput) -> AsaasPayment:
         """Cria uma nova cobrança."""
-        return await self._post("/payments", dict(data))
+        result = await self._post("/payments", dict(data))
+        payment_id = result.get("id")
+        logger.info("asaas_payment_created",
+            integration="asaas",
+            payment_id=payment_id,
+            customer_id=data.get("customer"),
+            value=data.get("value"),
+            due_date=data.get("dueDate"),
+            billing_type=data.get("billingType"))
+        return result
 
     async def get_payment(self, payment_id: str) -> Optional[AsaasPayment]:
         """Obtém uma cobrança por ID."""
         try:
-            return await self._get(f"/payments/{payment_id}")
+            result = await self._get(f"/payments/{payment_id}")
+            logger.debug("asaas_payment_retrieved",
+                integration="asaas",
+                payment_id=payment_id,
+                status=result.get("status") if result else None)
+            return result
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
+                logger.debug("asaas_payment_not_found",
+                    integration="asaas",
+                    payment_id=payment_id)
                 return None
             raise
 
@@ -324,8 +357,14 @@ class AsaasClient:
         """Cancela uma cobrança."""
         try:
             await self._delete(f"/payments/{payment_id}")
+            logger.info("asaas_payment_cancelled",
+                integration="asaas",
+                payment_id=payment_id)
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
+                logger.warning("asaas_payment_cancel_not_found",
+                    integration="asaas",
+                    payment_id=payment_id)
                 return
             raise
 
