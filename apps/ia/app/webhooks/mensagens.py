@@ -822,7 +822,11 @@ class WhatsAppWebhookHandler:
         message_id = extracted.get("message_id")
         media_url = extracted.get("media_url")  # URL direta da midia (Leadbox)
 
-        # DEBUG 1: Mensagem recebida
+        # LOG INFO: Mensagem recebida (visível em produção)
+        media_info = f", media={media_type}" if media_type else ""
+        logger.info(f"[MSG RECEBIDA] phone={phone}, texto='{text[:50]}...'{media_info}")
+
+        # DEBUG detalhado (só em desenvolvimento)
         logger.debug(f"[DEBUG 1/6] MENSAGEM RECEBIDA:")
         logger.debug(f"  -> Phone: {phone}")
         logger.debug(f"  -> RemoteJID: {remotejid}")
@@ -852,6 +856,7 @@ class WhatsAppWebhookHandler:
             agent = supabase.get_agent_by_token(token)
 
         if not agent:
+            logger.warning(f"[MSG RECEBIDA] AGENTE NAO ENCONTRADO - instance_id={instance_id}, phone={phone}")
             logger.debug(f"[DEBUG 2/6] AGENTE NAO ENCONTRADO para instance_id: {instance_id} ou token")
             return {"status": "error", "reason": "agent_not_found"}
 
@@ -863,6 +868,9 @@ class WhatsAppWebhookHandler:
         if agent.get("status") == "paused":
             logger.info(f"[AGENT DISABLED] Agente '{agent.get('name')}' ({agent.get('id')}) esta pausado (status=paused) - ignorando mensagem")
             return {"status": "ignored", "reason": "agent_paused"}
+
+        # LOG INFO: Agente encontrado
+        logger.info(f"[MSG RECEBIDA] Agente '{agent.get('name')}' encontrado para phone={phone}")
 
         logger.debug(f"[DEBUG 2/6] AGENTE ENCONTRADO:")
         logger.debug(f"  -> Agent ID: {agent.get('id', 'N/A')}")
@@ -1224,13 +1232,82 @@ class WhatsAppWebhookHandler:
                     except (ValueError, TypeError):
                         fresh_queue = None
                     if fresh_queue is not None and fresh_queue not in IA_QUEUES:
-                        logger.debug(f"[LEADBOX] Lead {phone} na fila {fresh_queue} (pré-agendamento recheck) - IGNORANDO (não é fila IA {IA_QUEUES})")
-                        return {"status": "ignored", "reason": "lead_em_outra_fila"}
+                        # ================================================================
+                        # FAIL-SAFE: Consultar API do Leadbox antes de ignorar
+                        # O banco pode estar desatualizado se webhook não chegou
+                        # ================================================================
+                        lb_api_url = handoff.get("api_url")
+                        lb_api_token = handoff.get("api_token")
+
+                        if lb_api_url and lb_api_token:
+                            try:
+                                ticket_id_for_check = fresh_lead.get("ticket_id")
+                                try:
+                                    ticket_id_int = int(ticket_id_for_check) if ticket_id_for_check else None
+                                except (ValueError, TypeError):
+                                    ticket_id_int = None
+
+                                realtime_result = await get_current_queue(
+                                    api_url=lb_api_url,
+                                    api_token=lb_api_token,
+                                    phone=phone,
+                                    ticket_id=ticket_id_int,
+                                    ia_queue_id=QUEUE_IA,
+                                )
+
+                                if realtime_result:
+                                    realtime_queue = realtime_result.get("queue_id")
+                                    if realtime_queue and int(realtime_queue) in IA_QUEUES:
+                                        # API diz que está em fila IA! Banco desatualizado.
+                                        logger.warning(
+                                            "[SYNC FIX] Lead %s: banco diz fila %s, API Leadbox diz fila %s - CORRIGINDO e processando",
+                                            phone, fresh_queue, realtime_queue
+                                        )
+                                        # Atualizar banco com dados reais da API
+                                        new_ticket_id = realtime_result.get("ticket_id")
+                                        supabase.update_lead_by_remotejid(table_leads, remotejid, {
+                                            "current_queue_id": str(realtime_queue),
+                                            "ticket_id": str(new_ticket_id) if new_ticket_id else fresh_lead.get("ticket_id"),
+                                            "Atendimento_Finalizado": "false",
+                                            "current_state": "ai",
+                                        })
+                                        # Atualizar lead local para continuar processamento
+                                        fresh_lead["current_queue_id"] = realtime_queue
+                                        lead = fresh_lead
+                                        # NÃO retorna - continua processamento normal
+                                    else:
+                                        # API confirma que está em fila não-IA - ignorar
+                                        logger.warning(
+                                            "[LEADBOX] Lead %s IGNORADO: banco fila=%s, API fila=%s (CONFIRMADO não-IA)",
+                                            phone, fresh_queue, realtime_queue
+                                        )
+                                        return {"status": "ignored", "reason": "lead_em_outra_fila_confirmado_api"}
+                                else:
+                                    # API não retornou dados - usar comportamento anterior (ignorar)
+                                    logger.warning(
+                                        "[LEADBOX] Lead %s na fila %s - API Leadbox sem dados, IGNORANDO",
+                                        phone, fresh_queue
+                                    )
+                                    return {"status": "ignored", "reason": "lead_em_outra_fila"}
+                            except Exception as api_err:
+                                # Erro na API - comportamento fail-safe: ignorar
+                                logger.warning(
+                                    "[LEADBOX] Lead %s na fila %s - erro ao consultar API Leadbox (%s), IGNORANDO",
+                                    phone, fresh_queue, str(api_err)
+                                )
+                                return {"status": "ignored", "reason": "lead_em_outra_fila"}
+                        else:
+                            # Sem credenciais Leadbox - comportamento anterior
+                            logger.warning(
+                                "[LEADBOX] Lead %s na fila %s - sem credenciais Leadbox, IGNORANDO",
+                                phone, fresh_queue
+                            )
+                            return {"status": "ignored", "reason": "lead_em_outra_fila"}
                     else:
                         logger.debug(f"[LEADBOX] Lead {phone} mudou para fila {fresh_queue} (pré-agendamento recheck) - OK, processando")
                         lead = fresh_lead
                 else:
-                    logger.debug(f"[LEADBOX] Lead {phone} não encontrado no recheck - IGNORANDO")
+                    logger.warning(f"[LEADBOX] Lead {phone} não encontrado no recheck - IGNORANDO")
                     return {"status": "ignored", "reason": "lead_nao_encontrado_recheck"}
             elif current_queue in IA_QUEUES:
                 logger.debug(f"[LEADBOX] Lead {phone} na fila {current_queue} (pré-agendamento) - OK, processando (filas IA: {IA_QUEUES})")
@@ -1295,6 +1372,7 @@ class WhatsAppWebhookHandler:
 
         # Adicionar ao buffer
         await redis.buffer_add_message(agent_id, phone, text)
+        logger.info(f"[BUFFER] Mensagem adicionada - phone={phone}, agent={agent.get('name')}")
         logger.debug(f"[DEBUG 3/6] MENSAGEM ADICIONADA AO BUFFER com sucesso")
 
         # Atualizar Msg_user (timestamp da ultima mensagem do lead)
