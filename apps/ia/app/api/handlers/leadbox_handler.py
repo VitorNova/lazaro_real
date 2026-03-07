@@ -304,6 +304,7 @@ async def handle_queue_change(
                 else:
                     # Fila humana: pausar IA
                     update_data["Atendimento_Finalizado"] = "true"
+                    update_data["current_state"] = "human"
                     update_data["paused_at"] = datetime.utcnow().isoformat()
                     logger.info("[LEADBOX HANDLER] Lead %s na fila %s (NAO esta em filas IA %s) - PAUSANDO",
                                phone, queue_id, IA_QUEUES)
@@ -409,6 +410,9 @@ async def _handle_ia_queue(
             )
             update_data["Atendimento_Finalizado"] = "false"
             update_data["current_user_id"] = target_user_str
+            update_data["current_state"] = "ai"
+            update_data["paused_at"] = None
+            update_data["paused_by"] = None
             try:
                 redis_svc = await get_redis_service()
                 await redis_svc.pause_clear(agent_id, clean_phone)
@@ -450,6 +454,9 @@ async def _handle_ia_queue(
 
             # SEMPRE reativar IA quando na fila de IA
             update_data["Atendimento_Finalizado"] = "false"
+            update_data["current_state"] = "ai"
+            update_data["paused_at"] = None
+            update_data["paused_by"] = None
             try:
                 redis_svc = await get_redis_service()
                 await redis_svc.pause_clear(agent_id, clean_phone)
