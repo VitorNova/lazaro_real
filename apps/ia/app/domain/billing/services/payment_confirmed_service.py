@@ -15,6 +15,8 @@ import re
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from app.domain.billing.services.payment_message_service import enviar_confirmacao_pagamento
+
 logger = logging.getLogger(__name__)
 
 
@@ -378,3 +380,42 @@ async def processar_pagamento_recebido(
             )
         except Exception as e:
             logger.error("[ASAAS WEBHOOK] Erro ao atualizar lead apos pagamento: %s", e)
+
+    # Enviar mensagem de confirmação via WhatsApp
+    if agent_id:
+        try:
+            # Buscar dados do agente
+            agent_result = (
+                supabase.client.table("agents")
+                .select("id, name, uazapi_base_url, uazapi_token, table_leads, table_messages")
+                .eq("id", agent_id)
+                .maybe_single()
+                .execute()
+            )
+
+            if agent_result.data:
+                agent = agent_result.data
+                confirm_result = await enviar_confirmacao_pagamento(
+                    supabase=supabase,
+                    agent=agent,
+                    payment=payment,
+                )
+                if confirm_result.get("message_sent"):
+                    logger.info(
+                        "[ASAAS WEBHOOK] Confirmação de pagamento enviada: payment_id=%s",
+                        payment_id
+                    )
+                elif confirm_result.get("reason") == "already_sent":
+                    logger.debug(
+                        "[ASAAS WEBHOOK] Confirmação já enviada anteriormente: payment_id=%s",
+                        payment_id
+                    )
+                else:
+                    logger.warning(
+                        "[ASAAS WEBHOOK] Não foi possível enviar confirmação: payment_id=%s, reason=%s",
+                        payment_id, confirm_result.get("reason") or confirm_result.get("error")
+                    )
+            else:
+                logger.warning("[ASAAS WEBHOOK] Agente não encontrado para envio de confirmação: %s", agent_id[:8])
+        except Exception as e:
+            logger.error("[ASAAS WEBHOOK] Erro ao enviar confirmação de pagamento: %s", e)
