@@ -16,10 +16,9 @@ interface SidebarProps {
 }
 
 const menuItems = [
-  { icon: MessageSquare, label: 'Conversas', href: '/conversations' },
+  { icon: BarChart3, label: 'Dashboard', href: '/' },
   { icon: Users, label: 'Leads', href: '/leads' },
   { icon: Bot, label: 'Agentes', href: '/agents' },
-  { icon: BarChart3, label: 'Dashboard', href: '/' },
   { icon: DollarSign, label: 'Billing', href: '/billing' },
   { icon: Settings, label: 'Configuracoes', href: '/settings' },
 ]

@@ -5,7 +5,6 @@ import { useAuthStore } from '@/stores/auth.store'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { LoginPage } from '@/pages/LoginPage'
 import { DashboardPage } from '@/pages/DashboardPage'
-import { ConversationsPage } from '@/pages/ConversationsPage'
 import { PipelinePage } from '@/pages/PipelinePage'
 import { AgentsPage } from '@/pages/AgentsPage'
 import { BillingPage } from '@/pages/BillingPage'
@@ -41,14 +40,6 @@ function AppContent() {
         element={
           <ProtectedRoute>
             <DashboardPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/conversations"
-        element={
-          <ProtectedRoute>
-            <ConversationsPage />
           </ProtectedRoute>
         }
       />
