@@ -587,6 +587,30 @@ async def process_buffered_messages(
                             except (ValueError, TypeError):
                                 pass
 
+        # Fallback 3: verificar contract_details pelo telefone (cliente sem lead no momento do disparo)
+        if not conversation_context:
+            try:
+                from datetime import datetime, timezone, timedelta
+                import re as _re
+                phone_limpo = _re.sub(r"\D", "", phone)
+                if phone_limpo.startswith("55"):
+                    phone_limpo = phone_limpo[2:]
+                telefones_busca = [phone_limpo, f"55{phone_limpo}"]
+                cutoff_7d = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+                for tel in telefones_busca:
+                    cliente_res = supabase.client.table("asaas_clientes").select("id").eq("mobile_phone", tel).is_("deleted_at", "null").limit(1).execute()
+                    if cliente_res.data:
+                        cid = cliente_res.data[0]["id"]
+                        contr_res = supabase.client.table("contract_details").select("id, notificacao_enviada_at").eq("customer_id", cid).eq("maintenance_status", "notified").gte("notificacao_enviada_at", cutoff_7d).order("notificacao_enviada_at", desc=True).limit(1).execute()
+                        if contr_res.data:
+                            conversation_context = "manutencao_preventiva"
+                            contract_id = contr_res.data[0]["id"]
+                            print(f"[CONTEXT DEBUG] FALLBACK 3 (contract_details): manutencao_preventiva contract_id={contract_id}", flush=True)
+                            logger.info(f"[CONTEXT] Fallback 3: manutencao_preventiva via contract_details (phone={phone})")
+                            break
+            except Exception as _e:
+                logger.warning(f"[CONTEXT] Erro no Fallback 3: {_e}")
+
         # Injetar prompt dinamico se houver contexto especial (RAG simplificado)
         # Prompts sao carregados do campo context_prompts do agente (JSONB no Supabase)
         effective_system_prompt = context["system_prompt"]
