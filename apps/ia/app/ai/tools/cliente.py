@@ -65,7 +65,9 @@ async def consultar_cliente(
     cpf: Optional[str] = None,
     telefone: Optional[str] = None,
     agent_id: Optional[str] = None,
-    verificar_pagamento: bool = False
+    verificar_pagamento: bool = False,
+    table_leads: Optional[str] = None,
+    remotejid: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Consulta unificada do cliente.
@@ -75,6 +77,8 @@ async def consultar_cliente(
         telefone: Telefone do cliente (do contexto remotejid)
         agent_id: ID do agente para isolamento
         verificar_pagamento: Se True, busca faturas pagas recentemente para confirmar pagamento
+        table_leads: Nome da tabela de leads (para salvar asaas_customer_id)
+        remotejid: RemoteJID do lead (para identificar o lead no banco)
 
     Returns:
         Dict com dados completos do cliente ou mensagem de erro
@@ -173,6 +177,36 @@ async def consultar_cliente(
                             logger.info(f"[CONSULTAR_CLIENTE] Cliente encontrado parcialmente por telefone: {customer_id}")
                             break
 
+        # 1.2.1 Se não encontrou em billing_notifications, tentar por mobile_phone em asaas_clientes
+        if not customer_id and telefone:
+            logger.debug(f"[CONSULTAR_CLIENTE] Não encontrou em billing_notifications, tentando por mobile_phone")
+
+            # Normalizar telefone se ainda não foi feito
+            telefone_limpo = re.sub(r'\D', '', telefone)
+            if telefone_limpo.startswith("55"):
+                telefone_limpo = telefone_limpo[2:]
+
+            # Tentar variações: sem 55 e com 55
+            telefones_mobile = [telefone_limpo]
+            if not telefone_limpo.startswith("55"):
+                telefones_mobile.append(f"55{telefone_limpo}")
+
+            for tel in telefones_mobile:
+                query = supabase.table("asaas_clientes").select(
+                    "id, name, cpf_cnpj, mobile_phone, email"
+                ).eq("mobile_phone", tel).is_("deleted_at", "null")
+
+                if agent_id:
+                    query = query.eq("agent_id", agent_id)
+
+                result = query.limit(1).execute()
+
+                if result.data:
+                    customer_data = result.data[0]
+                    customer_id = customer_data["id"]
+                    logger.info(f"[CONSULTAR_CLIENTE] Cliente encontrado por mobile_phone ({tel}): {customer_id}")
+                    break
+
         # 1.3 Se ainda não encontrou cliente
         if not customer_id:
             if cpf:
@@ -187,6 +221,26 @@ async def consultar_cliente(
                     "encontrou": False,
                     "mensagem": "Para localizar seu cadastro, por favor informe seu CPF ou CNPJ."
                 }
+
+        # 1.4 Salvar asaas_customer_id no lead para evitar buscas repetidas
+        if customer_id and table_leads and remotejid:
+            try:
+                # Verificar se o lead existe e se já tem customer_id
+                lead_result = supabase.table(table_leads).select(
+                    "id, asaas_customer_id"
+                ).eq("remotejid", remotejid).limit(1).execute()
+
+                if lead_result.data:
+                    lead = lead_result.data[0]
+                    # Só atualiza se ainda não tiver customer_id vinculado
+                    if not lead.get("asaas_customer_id"):
+                        supabase.table(table_leads).update({
+                            "asaas_customer_id": customer_id
+                        }).eq("remotejid", remotejid).execute()
+                        logger.info(f"[CONSULTAR_CLIENTE] asaas_customer_id={customer_id} salvo no lead {remotejid}")
+            except Exception as e:
+                # Não falhar se não conseguir salvar - apenas logar
+                logger.warning(f"[CONSULTAR_CLIENTE] Erro ao salvar asaas_customer_id no lead: {e}")
 
         # ================================================================
         # PASSO 2: Buscar cobranças

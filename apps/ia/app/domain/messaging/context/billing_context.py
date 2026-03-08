@@ -130,9 +130,47 @@ async def get_billing_data_for_context(
                     print(f"[BILLING CONTEXT] Encontrado via billing_notifications: customer_id={customer_id}", flush=True)
                     break
 
+        # ================================================================
+        # ESTRATÉGIA 4: Fallback para mobile_phone em asaas_clientes
+        # ================================================================
         if not customer_id:
-            print(f"[BILLING CONTEXT] Cliente não encontrado (nem via lead, nem via billing_context, nem via billing_notifications)", flush=True)
+            # Reutilizar telefone_limpo e telefones_busca já definidos acima
+            for tel in telefones_busca:
+                try:
+                    result = supabase.client.table("asaas_clientes").select(
+                        "id, name, cpf_cnpj, mobile_phone, email"
+                    ).eq("mobile_phone", tel).is_("deleted_at", "null").limit(1).execute()
+
+                    if result.data:
+                        cliente = result.data[0]
+                        customer_id = cliente.get("id")
+                        customer_name = cliente.get("name") or customer_name
+                        print(f"[BILLING CONTEXT] Encontrado via mobile_phone ({tel}): customer_id={customer_id}", flush=True)
+                        break
+                except Exception as e:
+                    logger.warning(f"[BILLING CONTEXT] Erro ao buscar por mobile_phone: {e}")
+
+        if not customer_id:
+            print(f"[BILLING CONTEXT] Cliente não encontrado (nem via lead, nem via billing_context, nem via billing_notifications, nem via mobile_phone)", flush=True)
             return None
+
+        # ================================================================
+        # Salvar asaas_customer_id no lead (para próximas interações)
+        # ================================================================
+        if customer_id and table_leads and remotejid:
+            try:
+                # Verificar se lead já tem customer_id
+                lead_check = supabase.client.table(table_leads).select(
+                    "id, asaas_customer_id"
+                ).eq("remotejid", remotejid).limit(1).execute()
+
+                if lead_check.data and not lead_check.data[0].get("asaas_customer_id"):
+                    supabase.client.table(table_leads).update({
+                        "asaas_customer_id": customer_id
+                    }).eq("remotejid", remotejid).execute()
+                    print(f"[BILLING CONTEXT] asaas_customer_id={customer_id} salvo no lead", flush=True)
+            except Exception as e:
+                logger.warning(f"[BILLING CONTEXT] Erro ao salvar asaas_customer_id no lead: {e}")
 
         # Buscar dados completos do cliente em asaas_clientes
         cliente_data = {}

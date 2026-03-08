@@ -347,12 +347,15 @@ class BillingTools:
         remotejid = self.context.get("remotejid", "")
         telefone = self._extract_phone_from_remotejid(remotejid)
         agent_id = self.context.get("agent_id")
+        table_leads = self.context.get("table_leads")
 
         return await consultar_cliente(
             cpf=cpf,
             telefone=telefone,
             agent_id=agent_id,
             verificar_pagamento=verificar_pagamento,
+            table_leads=table_leads,
+            remotejid=remotejid,
         )
 
     def get_handlers(self) -> Dict[str, Callable]:
