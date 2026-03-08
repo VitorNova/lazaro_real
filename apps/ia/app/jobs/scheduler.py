@@ -40,7 +40,7 @@ def register_jobs(scheduler: Any) -> None:
     from apscheduler.triggers.cron import CronTrigger
     from apscheduler.triggers.interval import IntervalTrigger
 
-    from app.jobs.cobrar_clientes import run_billing_charge_job
+    from app.jobs.billing_job_v2 import run_billing_v2
     from app.jobs.reconciliar_pagamentos import run_billing_reconciliation_job
     from app.jobs.confirmar_agendamentos import run_calendar_confirmation_job
     from app.jobs.reengajar_leads import run_follow_up_job
@@ -57,10 +57,10 @@ def register_jobs(scheduler: Any) -> None:
 
     # Cobranca: 9h horario de Brasilia, seg-sex (DEPOIS da reconciliacao)
     scheduler.add_job(
-        run_billing_charge_job,
+        run_billing_v2,
         CronTrigger(hour=9, minute=0, day_of_week="mon-fri", timezone="America/Sao_Paulo"),
         id="billing_charge",
-        name="Billing Charge Job",
+        name="Billing Charge Job V2",
         replace_existing=True,
     )
 

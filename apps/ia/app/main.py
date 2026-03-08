@@ -100,64 +100,6 @@ async def lifespan(app: FastAPI):
         logger.error("Gemini initialization failed", error=str(e))
         app_state.gemini_initialized = False
 
-    # 3. Start APScheduler with Ana's jobs
-    try:
-        from app.jobs.scheduler import create_scheduler
-        from apscheduler.triggers.cron import CronTrigger
-        from apscheduler.triggers.interval import IntervalTrigger
-
-        # Job imports
-        from app.jobs.billing_job_v2 import run_billing_v2
-        from app.jobs.reconciliar_pagamentos import run_billing_reconciliation_job
-        from app.jobs.notificar_manutencoes import run_maintenance_notifier_job
-        from app.jobs.confirmar_agendamentos import run_calendar_confirmation_job
-
-        scheduler = create_scheduler()
-        if scheduler:
-            # Billing reconciliation: 06:00 seg-sex Brasilia
-            scheduler.add_job(
-                run_billing_reconciliation_job,
-                CronTrigger(hour=6, minute=0, day_of_week="mon-fri", timezone="America/Sao_Paulo"),
-                id="billing_reconciliation",
-                name="Billing Reconciliation Job",
-                replace_existing=True,
-            )
-
-            # Billing V2: 09:00 seg-sex Brasilia
-            scheduler.add_job(
-                run_billing_v2,
-                CronTrigger(hour=9, minute=0, day_of_week="mon-fri", timezone="America/Sao_Paulo"),
-                id="billing_charge",
-                name="Billing Charge Job V2",
-                replace_existing=True,
-            )
-
-            # Maintenance notifier: 09:00 seg-sex Cuiaba
-            scheduler.add_job(
-                run_maintenance_notifier_job,
-                CronTrigger(hour=9, minute=0, day_of_week="mon-fri", timezone="America/Cuiaba"),
-                id="maintenance_notifier",
-                name="Maintenance Notifier Job (ANA)",
-                replace_existing=True,
-            )
-
-            # Calendar confirmation: cada 30 minutos
-            scheduler.add_job(
-                run_calendar_confirmation_job,
-                IntervalTrigger(minutes=30),
-                id="calendar_confirmation",
-                name="Calendar Confirmation Job",
-                replace_existing=True,
-            )
-
-            scheduler.start()
-            app_state.scheduler = scheduler
-            logger.info(
-                "APScheduler started",
-                jobs="billing_reconciliation (6h), billing_v2 (9h), maintenance (9h Cuiaba), calendar (30min)",
-            )
-    except Exception as e:
-        logger.error("APScheduler failed to start", error=str(e))
 
     logger.info("Agente IA startup complete")
     yield
