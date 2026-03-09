@@ -21,6 +21,7 @@ from app.services.gateway_pagamento import AsaasService, create_asaas_service
 from app.services.redis import get_redis_service
 from app.services.supabase import get_supabase_service
 from app.core.utils.dias_uteis import get_today_brasilia
+from app.domain.billing.services.payment_message_service import enviar_confirmacao_pagamento
 
 logger = logging.getLogger(__name__)
 
@@ -262,6 +263,43 @@ async def upsert_payment_to_cache(
                             .limit(1)
                             .execute()
                         )
+
+                        # FIX 2026-03-09: Enviar mensagem de confirmação ANTES de marcar ia_recebeu
+                        # Bug: reconciliação marcava ia_recebeu=True mas não enviava mensagem
+                        # Agora envia mensagem igual ao webhook PAYMENT_RECEIVED
+                        try:
+                            # Buscar dados do agente para enviar mensagem
+                            agent_res = (
+                                supabase.client.table("agents")
+                                .select("id, name, uazapi_base_url, uazapi_token, table_leads, table_messages")
+                                .eq("id", agent_id)
+                                .limit(1)
+                                .execute()
+                            )
+
+                            if agent_res.data:
+                                agent_data = agent_res.data[0]
+                                # Montar payment dict no formato esperado pela função
+                                payment_for_msg = {
+                                    "id": payment_id,
+                                    "customer": customer_id,
+                                    "value": payment.get("value", 0),
+                                }
+
+                                msg_result = await enviar_confirmacao_pagamento(
+                                    supabase=supabase,
+                                    agent=agent_data,
+                                    payment=payment_for_msg,
+                                )
+
+                                if msg_result.get("success"):
+                                    logger.info(f"[RECONCILIAR PAGAMENTOS] [SAFETY NET] Mensagem de confirmação enviada para {payment_id}")
+                                else:
+                                    logger.warning(f"[RECONCILIAR PAGAMENTOS] [SAFETY NET] Falha ao enviar mensagem: {msg_result.get('reason')}")
+                            else:
+                                logger.warning(f"[RECONCILIAR PAGAMENTOS] [SAFETY NET] Agente não encontrado: {agent_id}")
+                        except Exception as msg_error:
+                            logger.warning(f"[RECONCILIAR PAGAMENTOS] [SAFETY NET] Erro ao enviar mensagem de confirmação: {msg_error}")
 
                         ia_update = {
                             "ia_recebeu": True,
