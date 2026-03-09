@@ -306,7 +306,7 @@ async def process_maintenance_notifications(
     """
     Processa notificacoes de manutencao preventiva D-7 para todos os contratos.
     """
-    stats = {"sent": 0, "skipped": 0, "errors": 0}
+    stats = {"sent": 0, "skipped": 0, "errors": 0, "queue_errors": 0}
     if hoje is None:
         hoje = get_today_brasilia()
 
@@ -395,6 +395,15 @@ async def process_maintenance_notifications(
             else:
                 result = {"success": True}
 
+            # Verificar se houve problema na confirmação de fila
+            queue_confirmation_failed = push_result.get("queue_confirmation_failed", False)
+            if queue_confirmation_failed:
+                logger.warning(
+                    f"[MAINTENANCE] PUT de confirmação de fila FALHOU para {customer_name} | "
+                    f"telefone={phone[:8]}*** | ticket pode estar na fila errada"
+                )
+                stats["queue_errors"] += 1
+
             if result.get("success"):
                 logger.info(
                     f"[MAINTENANCE] Notificacao enviada: {customer_name} | "
@@ -428,6 +437,7 @@ async def process_maintenance_notifications(
                         "marca": marca,
                         "btus": btus,
                         "endereco": endereco,
+                        "queue_confirmation_failed": queue_confirmation_failed,
                     },
                 )
 
