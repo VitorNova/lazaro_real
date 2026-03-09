@@ -51,6 +51,8 @@ async def leadbox_push_silent(
             message_sent_via_push: bool - True se PUSH já enviou a mensagem
             ticket_check_failed: bool - True se não conseguiu verificar ticket existente
                                         (caller deve usar UAZAPI direto nesse caso)
+            queue_confirmation_failed: bool - True se PUT de confirmação de fila falhou
+                                              (ticket pode estar na fila errada)
     """
     result = {
         "success": False,
@@ -58,6 +60,7 @@ async def leadbox_push_silent(
         "ticket_id": None,
         "message_sent_via_push": False,
         "ticket_check_failed": False,  # True se não conseguiu verificar ticket existente
+        "queue_confirmation_failed": False,  # True se PUT de confirmação falhou
     }
 
     supabase = get_supabase_service()
@@ -227,11 +230,13 @@ async def leadbox_push_silent(
                         put_payload["userId"] = user_id
 
                     async with httpx.AsyncClient(timeout=10) as client:
-                        await client.put(put_url, json=put_payload, headers=headers)
+                        put_resp = await client.put(put_url, json=put_payload, headers=headers)
+                        put_resp.raise_for_status()
 
                     logger.info(f"[LEADBOX PUSH] PUT confirmação: ticketId={ticket_id} -> queueId={queue_id}")
                 except Exception as e:
-                    logger.warning(f"[LEADBOX PUSH] PUT falhou (não-crítico): {e}")
+                    logger.warning(f"[LEADBOX PUSH] PUT confirmação falhou: {e}")
+                    result["queue_confirmation_failed"] = True
 
         return result
 
