@@ -23,6 +23,39 @@ Akita Way = **disciplina**. Você pensa, a IA pilota. Você é o engenheiro, ela
 6. Se a IA errou, não corrija manualmente — explique o erro e peça para refazer.
 7. Um problema por vez. Um commit por correção.
 
+## ⛔ BLOQUEIOS — Claude Code nunca avança sem esses checkpoints
+
+### Checkpoint 1 — Antes de qualquer código
+Se não existe um arquivo de teste que FALHA reproduzindo o bug:
+→ PARE. Não escreva uma linha de código.
+→ Escreva o teste primeiro.
+→ Rode: python -m pytest tests/test_novo.py -v
+→ Confirme que FALHA antes de continuar.
+
+### Checkpoint 2 — Antes de qualquer commit
+Se os testes não estão todos passando:
+→ PARE. Não faça git add.
+→ Corrija o código até passar.
+→ Rode: python -m pytest tests/ -v
+→ Confirme 100% verde antes de continuar.
+
+### Checkpoint 3 — Antes de qualquer pm2 restart
+Se o Checkpoint 2 não foi concluído:
+→ PARE. Não reinicie o serviço.
+
+### Ao final de cada correção, responda obrigatoriamente:
+1. Qual arquivo de teste cobre essa correção?
+2. O teste FALHOU antes da correção? (sim/não)
+3. O teste PASSA após a correção? (sim/não)
+4. Todos os outros testes continuam passando? (sim/não)
+Se qualquer resposta for "não", a correção não está completa.
+
+## Lição do dia 09/03/2026
+O bug do maintenance_status foi corrigido sem teste.
+Commit: 75e5a27
+Consequência: não temos garantia que vai continuar funcionando.
+Ação corretiva: criar o teste agora, mesmo após a correção.
+
 ## Fluxo Correto
 
 VOCÊ = quem pensa, planeja, revisa
