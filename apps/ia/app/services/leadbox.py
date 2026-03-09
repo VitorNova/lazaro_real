@@ -652,6 +652,30 @@ async def get_current_queue(
                     }
                     logger.debug(f"[LEADBOX CHECK] Ticket {ticket_id}: queue={result['queue_id']}, status={result['status']}")
                     return result
+
+                # 409 Conflict: ticket foi substituido por outro
+                # O body contem os dados do ticket NOVO no campo "error" como JSON string
+                elif resp.status_code == 409:
+                    try:
+                        import json as json_module
+                        error_data = resp.json()
+                        error_str = error_data.get("error", "")
+                        new_ticket = json_module.loads(error_str)
+                        result = {
+                            "queue_id": new_ticket.get("queueId"),
+                            "user_id": new_ticket.get("userId"),
+                            "ticket_id": new_ticket.get("id"),
+                            "status": new_ticket.get("status"),
+                        }
+                        logger.info(
+                            f"[LEADBOX CHECK] Ticket {ticket_id} substituido por {result['ticket_id']}: "
+                            f"queue={result['queue_id']}, status={result['status']}"
+                        )
+                        return result
+                    except (json_module.JSONDecodeError, TypeError, KeyError) as parse_err:
+                        logger.debug(f"[LEADBOX CHECK] 409 com JSON invalido: {parse_err}")
+                        # Continua para estrategia 2 (fallback)
+
             except Exception as e:
                 logger.debug(f"[LEADBOX CHECK] Erro ao consultar ticket {ticket_id}: {e}")
 

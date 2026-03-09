@@ -1,6 +1,6 @@
 # Documentacao Leadbox API — Lazaro Producao
 
-**Ultima atualizacao:** 2026-03-06
+**Ultima atualizacao:** 2026-03-09
 **Agente:** Ana (14e6e5ce-4627-4e38-aac8-f0191669ff53)
 **Status:** Testado e validado em producao
 
@@ -11,6 +11,7 @@
 | Limitacao | Impacto | Workaround |
 |-----------|---------|------------|
 | GET /tickets nao funciona | Nao da pra consultar tickets pela API | Salvar ticket_id via webhook |
+| PUT /tickets retorna 409 se ticket substituido | Ticket antigo foi fechado e novo criado | **Tratar 409 e extrair dados do body** |
 | PUT /tickets nao atribui usuario | userId no PUT nao aparece na interface | Usar POST PUSH com forceTicketToUser |
 | POST PUSH sempre envia mensagem | Nao existe PUSH silencioso | Usar PUT para operacoes silenciosas |
 | closingReasonId nao funciona | Nao da pra fechar com motivo via API | Fechar sem motivo |
@@ -247,6 +248,51 @@ https://enterprise-135api.leadbox.app.br/tickets/{ticket_id}
 
 > **ATENCAO:** O campo `userId` no PUT **NAO ATRIBUI** o atendente na interface do Leadbox! Apenas atualiza o campo no banco. Para atribuir usuario de verdade, use a **API PUSH** com `forceTicketToUser: true`.
 
+### ⚠️ COMPORTAMENTO 409 CONFLICT (CRITICO - Descoberto 2026-03-09)
+
+Quando um ticket foi **substituido** por outro (ex: ticket antigo fechado e novo criado quando lead enviou mensagem), o PUT retorna **409 Conflict** com os dados do ticket NOVO no body!
+
+**Cenario:**
+1. Lead tinha ticket 828821 (fechado ou antigo)
+2. Lead envia nova mensagem → Leadbox cria ticket 857387
+3. Sistema consulta `PUT /tickets/828821` (ticket antigo no banco)
+4. API retorna **409 Conflict** com dados do ticket 857387 no body
+
+**Requisicao:**
+```bash
+curl -X PUT "https://enterprise-135api.leadbox.app.br/tickets/828821" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+**Resposta (Status 409):**
+```json
+{
+  "error": "{\"id\":857387,\"status\":\"pending\",\"queueId\":537,\"userId\":1095,...}"
+}
+```
+
+**IMPORTANTE:** O campo `error` contem um **JSON stringificado** com os dados do ticket NOVO!
+
+**Como tratar:**
+```python
+resp = await client.put(f"{api_url}/tickets/{ticket_id}", json={})
+
+if resp.status_code == 200:
+    data = resp.json()
+    # Ticket existe e retornou dados normalmente
+
+elif resp.status_code == 409:
+    # Ticket foi substituido - extrair dados do ticket novo
+    import json
+    error_data = resp.json()
+    new_ticket = json.loads(error_data.get("error", "{}"))
+    # new_ticket contem: id, queueId, userId, status do ticket NOVO
+```
+
+**Bug no codigo atual (2026-03-09):** O codigo em `get_current_queue()` so trata status 200 e ignora o 409, causando `queue_id=None` e ignorando mensagens de leads que estao em filas IA.
+
 > **LIMITACAO (testado 2026-03-06):** O campo `closingReasonId` NAO funciona via API. Mesmo enviando um valor, retorna `null`. O endpoint `/closing-reasons` nao existe na API.
 
 ### Teste Real - Fechar Ticket (2026-03-06)
@@ -457,6 +503,7 @@ POST PUSH
 | PUSH sem body | POST PUSH (omitir body) | ⚠️ **ENVIA msg vazia no WhatsApp!** |
 | Fechar com motivo | PUT {"status":"closed","closingReasonId":1} | ❌ closingReasonId ignorado (null) |
 | Endpoint motivos | GET /closing-reasons | ❌ Endpoint nao existe |
+| PUT ticket substituido | PUT /tickets/828821 (antigo) | ⚠️ **409 Conflict** com ticket novo 857387 no body |
 
 ### Comportamento do Campo `body` no PUSH
 
