@@ -355,6 +355,24 @@ async def process_buffered_messages(
         if not is_paused and table_leads:
             # Também verificar no Supabase (Leadbox webhook só atualiza Supabase)
             is_paused = supabase.is_lead_paused(table_leads, remotejid)
+
+        # FIX 09/03/2026 - Bug Batistella: race condition com leadbox_handler
+        # Se lead está em fila de IA, ignorar pausa (pode ser estado stale)
+        # A fila de IA é a "fonte de verdade" sobre quem deve atender
+        # Mesma lógica já aplicada em mensagens.py (commit 8691b4a)
+        if is_paused and table_leads:
+            try:
+                # Usar fresh_lead já carregado (se existir) ou None
+                pause_check_lead = fresh_lead if 'fresh_lead' in locals() else None
+                if pause_check_lead:
+                    queue_check_raw = pause_check_lead.get("current_queue_id")
+                    queue_check = int(queue_check_raw) if queue_check_raw else None
+                    if queue_check is not None and queue_check in IA_QUEUES_LOCAL:
+                        logger.info(f"Pausa ignorada para {phone} - lead em fila IA {queue_check} (race condition fix)")
+                        is_paused = False
+            except (ValueError, TypeError):
+                pass
+
         if is_paused:
             logger.info(f"Bot pausado para {phone}, ignorando mensagens")
 

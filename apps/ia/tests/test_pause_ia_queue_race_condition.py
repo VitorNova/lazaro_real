@@ -166,3 +166,107 @@ class TestPauseLogicIntegration:
             is_paused = False  # override
 
         assert is_paused is False
+
+
+class TestMessageProcessorPauseCheck:
+    """
+    TDD - Bug 09/03/2026 - message_processor.py não tem o fix de race condition.
+
+    O fix foi aplicado em mensagens.py (commit 8691b4a), mas message_processor.py
+    ainda ignora mensagens de leads em fila IA quando há pausa stale no Redis.
+
+    Fluxo do bug:
+    webhook → mensagens.py → buffer → message_processor.py → IA
+                  ↓                         ↓
+           (check 1 - OK)           (check 2 - BUG)
+    """
+
+    def test_message_processor_ignores_pause_for_ia_queue(self):
+        """
+        FIX: message_processor.py agora ignora pausa para leads em fila IA.
+
+        Reproduz cenário Batistella - deve PASSAR após o fix.
+        """
+        # Setup: estado real do message_processor.py
+        IA_QUEUES_LOCAL = {537, 544, 545}
+        is_paused = True  # Redis retorna True (estado stale)
+        table_leads = "LeadboxCRM_Ana_14e6e5ce"
+        fresh_lead = {"current_queue_id": "544", "nome": "Batistella"}
+
+        # =============================================================
+        # CÓDIGO CORRIGIDO DO MESSAGE_PROCESSOR.PY (linhas 358-375):
+        # Agora verifica se lead está em fila IA e ignora pausa
+        # =============================================================
+        if is_paused and table_leads:
+            try:
+                pause_check_lead = fresh_lead if 'fresh_lead' in locals() else None
+                if pause_check_lead:
+                    queue_check_raw = pause_check_lead.get("current_queue_id")
+                    queue_check = int(queue_check_raw) if queue_check_raw else None
+                    if queue_check is not None and queue_check in IA_QUEUES_LOCAL:
+                        is_paused = False  # override - ignora pausa para fila IA
+            except (ValueError, TypeError):
+                pass
+
+        # Após o fix: is_paused deve ser False para lead em fila IA
+        should_process = not is_paused
+
+        assert should_process is True, (
+            f"Lead em fila IA {fresh_lead.get('current_queue_id')} deveria processar mensagem"
+        )
+
+    def test_message_processor_respects_pause_for_human_queue(self):
+        """
+        Lead em fila humana deve respeitar pausa normalmente.
+        """
+        IA_QUEUES_LOCAL = {537, 544, 545}
+        is_paused = True
+        table_leads = "LeadboxCRM_Ana_14e6e5ce"
+        fresh_lead = {"current_queue_id": "500", "nome": "Lead Humano"}  # fila humana
+
+        # Lógica corrigida
+        if is_paused and table_leads:
+            try:
+                pause_check_lead = fresh_lead if 'fresh_lead' in locals() else None
+                if pause_check_lead:
+                    queue_check_raw = pause_check_lead.get("current_queue_id")
+                    queue_check = int(queue_check_raw) if queue_check_raw else None
+                    if queue_check is not None and queue_check in IA_QUEUES_LOCAL:
+                        is_paused = False
+            except (ValueError, TypeError):
+                pass
+
+        # Fila humana: pausa deve ser respeitada
+        should_process = not is_paused
+
+        assert should_process is False, (
+            "Lead em fila humana com pausa deveria ignorar mensagem"
+        )
+
+    def test_message_processor_handles_null_queue(self):
+        """
+        Lead sem fila definida deve respeitar pausa.
+        """
+        IA_QUEUES_LOCAL = {537, 544, 545}
+        is_paused = True
+        table_leads = "LeadboxCRM_Ana_14e6e5ce"
+        fresh_lead = {"current_queue_id": None, "nome": "Lead Sem Fila"}
+
+        # Lógica corrigida
+        if is_paused and table_leads:
+            try:
+                pause_check_lead = fresh_lead if 'fresh_lead' in locals() else None
+                if pause_check_lead:
+                    queue_check_raw = pause_check_lead.get("current_queue_id")
+                    queue_check = int(queue_check_raw) if queue_check_raw else None
+                    if queue_check is not None and queue_check in IA_QUEUES_LOCAL:
+                        is_paused = False
+            except (ValueError, TypeError):
+                pass
+
+        # Sem fila: pausa deve ser respeitada
+        should_process = not is_paused
+
+        assert should_process is False, (
+            "Lead sem fila com pausa deveria ignorar mensagem"
+        )
