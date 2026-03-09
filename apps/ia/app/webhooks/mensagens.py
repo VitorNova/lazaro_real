@@ -1332,6 +1332,20 @@ class WhatsAppWebhookHandler:
         if not is_paused:
             is_paused = supabase.is_lead_paused(table_leads, remotejid)
 
+        # FIX 09/03/2026 - Bug Batistella: race condition com leadbox_handler
+        # Se lead está em fila de IA, ignorar pausa (pode ser estado stale)
+        # A fila de IA é a "fonte de verdade" sobre quem deve atender
+        if is_paused:
+            # current_queue já foi definida na verificação de fila (linha ~1220)
+            try:
+                queue_check = int(lead.get("current_queue_id")) if lead.get("current_queue_id") else None
+            except (ValueError, TypeError):
+                queue_check = None
+
+            if queue_check is not None and queue_check in IA_QUEUES:
+                logger.info(f"Pausa ignorada para {phone} - lead em fila IA {queue_check} (race condition fix)")
+                is_paused = False
+
         if is_paused:
             logger.info(f"Bot pausado para {phone}, mensagem ignorada")
             return {"status": "ignored", "reason": "bot_paused"}
