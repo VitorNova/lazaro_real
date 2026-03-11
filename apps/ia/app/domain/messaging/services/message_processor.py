@@ -35,6 +35,7 @@ from app.services.redis import RedisService
 from app.services.supabase import ConversationHistory, SupabaseService
 from app.services.whatsapp_api import UazapiService
 from app.tools.cobranca import get_function_declarations
+from app.core.utils.phone import mask_phone
 
 # Tool handlers extraídos (Fase A) - usados diretamente em vez de callback
 from app.ai.tools.tool_registry import get_function_handlers
@@ -151,7 +152,7 @@ async def process_buffered_messages(
         save_history_callback: Callback para salvar historico
         queue_failed_send_callback: Callback para enfileirar envios falhos
     """
-    logger.info(f"[PROCESS] Iniciando processamento para phone={phone} (agent={agent_id[:8]})")
+    logger.info(f"[PROCESS] Iniciando processamento para phone={mask_phone(phone)} (agent={agent_id[:8]})")
 
     # Tentar adquirir lock
     lock_acquired = await redis.lock_acquire(agent_id, phone)
@@ -735,7 +736,7 @@ Considere que ele já conhece o processo e pode estar retornando para acompanham
             media_info = " +audio"
         elif image_data:
             media_info = " +imagem"
-        logger.info(f"[GEMINI] Enviando {len(gemini_messages)} msgs para phone={phone}{media_info}")
+        logger.info(f"[GEMINI] Enviando {len(gemini_messages)} msgs para phone={mask_phone(phone)}{media_info}")
         logger.debug(f"[DEBUG 5/6] ENVIANDO PARA GEMINI...")
         logger.debug(f"[DEBUG 5/6] System prompt: {context['system_prompt'][:100]}...")
         logger.debug(f"[DEBUG 5/6] Audio data presente: {bool(audio_data)}, Image data presente: {bool(image_data)}")
@@ -788,7 +789,7 @@ Considere que ele já conhece o processo e pode estar retornando para acompanham
         function_calls = response.get("function_calls", [])
         tools_used = [fc.get("name") for fc in function_calls] if function_calls else []
         tools_info = f", tools={tools_used}" if tools_used else ""
-        logger.info(f"[GEMINI] Resposta recebida para phone={phone} ({len(response_text)} chars{tools_info})")
+        logger.info(f"[GEMINI] Resposta recebida para phone={mask_phone(phone)} ({len(response_text)} chars{tools_info})")
         logger.debug(f"[DEBUG 5/6] RESPOSTA DO GEMINI ({len(response_text)} chars): {response_text[:200] if response_text else 'VAZIA'}...")
 
         if not response_text:
@@ -798,14 +799,14 @@ Considere que ele já conhece o processo e pode estar retornando para acompanham
         # Enviar resposta com quebra natural (simula digitação humana)
         # Cada chunk recebe assinatura do agente (ex: "Ana:\n<mensagem>")
         agent_name = context.get("agent_name", "Assistente")
-        logger.info(f"[UAZAPI] Enviando resposta para phone={phone} ({len(response_text)} chars)")
+        logger.info(f"[UAZAPI] Enviando resposta para phone={mask_phone(phone)} ({len(response_text)} chars)")
         logger.debug(f"[DEBUG 6/6] ENVIANDO RESPOSTA via UAZAPI (ai_response)...")
         logger.debug(f"[DEBUG 6/6] UAZAPI URL: {uazapi.base_url}")
         logger.debug(f"[DEBUG 6/6] Telefone: {phone}, Agente: {agent_name}")
         send_result = await uazapi.send_ai_response(phone, response_text, agent_name, delay=2.0)
 
         logger.info(
-            f"[UAZAPI] Enviado phone={phone} - {send_result['success_count']}/{send_result['total_chunks']} chunks OK"
+            f"[UAZAPI] Enviado phone={mask_phone(phone)} - {send_result['success_count']}/{send_result['total_chunks']} chunks OK"
         )
         logger.debug(
             f"[DEBUG 6/6] {send_result['success_count']}/{send_result['total_chunks']} "
@@ -817,7 +818,7 @@ Considere que ele já conhece o processo e pode estar retornando para acompanham
         # ================================================================
         if not send_result["all_success"]:
             logger.error(
-                f"[UAZAPI SEND FAIL] phone={phone} "
+                f"[UAZAPI SEND FAIL] phone={mask_phone(phone)} "
                 f"chunks_ok={send_result['success_count']}/{send_result['total_chunks']} "
                 f"erro={send_result['first_error']}"
             )
@@ -885,22 +886,22 @@ Considere que ele já conhece o processo e pode estar retornando para acompanham
             # Observer e opcional, nao deve falhar o fluxo principal
             logger.warning(f"[Observer] Erro ao analisar conversa: {obs_error}")
 
-        logger.info(f"[PROCESS] Concluido com SUCESSO para phone={phone}")
+        logger.info(f"[PROCESS] Concluido com SUCESSO para phone={mask_phone(phone)}")
 
         # =================================================================
         # SUCESSO: Limpar buffer após processamento completo
         # =================================================================
         if should_clear_buffer:
             await redis.buffer_clear(agent_id, phone)
-            logger.info(f"[BUFFER] Limpo apos sucesso para phone={phone}")
+            logger.info(f"[BUFFER] Limpo apos sucesso para phone={mask_phone(phone)}")
 
     except Exception as e:
-        logger.error(f"[PROCESS] ERRO para phone={phone}: {e}", exc_info=True)
+        logger.error(f"[PROCESS] ERRO para phone={mask_phone(phone)}: {e}", exc_info=True)
 
         # =================================================================
         # ERRO INESPERADO: NÃO limpar buffer para preservar mensagens
         # =================================================================
-        logger.warning(f"[BUFFER] PRESERVADO apos erro inesperado para phone={phone}")
+        logger.warning(f"[BUFFER] PRESERVADO apos erro inesperado para phone={mask_phone(phone)}")
 
         # Tentar enviar mensagem de erro
         try:
