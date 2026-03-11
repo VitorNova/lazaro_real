@@ -15,6 +15,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from app.core.utils.phone import mask_phone
 from app.services.supabase import get_supabase_service
 
 logger = logging.getLogger(__name__)
@@ -38,13 +39,6 @@ def mask_customer_name(name: str) -> str:
     if not name or len(name) < 3:
         return "***"
     return name[0] + "*" * (len(name) - 1)
-
-
-def mask_phone(phone: str) -> str:
-    """Mascara telefone para logs (LGPD/GDPR compliance)."""
-    if not phone or len(phone) < 8:
-        return "****"
-    return phone[:4] + "*" * (len(phone) - 8) + phone[-4:]
 
 
 async def claim_notification(
