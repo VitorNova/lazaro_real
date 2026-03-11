@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from dateutil.relativedelta import relativedelta
 
 from app.core.utils.dias_uteis import format_date_br, get_today_brasilia
+from app.core.utils.phone import find_message_record_by_phone
 from app.services.dispatch_logger import get_dispatch_logger
 from app.services.leadbox_push import QUEUE_MAINTENANCE, leadbox_push_silent
 from app.services.supabase import get_supabase_service
@@ -182,11 +183,16 @@ async def mark_notification_sent(
     customer_phone: str,
     message_sent: str,
     table_messages: str = None,
+    customer_id: str = None,
 ) -> None:
     """
     Registra o envio da notificacao no banco de dados.
 
     Atualiza contract_details e salva no conversation_history para contexto da IA.
+
+    IMPORTANTE: Usa find_message_record_by_phone() para buscar lead com variantes
+    de telefone (com/sem 9 extra). Isso resolve o bug onde telefone Asaas difere
+    do Leadbox (ex: 5591989650040 vs 559189650040).
     """
     supabase = get_supabase_service()
     now_iso = datetime.utcnow().isoformat()
@@ -203,47 +209,60 @@ async def mark_notification_sent(
 
     # Salvar no conversation_history para contexto da IA
     try:
-        phone_jid = f"{customer_phone}@s.whatsapp.net" if customer_phone else None
+        if not customer_phone:
+            logger.warning(f"[MAINTENANCE] Sem telefone para salvar contexto")
+            return
 
-        if phone_jid:
-            # Usar table_messages do agent se disponivel, senao fallback
-            if table_messages:
-                table_name = table_messages
+        # Usar table_messages do agent se disponivel, senao fallback
+        if table_messages:
+            table_name = table_messages
+        else:
+            # Fallback para Ana (padrao historico)
+            table_name = "leadbox_messages_Ana_14e6e5ce"
+
+        # Usar find_message_record_by_phone para buscar com variantes de telefone
+        # Isso resolve mismatch entre Asaas (5591989650040) e Leadbox (559189650040)
+        lead_record = find_message_record_by_phone(
+            supabase=supabase,
+            table_messages=table_name,
+            phone=customer_phone,
+            customer_id=customer_id,
+        )
+
+        if lead_record:
+            lead_id = lead_record["id"]
+            raw_history = lead_record.get("conversation_history")
+
+            if isinstance(raw_history, dict):
+                messages_list = raw_history.get("messages", [])
+            elif isinstance(raw_history, list):
+                messages_list = raw_history
             else:
-                # Fallback para Ana (padrao historico)
-                table_name = "leadbox_messages_Ana_14e6e5ce"
+                messages_list = []
 
-            result = supabase.client.table(table_name).select(
-                "id, conversation_history"
-            ).eq("remotejid", phone_jid).limit(1).execute()
+            new_message = {
+                "role": "model",
+                "parts": [{"text": message_sent}],
+                "timestamp": now_iso,
+                "context": "manutencao_preventiva",
+                "contract_id": contract_id,
+            }
+            messages_list.append(new_message)
 
-            if result.data and len(result.data) > 0:
-                lead_id = result.data[0]["id"]
-                raw_history = result.data[0].get("conversation_history")
+            supabase.client.table(table_name).update({
+                "conversation_history": {"messages": messages_list},
+            }).eq("id", lead_id).execute()
 
-                if isinstance(raw_history, dict):
-                    messages_list = raw_history.get("messages", [])
-                elif isinstance(raw_history, list):
-                    messages_list = raw_history
-                else:
-                    messages_list = []
-
-                new_message = {
-                    "role": "model",
-                    "text": message_sent,
-                    "timestamp": now_iso,
-                    "context": "manutencao_preventiva",
-                    "contract_id": contract_id,
-                }
-                messages_list.append(new_message)
-
-                supabase.client.table(table_name).update({
-                    "conversation_history": {"messages": messages_list},
-                }).eq("id", lead_id).execute()
-
-                logger.info(f"[MAINTENANCE] Mensagem salva no conversation_history")
-            else:
-                logger.info(f"[MAINTENANCE] Lead nao encontrado para {phone_jid[:15]}...")
+            logger.info(
+                f"[MAINTENANCE] Mensagem salva no conversation_history "
+                f"(lead {str(lead_id)[:8]}..., context=manutencao_preventiva)"
+            )
+        else:
+            masked_phone = customer_phone[:8] + "***" if customer_phone else "N/A"
+            logger.warning(
+                f"[MAINTENANCE] Lead nao encontrado para {masked_phone} | "
+                f"customer_id={customer_id} | contexto NAO salvo"
+            )
 
     except Exception as e:
         logger.warning(f"[MAINTENANCE] Erro ao salvar no conversation_history: {e}")
@@ -416,6 +435,7 @@ async def process_maintenance_notifications(
                     customer_phone=phone,
                     message_sent=message,
                     table_messages=agent.get("table_messages"),
+                    customer_id=contract.get("customer_id"),
                 )
 
                 dispatch_logger = get_dispatch_logger()
@@ -539,18 +559,20 @@ async def test_maintenance_notification(phone: str = "556697194084") -> Dict[str
         context_saved = False
         try:
             supabase = get_supabase_service()
-            phone_jid = f"{phone}@s.whatsapp.net"
             table_name = agent.get("table_messages")
             now_iso = datetime.utcnow().isoformat()
 
             if table_name:
-                lead_result = supabase.client.table(table_name).select(
-                    "id, conversation_history"
-                ).eq("remotejid", phone_jid).limit(1).execute()
+                # Usar find_message_record_by_phone para buscar com variantes
+                lead_record = find_message_record_by_phone(
+                    supabase=supabase,
+                    table_messages=table_name,
+                    phone=phone,
+                )
 
-                if lead_result.data and len(lead_result.data) > 0:
-                    lead_id = lead_result.data[0]["id"]
-                    raw_history = lead_result.data[0].get("conversation_history")
+                if lead_record:
+                    lead_id = lead_record["id"]
+                    raw_history = lead_record.get("conversation_history")
 
                     if isinstance(raw_history, dict):
                         messages_list = raw_history.get("messages", [])
@@ -561,7 +583,7 @@ async def test_maintenance_notification(phone: str = "556697194084") -> Dict[str
 
                     new_message = {
                         "role": "model",
-                        "text": signed,
+                        "parts": [{"text": signed}],
                         "timestamp": now_iso,
                         "context": "manutencao_preventiva",
                         "contract_id": "TEST-CONTRACT-ID",
