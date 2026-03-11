@@ -16,6 +16,7 @@ import re
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from app.core.utils.sql_escape import escape_ilike_pattern
 from app.services.gateway_pagamento import AsaasService
 from app.domain.billing.models.payment import CUSTOMER_CACHE_TTL_MINUTES
 from app.integrations.supabase.repositories import (
@@ -206,7 +207,7 @@ async def match_lead_to_customer(
                 lead_result = (
                     supabase.client.table(table_leads)
                     .select("id, nome, remotejid, asaas_customer_id")
-                    .ilike("remotejid", f"%{phone_suffix}%")
+                    .ilike("remotejid", f"%{escape_ilike_pattern(phone_suffix)}%")
                     .is_("asaas_customer_id", "null")  # So leads nao vinculados
                     .limit(1)
                     .execute()

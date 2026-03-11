@@ -15,6 +15,7 @@ import re
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from app.core.utils.sql_escape import escape_ilike_pattern
 from app.domain.billing.services.payment_message_service import enviar_confirmacao_pagamento
 
 logger = logging.getLogger(__name__)
@@ -217,7 +218,7 @@ async def atualizar_lead_pagamento(
                         lead_result = (
                             supabase.client.table(table_leads)
                             .select("id, nome, pipeline_step, asaas_customer_id, converted_at, first_payment_at")
-                            .ilike("remotejid", f"%{phone_suffix}%")
+                            .ilike("remotejid", f"%{escape_ilike_pattern(phone_suffix)}%")
                             .limit(1)
                             .execute()
                         )
@@ -235,7 +236,7 @@ async def atualizar_lead_pagamento(
                 lead_result = (
                     supabase.client.table(table_leads)
                     .select("id, nome, pipeline_step, asaas_customer_id, converted_at, first_payment_at")
-                    .ilike("telefone", f"%{telefone}%")
+                    .ilike("telefone", f"%{escape_ilike_pattern(telefone)}%")
                     .maybe_single()
                     .execute()
                 )
