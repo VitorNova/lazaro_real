@@ -47,10 +47,10 @@ async def get_billing_data_for_context(
             "equipamentos": List[Dict],
         }
     """
-    print(f"[BILLING CONTEXT] Buscando dados do cliente via phone={phone}", flush=True)
+    logger.debug("[BILLING CONTEXT] Buscando dados do cliente")
 
     if not phone:
-        print(f"[BILLING CONTEXT] phone vazio", flush=True)
+        logger.debug("[BILLING CONTEXT] phone vazio")
         return None
 
     # ================================================================
@@ -61,7 +61,7 @@ async def get_billing_data_for_context(
         redis_service = await get_redis_service()
         cached = await redis_service.client.get(cache_key)
         if cached:
-            print(f"[BILLING CONTEXT] Cache HIT para {phone}", flush=True)
+            logger.debug("[BILLING CONTEXT] Cache HIT")
             return json.loads(cached)
     except Exception as e:
         logger.warning(f"[BILLING CONTEXT] Erro ao buscar cache: {e}")
@@ -88,9 +88,9 @@ async def get_billing_data_for_context(
                     lead_billing_context = lead.get("billing_context")
 
                     if customer_id:
-                        print(f"[BILLING CONTEXT] Encontrado via lead.asaas_customer_id: {customer_id}", flush=True)
+                        logger.debug("[BILLING CONTEXT] Encontrado via lead.asaas_customer_id")
                     if lead_billing_context:
-                        print(f"[BILLING CONTEXT] Lead tem billing_context salvo", flush=True)
+                        logger.debug("[BILLING CONTEXT] Lead tem billing_context salvo")
             except Exception as e:
                 logger.warning(f"[BILLING CONTEXT] Erro ao buscar lead: {e}")
 
@@ -101,7 +101,7 @@ async def get_billing_data_for_context(
             customer_id = lead_billing_context.get("customer_id")
             customer_name = lead_billing_context.get("customer_name") or customer_name
             if customer_id:
-                print(f"[BILLING CONTEXT] Encontrado via lead.billing_context: {customer_id}", flush=True)
+                logger.debug("[BILLING CONTEXT] Encontrado via lead.billing_context")
 
         # ================================================================
         # ESTRATÉGIA 3: Fallback para billing_notifications pelo telefone
@@ -127,7 +127,7 @@ async def get_billing_data_for_context(
                     notification = result.data[0]
                     customer_id = notification.get("customer_id")
                     customer_name = notification.get("customer_name") or customer_name
-                    print(f"[BILLING CONTEXT] Encontrado via billing_notifications: customer_id={customer_id}", flush=True)
+                    logger.debug("[BILLING CONTEXT] Encontrado via billing_notifications")
                     break
 
         # ================================================================
@@ -145,13 +145,13 @@ async def get_billing_data_for_context(
                         cliente = result.data[0]
                         customer_id = cliente.get("id")
                         customer_name = cliente.get("name") or customer_name
-                        print(f"[BILLING CONTEXT] Encontrado via mobile_phone ({tel}): customer_id={customer_id}", flush=True)
+                        logger.debug("[BILLING CONTEXT] Encontrado via mobile_phone")
                         break
                 except Exception as e:
                     logger.warning(f"[BILLING CONTEXT] Erro ao buscar por mobile_phone: {e}")
 
         if not customer_id:
-            print(f"[BILLING CONTEXT] Cliente não encontrado (nem via lead, nem via billing_context, nem via billing_notifications, nem via mobile_phone)", flush=True)
+            logger.debug("[BILLING CONTEXT] Cliente nao encontrado em nenhuma fonte")
             return None
 
         # ================================================================
@@ -168,7 +168,7 @@ async def get_billing_data_for_context(
                     supabase.client.table(table_leads).update({
                         "asaas_customer_id": customer_id
                     }).eq("remotejid", remotejid).execute()
-                    print(f"[BILLING CONTEXT] asaas_customer_id={customer_id} salvo no lead", flush=True)
+                    logger.debug("[BILLING CONTEXT] asaas_customer_id salvo no lead")
             except Exception as e:
                 logger.warning(f"[BILLING CONTEXT] Erro ao salvar asaas_customer_id no lead: {e}")
 
@@ -182,7 +182,7 @@ async def get_billing_data_for_context(
             if cliente_res.data:
                 cliente_data = cliente_res.data
                 customer_name = cliente_data.get("name") or customer_name
-                print(f"[BILLING CONTEXT] Dados do cliente: {customer_name}", flush=True)
+                logger.debug("[BILLING CONTEXT] Dados do cliente carregados")
         except Exception as e:
             logger.warning(f"[BILLING CONTEXT] Erro ao buscar asaas_clientes: {e}")
 
@@ -202,7 +202,7 @@ async def get_billing_data_for_context(
                     "status": "Vencida" if cob.get("status") == "OVERDUE" else "Pendente",
                     "link": cob.get("invoice_url", ""),
                 })
-            print(f"[BILLING CONTEXT] {len(cobrancas)} cobrança(s) pendente(s)", flush=True)
+            logger.debug(f"[BILLING CONTEXT] {len(cobrancas)} cobranca(s) pendente(s)")
         except Exception as e:
             logger.warning(f"[BILLING CONTEXT] Erro ao buscar cobranças: {e}")
 
@@ -231,7 +231,7 @@ async def get_billing_data_for_context(
                             "btus": eq.get("btus", 0),
                             "patrimonio": eq.get("patrimonio", ""),
                         })
-            print(f"[BILLING CONTEXT] {len(contratos)} contrato(s), {len(equipamentos)} equipamento(s)", flush=True)
+            logger.debug(f"[BILLING CONTEXT] {len(contratos)} contrato(s), {len(equipamentos)} equipamento(s)")
         except Exception as e:
             logger.warning(f"[BILLING CONTEXT] Erro ao buscar contratos: {e}")
 
@@ -252,15 +252,14 @@ async def get_billing_data_for_context(
         # ================================================================
         try:
             await redis_service.client.setex(cache_key, 300, json.dumps(data))
-            print(f"[BILLING CONTEXT] Cache salvo para {phone} (TTL 5min)", flush=True)
+            logger.debug("[BILLING CONTEXT] Cache salvo (TTL 5min)")
         except Exception as e:
             logger.warning(f"[BILLING CONTEXT] Erro ao salvar cache: {e}")
 
         return data
 
     except Exception as e:
-        print(f"[BILLING CONTEXT] Erro ao buscar dados: {e}", flush=True)
-        logger.error(f"[BILLING CONTEXT] Erro ao buscar dados para phone={phone}: {e}")
+        logger.error(f"[BILLING CONTEXT] Erro ao buscar dados: {e}")
         return None
 
 

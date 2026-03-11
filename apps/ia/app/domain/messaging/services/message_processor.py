@@ -251,7 +251,7 @@ async def process_buffered_messages(
                     should_check = (not fresh_queue_raw) or (ticket_id is not None)
                     if should_check:
                         try:
-                            print(f"[LEADBOX REALTIME CHECK] Consultando API para lead {phone} (ticket_id={ticket_id})", flush=True)
+                            logger.debug(f"[LEADBOX REALTIME CHECK] Consultando API (ticket_id={ticket_id})")
                             lb_ia_queue_id = handoff_triggers.get("ia_queue_id")
                             realtime_result = await get_current_queue(
                                 api_url=lb_api_url,
@@ -273,14 +273,12 @@ async def process_buffered_messages(
                                 # =============================================================
                                 if realtime_queue is None:
                                     # API retornou mas sem queue_id - fail-safe: ignorar
-                                    print(f"[FAIL-SAFE] Lead {phone} - fila não confirmada (queue_id=None), IGNORANDO", flush=True)
-                                    logger.warning(f"[FAIL-SAFE] Lead {phone} - API retornou sem queue_id, ignorando")
+                                    logger.warning("[FAIL-SAFE] Lead - fila nao confirmada (queue_id=None), IGNORANDO")
                                     await redis.buffer_clear(agent_id, phone)
                                     return
 
                                 if realtime_queue not in IA_QUEUES_LOCAL:
-                                    print(f"[FAIL-SAFE] Lead {phone} na fila {realtime_queue} - IGNORANDO (não está em filas IA {IA_QUEUES_LOCAL})", flush=True)
-                                    logger.info(f"[FAIL-SAFE] Lead {phone} na fila {realtime_queue} - IGNORANDO (não está em filas IA {IA_QUEUES_LOCAL})")
+                                    logger.info(f"[FAIL-SAFE] Lead na fila {realtime_queue} - IGNORANDO (nao esta em filas IA {IA_QUEUES_LOCAL})")
                                     # Atualizar banco com dado real para próximas verificações
                                     try:
                                         update_fields = {"current_queue_id": str(realtime_queue)}
@@ -296,8 +294,7 @@ async def process_buffered_messages(
                                     return
 
                                 # Confirmado em fila de IA - pode processar
-                                print(f"[FAIL-SAFE] Lead {phone} na fila {realtime_queue} - CONFIRMADO em fila IA, processando", flush=True)
-                                logger.info(f"[FAIL-SAFE] Lead {phone} na fila {realtime_queue} - OK, processando (filas IA: {IA_QUEUES_LOCAL})")
+                                logger.info(f"[FAIL-SAFE] Lead na fila {realtime_queue} - OK, processando (filas IA: {IA_QUEUES_LOCAL})")
                                 # Atualizar banco com dado real
                                 if not fresh_queue_raw:
                                     try:
@@ -314,8 +311,7 @@ async def process_buffered_messages(
                                 # IMPORTANTE: Se API Leadbox estiver fora, isso vai ignorar msgs
                                 # Monitorar com: grep "FAIL-SAFE.*sem resposta" nos logs
                                 # =============================================================
-                                print(f"[FAIL-SAFE] Lead {phone} - API Leadbox sem resposta, IGNORANDO", flush=True)
-                                logger.warning(f"[FAIL-SAFE] Lead {phone} - API sem dados, ignorando (fail-safe ativo)")
+                                logger.warning("[FAIL-SAFE] Lead - API Leadbox sem resposta, IGNORANDO")
                                 await redis.buffer_clear(agent_id, phone)
                                 return
                         except Exception as lb_err:
@@ -324,8 +320,7 @@ async def process_buffered_messages(
                             # IMPORTANTE: Se API Leadbox estiver fora, isso vai ignorar msgs
                             # Monitorar com: grep "FAIL-SAFE.*erro" nos logs
                             # =============================================================
-                            print(f"[FAIL-SAFE] Lead {phone} - Erro na API Leadbox ({lb_err}), IGNORANDO", flush=True)
-                            logger.warning(f"[FAIL-SAFE] Lead {phone} - Erro ao consultar Leadbox: {lb_err} - ignorando (fail-safe ativo)")
+                            logger.warning(f"[FAIL-SAFE] Lead - Erro ao consultar Leadbox: {lb_err} - IGNORANDO")
                             await redis.buffer_clear(agent_id, phone)
                             return
 
@@ -567,9 +562,9 @@ async def process_buffered_messages(
         # DETECTAR CONTEXTO ESPECIAL (manutencao preventiva)
         # Job D-7 adiciona context='manutencao_preventiva' nas mensagens
         # ================================================================
-        print(f"[CONTEXT DEBUG] Iniciando deteccao de contexto para phone={phone}", flush=True)
+        logger.debug("[CONTEXT] Iniciando deteccao de contexto")
         conversation_context, contract_id = detect_conversation_context(history)
-        print(f"[CONTEXT DEBUG] Resultado: conversation_context='{conversation_context}' contract_id='{contract_id}'", flush=True)
+        logger.debug(f"[CONTEXT] Resultado: context='{conversation_context}' contract_id='{contract_id}'")
 
         # Fallback: verificar lead_origin se context expirou ou histórico vazio
         if not conversation_context:
@@ -578,7 +573,7 @@ async def process_buffered_messages(
                 lead_for_context = supabase.get_lead_by_remotejid(table_leads, remotejid)
                 if lead_for_context:
                     lead_origin = lead_for_context.get("lead_origin")
-                    print(f"[CONTEXT DEBUG] Fallback check: lead_origin='{lead_origin}'", flush=True)
+                    logger.debug(f"[CONTEXT] Fallback check: lead_origin='{lead_origin}'")
                     # Mapear lead_origin para context
                     ORIGIN_TO_CONTEXT = {
                         "manutencao_preventiva": "manutencao_preventiva",
@@ -588,8 +583,7 @@ async def process_buffered_messages(
                     }
                     if lead_origin in ORIGIN_TO_CONTEXT:
                         conversation_context = ORIGIN_TO_CONTEXT[lead_origin]
-                        print(f"[CONTEXT DEBUG] FALLBACK ATIVADO: lead_origin='{lead_origin}' -> context='{conversation_context}'", flush=True)
-                        logger.info(f"[CONTEXT] Fallback para lead_origin='{lead_origin}' -> context='{conversation_context}' (phone={phone})")
+                        logger.info(f"[CONTEXT] Fallback para lead_origin='{lead_origin}' -> context='{conversation_context}'")
 
                     # Fallback 2: verificar fila atual (queue 544=billing, 545=manutencao)
                     if not conversation_context:
@@ -600,8 +594,7 @@ async def process_buffered_messages(
                                 queue_to_context = {int(d.get("queueId")): n for n, d in dispatch_depts.items() if isinstance(d, dict) and d.get("queueId")}
                                 if current_q_int in queue_to_context:
                                     conversation_context = queue_to_context[current_q_int]
-                                    print(f"[CONTEXT DEBUG] QUEUE FALLBACK: fila {current_q_int} -> context='{conversation_context}'", flush=True)
-                                    logger.info(f"[CONTEXT] Queue fallback: fila {current_q_int} -> context='{conversation_context}' (phone={phone})")
+                                    logger.info(f"[CONTEXT] Queue fallback: fila {current_q_int} -> context='{conversation_context}'")
                             except (ValueError, TypeError):
                                 pass
 
@@ -623,8 +616,7 @@ async def process_buffered_messages(
                         if contr_res.data:
                             conversation_context = "manutencao_preventiva"
                             contract_id = contr_res.data[0]["id"]
-                            print(f"[CONTEXT DEBUG] FALLBACK 3 (contract_details): manutencao_preventiva contract_id={contract_id}", flush=True)
-                            logger.info(f"[CONTEXT] Fallback 3: manutencao_preventiva via contract_details (phone={phone})")
+                            logger.info(f"[CONTEXT] Fallback 3: manutencao_preventiva via contract_details, contract_id={contract_id}")
                             break
             except Exception as _e:
                 logger.warning(f"[CONTEXT] Erro no Fallback 3: {_e}")
@@ -632,13 +624,12 @@ async def process_buffered_messages(
         # Injetar prompt dinamico se houver contexto especial (RAG simplificado)
         # Prompts sao carregados do campo context_prompts do agente (JSONB no Supabase)
         effective_system_prompt = context["system_prompt"]
-        print(f"[CONTEXT DEBUG] conversation_context final='{conversation_context}' context_prompts existe={bool(context.get('context_prompts'))}", flush=True)
+        logger.debug(f"[CONTEXT] context final='{conversation_context}' context_prompts={bool(context.get('context_prompts'))}")
         if conversation_context:
             context_prompt = get_context_prompt(context.get("context_prompts"), conversation_context)
             if context_prompt:
                 effective_system_prompt = context["system_prompt"] + "\n\n" + context_prompt
-                print(f"[PROMPT DEBUG] SUCESSO! Prompt injetado ({len(context_prompt)} chars)", flush=True)
-                logger.info(f"[PROMPT] Injetado contexto dinamico '{conversation_context}' para {phone} (contract_id={contract_id})")
+                logger.info(f"[PROMPT] Injetado contexto dinamico '{conversation_context}' ({len(context_prompt)} chars) contract_id={contract_id}")
 
                 # ================================================================
                 # REGISTRAR PRIMEIRA RESPOSTA DO CLIENTE (FUNIL)
@@ -655,7 +646,6 @@ async def process_buffered_messages(
                                 "cliente_respondeu_at": datetime.utcnow().isoformat(),
                                 "maintenance_status": "contacted",
                             }).eq("id", contract_id).execute()
-                            print(f"[MANUT] Cliente respondeu - contract {contract_id} -> 'contacted'", flush=True)
                             logger.info(f"[MANUT] Cliente respondeu - contract {contract_id} atualizado para 'contacted'")
                     except Exception as e:
                         logger.warning(f"[MANUT] Erro ao registrar resposta: {e}")
@@ -665,23 +655,21 @@ async def process_buffered_messages(
                 # Isso evita que a Ana peca dados que ela ja tem
                 # ================================================================
                 if contract_id and conversation_context == "manutencao_preventiva":
-                    print(f"[CONTRACT DEBUG] Buscando dados do contrato {contract_id} para injetar no prompt", flush=True)
+                    logger.debug(f"[CONTRACT] Buscando dados do contrato {contract_id}")
                     contract_data = get_contract_data_for_maintenance(supabase, contract_id)
                     if contract_data:
                         contract_prompt = build_maintenance_context_prompt(contract_data)
                         effective_system_prompt = effective_system_prompt + "\n\n" + contract_prompt
-                        print(f"[CONTRACT DEBUG] Dados do contrato injetados! Cliente: {contract_data.get('cliente_nome')}", flush=True)
-                        logger.info(f"[CONTRACT] Dados do contrato {contract_id} injetados para {phone}: {contract_data.get('cliente_nome')}, {len(contract_data.get('equipamentos', []))} equipamento(s)")
+                        logger.info(f"[CONTRACT] Dados do contrato {contract_id} injetados: {len(contract_data.get('equipamentos', []))} equipamento(s)")
                     else:
-                        print(f"[CONTRACT DEBUG] Nao foi possivel buscar dados do contrato {contract_id}", flush=True)
-                        logger.warning(f"[CONTRACT] Falha ao buscar dados do contrato {contract_id} para {phone}")
+                        logger.warning(f"[CONTRACT] Falha ao buscar dados do contrato {contract_id}")
 
                 # ================================================================
                 # BUSCAR DADOS DO CLIENTE SE CONTEXTO É BILLING
                 # Isso evita que a Ana peça CPF/dados que ela já tem
                 # ================================================================
                 if conversation_context in ["disparo_billing", "billing"]:
-                    print(f"[BILLING DEBUG] Buscando dados do cliente para injetar no prompt", flush=True)
+                    logger.debug("[BILLING] Buscando dados do cliente para injetar no prompt")
                     billing_data = await get_billing_data_for_context(
                         supabase,
                         phone,
@@ -691,13 +679,11 @@ async def process_buffered_messages(
                     if billing_data:
                         billing_prompt = build_billing_context_prompt(billing_data)
                         effective_system_prompt = effective_system_prompt + "\n\n" + billing_prompt
-                        print(f"[BILLING DEBUG] Dados do cliente injetados! Cliente: {billing_data.get('cliente_nome')}", flush=True)
-                        logger.info(f"[BILLING] Dados do cliente injetados para {phone}: {billing_data.get('cliente_nome')}, {len(billing_data.get('cobrancas_pendentes', []))} cobrança(s)")
+                        logger.info(f"[BILLING] Dados do cliente injetados: {len(billing_data.get('cobrancas_pendentes', []))} cobrança(s)")
                     else:
-                        print(f"[BILLING DEBUG] Não foi possível buscar dados do cliente via phone", flush=True)
-                        logger.warning(f"[BILLING] Falha ao buscar dados do cliente para {phone}")
+                        logger.warning("[BILLING] Falha ao buscar dados do cliente")
             else:
-                print(f"[PROMPT DEBUG] FALHA! get_context_prompt retornou None", flush=True)
+                logger.debug(f"[PROMPT] get_context_prompt retornou None para contexto='{conversation_context}'")
 
         # ================================================================
         # INJETAR CONTEXTO DE ATENDIMENTOS ANTERIORES

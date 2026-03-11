@@ -36,10 +36,10 @@ def get_contract_data_for_maintenance(supabase: SupabaseService, contract_id: st
             "proxima_manutencao": str,  # YYYY-MM-DD
         }
     """
-    print(f"[CONTRACT] Buscando dados do contrato {contract_id}", flush=True)
+    logger.debug(f"[CONTRACT] Buscando dados do contrato {contract_id}")
 
     if not contract_id:
-        print(f"[CONTRACT] contract_id vazio", flush=True)
+        logger.debug("[CONTRACT] contract_id vazio")
         return None
 
     try:
@@ -49,12 +49,11 @@ def get_contract_data_for_maintenance(supabase: SupabaseService, contract_id: st
         ).eq("id", contract_id).maybe_single().execute()
 
         if not result.data:
-            print(f"[CONTRACT] Contrato {contract_id} nao encontrado", flush=True)
             logger.warning(f"[CONTRACT] Contrato {contract_id} nao encontrado")
             return None
 
         contract = result.data
-        print(f"[CONTRACT] Contrato encontrado: {contract.get('locatario_nome')}", flush=True)
+        logger.debug("[CONTRACT] Contrato encontrado")
 
         # Dados basicos do contrato
         data = {
@@ -78,7 +77,7 @@ def get_contract_data_for_maintenance(supabase: SupabaseService, contract_id: st
                         customer_result.data.get("mobile_phone") or
                         customer_result.data.get("phone")
                     )
-                    print(f"[CONTRACT] Telefone obtido de asaas_clientes: {data['cliente_telefone']}", flush=True)
+                    logger.debug("[CONTRACT] Telefone obtido de asaas_clientes")
             except Exception as e:
                 logger.warning(f"[CONTRACT] Erro ao buscar telefone em asaas_clientes: {e}")
 
@@ -86,7 +85,6 @@ def get_contract_data_for_maintenance(supabase: SupabaseService, contract_id: st
         return data
 
     except Exception as e:
-        print(f"[CONTRACT] Erro ao buscar contrato: {e}", flush=True)
         logger.error(f"[CONTRACT] Erro ao buscar contrato {contract_id}: {e}")
         return None
 
