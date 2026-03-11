@@ -14,6 +14,7 @@ import re
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from app.core.utils.phone import find_message_record_by_phone, generate_phone_variants
 from app.services.supabase import get_supabase_service
 
 logger = logging.getLogger(__name__)
@@ -152,6 +153,9 @@ async def ensure_message_record_exists(
     Garante que o registro de mensagem existe. Se nao existir, cria.
     Retorna o ID do registro ou None se falhar.
 
+    IMPORTANTE: Usa variantes de telefone (com/sem 9 extra) para buscar
+    registro existente. Isso resolve mismatch entre Asaas e Leadbox.
+
     Estrutura da tabela:
     - id (uuid)
     - creat (timestamp)
@@ -169,11 +173,18 @@ async def ensure_message_record_exists(
     now = datetime.utcnow().isoformat()
 
     try:
-        # Buscar registro existente
+        # Buscar registro existente usando variantes de telefone
+        # Isso resolve bug onde Asaas tem 5566996465228 e Leadbox tem 556696465228
+        variants = generate_phone_variants(phone)
+        or_conditions = ",".join([
+            f"remotejid.eq.{v}@s.whatsapp.net"
+            for v in variants
+        ])
+
         response = (
             supabase.client.table(table_messages)
             .select("id")
-            .eq("remotejid", remotejid)
+            .or_(or_conditions)
             .order("creat", desc=True)
             .limit(1)
             .execute()
@@ -252,11 +263,18 @@ async def save_message_to_conversation_history(
             if lead_id:
                 await ensure_message_record_exists(agent, phone, lead_id, payment)
 
-        # Buscar mensagem mais recente pelo remotejid
+        # Buscar mensagem mais recente usando variantes de telefone
+        # Resolve bug onde Asaas tem 5566996465228 e Leadbox tem 556696465228
+        variants = generate_phone_variants(phone)
+        or_conditions = ",".join([
+            f"remotejid.eq.{v}@s.whatsapp.net"
+            for v in variants
+        ])
+
         response = (
             supabase.client.table(table_messages)
             .select("id, conversation_history")
-            .eq("remotejid", remotejid)
+            .or_(or_conditions)
             .order("creat", desc=True)
             .limit(1)
             .execute()
