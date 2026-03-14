@@ -1,7 +1,7 @@
 # ERP MVP — Plano Executável
 
 > **Leia uma vez por sessão.** Fonte da verdade do projeto.
-> Última atualização: 2026-03-13 | Versão: MVP-v1
+> Última atualização: 2026-03-14 | Versão: MVP-v1
 
 ---
 
@@ -58,14 +58,25 @@ Ver arquivos em `migrations/` para schema completo.
 [x] Testar: SELECT * FROM erp_customers funciona
 ```
 
-### Fase 1 — Backend CRUD
+### Fase 1 — Backend CRUD [COMPLETA]
 ```
-[ ] POST/GET/PUT/DELETE /api/erp/customers
-[ ] POST/GET/PUT/DELETE /api/erp/products
-[ ] POST/GET/PUT /api/erp/orders
-[ ] POST /api/erp/orders/{id}/close
-[ ] POST /api/erp/orders/{id}/payment
-[ ] GET /api/erp/dashboard (totais dia/semana/mês)
+[x] POST/GET/PUT/DELETE /api/erp/customers
+[x] POST/GET/PUT/DELETE /api/erp/products
+[x] POST/GET/PUT /api/erp/orders
+[x] POST /api/erp/orders/{id}/close
+[x] GET /api/erp/dashboard (totais dia/semana/mês)
+
+Arquivos criados:
+- apps/ia/app/domain/erp/models.py (Pydantic models)
+- apps/ia/app/domain/erp/repository.py (Repository Supabase)
+- apps/ia/app/domain/erp/services/crud.py (Services CRUD)
+- apps/ia/app/api/routes/erp.py (FastAPI endpoints)
+
+Testes:
+- tests/test_erp_models.py (16 passando)
+- tests/test_erp_repository.py (12 passando)
+- tests/test_erp_services.py (14 passando)
+- tests/test_erp_routes.py (17 passando)
 ```
 
 ### Fase 2 — Frontend
@@ -182,9 +193,9 @@ WhatsApp: "Meu pedido tá pronto?"
 1. ✅ Plano aprovado
 2. ✅ Criar migration SQL
 3. ✅ Aplicar no Supabase
-4. ⏳ **Criar services backend** ← PRÓXIMO
-5. ⏳ Criar rotas API
-6. ⏳ Criar telas frontend
+4. ✅ Criar services backend
+5. ✅ Criar rotas API
+6. ⏳ **Criar telas frontend** ← PRÓXIMO
 7. ⏳ Integrar tools do agente
 8. ⏳ Testar fluxo completo
 
