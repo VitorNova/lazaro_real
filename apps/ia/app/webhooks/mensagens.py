@@ -723,29 +723,46 @@ class WhatsAppWebhookHandler:
                         logger.error(f"[HUMAN TAKEOVER] Erro ao criar lead pausado: {create_err}")
                     return {"status": "ok", "action": "lead_created_paused_human_first"}
 
-            # Se ja esta pausado, apenas ignorar
+            # ============================================================
+            # CONSTRUIR SET DE FILAS IA (principal + dispatch)
+            # Usado para verificações de race condition
+            # ============================================================
+            handoff = agent.get("handoff_triggers") or {}
+            queue_ia_local = int(handoff.get("queue_ia", 537))
+            dispatch_depts = handoff.get("dispatch_departments") or {}
+            ia_queues_local = {queue_ia_local}
+            if dispatch_depts.get("billing"):
+                try:
+                    ia_queues_local.add(int(dispatch_depts["billing"]["queueId"]))
+                except (ValueError, TypeError, KeyError):
+                    pass
+            if dispatch_depts.get("manutencao"):
+                try:
+                    ia_queues_local.add(int(dispatch_depts["manutencao"]["queueId"]))
+                except (ValueError, TypeError, KeyError):
+                    pass
+
+            # Se ja esta pausado, verificar se deve ignorar
+            # FIX 14/03/2026: Race condition - verificar fila antes de ignorar
             if lead.get("Atendimento_Finalizado") == "true":
-                logger.debug(f"[HUMAN TAKEOVER] Lead {phone} ja pausado")
-                return {"status": "ignored", "reason": "already_paused"}
+                try:
+                    queue_check = int(lead.get("current_queue_id")) if lead.get("current_queue_id") else None
+                except (ValueError, TypeError):
+                    queue_check = None
+
+                if queue_check is not None and queue_check in ia_queues_local:
+                    logger.debug(f"[HUMAN TAKEOVER] Atendimento_Finalizado ignorado para {phone} - fila IA {queue_check} (race condition fix)")
+                    # NÃO retorna - continua processamento
+                else:
+                    logger.debug(f"[HUMAN TAKEOVER] Lead {phone} ja pausado")
+                    return {"status": "ignored", "reason": "already_paused"}
 
             # ============================================================
             # IGNORAR HUMAN TAKEOVER EM FILAS DE DISPARO (IA COBRANCAS/MANUTENCAO)
             # Mensagens enviadas pela API de disparo chegam com fromMe=True
             # mas não devem pausar a IA - são disparos automáticos
             # ============================================================
-            handoff = agent.get("handoff_triggers") or {}
-            dispatch_depts = handoff.get("dispatch_departments") or {}
-            dispatch_queues = set()
-            if dispatch_depts.get("billing"):
-                try:
-                    dispatch_queues.add(int(dispatch_depts["billing"]["queueId"]))
-                except (ValueError, TypeError, KeyError):
-                    pass
-            if dispatch_depts.get("manutencao"):
-                try:
-                    dispatch_queues.add(int(dispatch_depts["manutencao"]["queueId"]))
-                except (ValueError, TypeError, KeyError):
-                    pass
+            dispatch_queues = ia_queues_local - {queue_ia_local}  # Apenas filas de dispatch (sem a principal)
 
             current_queue = lead.get("current_queue_id")
             if current_queue:
@@ -1077,12 +1094,7 @@ class WhatsAppWebhookHandler:
                     except Exception as e:
                         logger.error(f"[AUTO ASSIGN] Erro inesperado ao atribuir userId para lead {phone}: {e}")
 
-                # Verificar se humano assumiu durante o delay
-                if lead.get("Atendimento_Finalizado") == "true":
-                    logger.info(f"[NEW LEAD] Lead {phone} marcado como pausado durante sync - ignorando (humano assumiu)")
-                    return {"status": "ignored", "reason": "new_lead_human_took_over"}
-
-                # Verificar se foi para fila humana durante o delay
+                # Construir set de filas IA para verificações
                 handoff_check = agent.get("handoff_triggers") or {}
                 queue_ia_check = int(handoff_check.get("queue_ia", 537))
                 dispatch_depts_check = handoff_check.get("dispatch_departments") or {}
@@ -1097,6 +1109,23 @@ class WhatsAppWebhookHandler:
                         ia_queues_check.add(int(dispatch_depts_check["manutencao"]["queueId"]))
                     except (ValueError, TypeError, KeyError):
                         pass
+
+                # Verificar se humano assumiu durante o delay
+                # FIX 14/03/2026: Race condition - verificar fila antes de ignorar
+                if lead.get("Atendimento_Finalizado") == "true":
+                    try:
+                        queue_check = int(lead.get("current_queue_id")) if lead.get("current_queue_id") else None
+                    except (ValueError, TypeError):
+                        queue_check = None
+
+                    if queue_check is not None and queue_check in ia_queues_check:
+                        logger.info(f"[NEW LEAD] Atendimento_Finalizado ignorado para {phone} - fila IA {queue_check} (race condition fix)")
+                        # NÃO retorna - continua processamento
+                    else:
+                        logger.info(f"[NEW LEAD] Lead {phone} marcado como pausado durante sync - ignorando (humano assumiu)")
+                        return {"status": "ignored", "reason": "new_lead_human_took_over"}
+
+                # Verificar se foi para fila humana durante o delay
 
                 fresh_queue_raw = lead.get("current_queue_id")
                 if fresh_queue_raw:
@@ -1317,12 +1346,23 @@ class WhatsAppWebhookHandler:
         # ====================================================================
         # VERIFICAR SE ATENDIMENTO FOI FINALIZADO (transferido para humano)
         # Se Atendimento_Finalizado == "true", a IA deve ficar PAUSADA
+        # FIX 14/03/2026: Race condition - verificar fila antes de ignorar
         # ====================================================================
         atendimento_finalizado = lead.get("Atendimento_Finalizado", "")
         if atendimento_finalizado == "true":
-            logger.info(f"Atendimento finalizado para {phone} (transferido para humano), IA pausada")
-            logger.debug(f"[DEBUG] ATENDIMENTO FINALIZADO para {phone} - IA pausada, ignorando mensagem")
-            return {"status": "ignored", "reason": "atendimento_finalizado"}
+            # FIX: race condition - se lead está em fila IA, ignorar Atendimento_Finalizado stale
+            try:
+                queue_check = int(lead.get("current_queue_id")) if lead.get("current_queue_id") else None
+            except (ValueError, TypeError):
+                queue_check = None
+
+            if queue_check is not None and queue_check in IA_QUEUES:
+                logger.info(f"Atendimento_Finalizado ignorado para {phone} - lead em fila IA {queue_check} (race condition fix)")
+                # NÃO retorna - continua processamento
+            else:
+                logger.info(f"Atendimento finalizado para {phone} (transferido para humano), IA pausada")
+                logger.debug(f"[DEBUG] ATENDIMENTO FINALIZADO para {phone} - IA pausada, ignorando mensagem")
+                return {"status": "ignored", "reason": "atendimento_finalizado"}
 
         # Verificar se bot esta pausado
         redis = await self._get_redis()
