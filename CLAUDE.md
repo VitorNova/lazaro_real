@@ -1,7 +1,6 @@
-# CLAUDE.md — Metodologia Anti-Vibe Coding (Akita Way)
+# CLAUDE.md — Metodologia de Desenvolvimento
 
 > **Leia este arquivo inteiro antes de qualquer ação.**
-> Baseado no artigo "Do Zero à Produção em Uma Semana" — Fábio Akita.
 
 ---
 
@@ -19,7 +18,7 @@ Código é **sempre a última etapa.** Nunca a primeira.
 ## Filosofia Central
 
 **Vibe Coding** = jogar prompt, aceitar o que vem, não ler o código, confiar na intuição.  
-**Akita Way** = você pensa e planeja, a IA executa e escreve. Disciplina acima de intuição.
+**Disciplina** = você pensa e planeja, a IA executa e escreve. Disciplina acima de intuição.
 
 > "Sem teste, cada mudança é uma aposta."
 
@@ -183,41 +182,21 @@ import fakeredis
 # ─── Helpers de Mock ────────────────────────────────────────────────────────
 
 def make_supabase_mock(table_data: dict) -> MagicMock:
-    """
-    Cria um mock do Supabase configurado com dados por tabela.
-
-    Uso:
-        mock = make_supabase_mock({
-            "clientes": [{"id": "abc", "nome": "João"}],
-            "contratos": [{"id": "x1", "cliente_id": "abc"}],
-        })
-    """
     mock = MagicMock()
 
     def table_side_effect(table_name):
         t = MagicMock()
         data = table_data.get(table_name, [])
-
         resp = MagicMock()
         resp.data = data
 
-        # SELECT encadeado padrão
         t.select.return_value.eq.return_value.eq.return_value \
          .limit.return_value.execute.return_value = resp
-
         t.select.return_value.eq.return_value \
          .limit.return_value.execute.return_value = resp
-
-        t.select.return_value \
-         .execute.return_value = resp
-
-        # UPDATE / INSERT
-        t.update.return_value.eq.return_value \
-         .execute.return_value = MagicMock()
-
-        t.insert.return_value \
-         .execute.return_value = MagicMock()
-
+        t.select.return_value.execute.return_value = resp
+        t.update.return_value.eq.return_value.execute.return_value = MagicMock()
+        t.insert.return_value.execute.return_value = MagicMock()
         return t
 
     mock.client.table.side_effect = table_side_effect
@@ -225,26 +204,10 @@ def make_supabase_mock(table_data: dict) -> MagicMock:
 
 
 def make_redis_mock() -> fakeredis.FakeRedis:
-    """
-    Cria um Redis em memória para testes. Comportamento idêntico ao Redis real.
-
-    Uso:
-        redis = make_redis_mock()
-        redis.set("chave", "valor")
-        assert redis.get("chave") == b"valor"
-    """
     return fakeredis.FakeRedis()
 
 
 def make_http_mock(status_code: int = 200, json_response: dict = None):
-    """
-    Cria um mock de cliente HTTP (httpx.AsyncClient) para mockar UAZAPI,
-    Asaas, ou qualquer API HTTP externa.
-
-    Uso:
-        with make_http_mock(200, {"success": True}) as mock_http:
-            resultado = await funcao_que_chama_api(...)
-    """
     if json_response is None:
         json_response = {"success": True}
 
@@ -258,7 +221,6 @@ def make_http_mock(status_code: int = 200, json_response: dict = None):
         get=AsyncMock(return_value=mock_response),
     ))
     mock_client.__aexit__ = AsyncMock(return_value=None)
-
     return patch("httpx.AsyncClient", return_value=mock_client)
 
 
@@ -268,81 +230,43 @@ class TestNomeDaFuncionalidade:
     """
     TDD — [Nome do Bug ou Feature] [DATA]
 
-    Contexto:
-        Descreva aqui em português o que motivou esses testes.
-        Ex: "Clientes em manutenção estavam recebendo cobranças indevidamente."
-
-    Causa:
-        O que estava errado no código.
-
-    Correção:
-        O que foi alterado para resolver.
+    Contexto: [o que motivou esses testes]
+    Causa: [o que estava errado]
+    Correção: [o que foi alterado]
     """
 
     def test_cenario_principal_funciona(self):
-        """O comportamento esperado no caminho feliz."""
         mock_db = make_supabase_mock({
             "clientes": [{"id": "abc123", "status": "ativo", "nome": "João"}]
         })
-
         resultado = funcao_a_testar(mock_db, parametro_valido)
-
         assert resultado is not None
         assert resultado["status"] == "esperado"
 
     def test_retorna_none_quando_sem_dados(self):
-        """Deve retornar None/[] quando a tabela está vazia."""
         mock_db = make_supabase_mock({"clientes": []})
-
         resultado = funcao_a_testar(mock_db, parametro_valido)
-
-        assert resultado is None
-
-    def test_bug_real_DESCRICAO_DATA(self):
-        """
-        Bug real: [descreva o que acontecia em produção]
-        Ex: cobrança sendo enviada para cliente com status 'manutencao'
-
-        Causa: campo maintenance_status não era verificado antes do envio
-        Correção: adicionado check antes do disparo
-        """
-        mock_db = make_supabase_mock({
-            "clientes": [{"id": "abc123", "status": "manutencao", "nome": "João"}]
-        })
-
-        resultado = funcao_a_testar(mock_db, parametro_bug)
-
-        # O comportamento correto é NÃO enviar cobrança
         assert resultado is None
 
     def test_nao_envia_quando_redis_pausado(self):
-        """Se a chave de pausa existe no Redis, não deve processar."""
         redis = make_redis_mock()
         redis.set("pause:agent_id:5511999999999", "1")
-
         resultado = funcao_que_verifica_pausa(redis, agent_id="agent_id", phone="5511999999999")
-
         assert resultado is False
 
     @pytest.mark.asyncio
     async def test_chama_api_externa_com_sucesso(self):
-        """Verifica integração com API HTTP externa (ex: UAZAPI)."""
         mock_db = make_supabase_mock({"mensagens": [{"id": "m1", "texto": "oi"}]})
-
         with make_http_mock(200, {"success": True}):
             resultado = await funcao_que_chama_uazapi(mock_db, phone="5511999999999")
-
         assert resultado is True
 
     @pytest.mark.asyncio
     async def test_trata_falha_da_api_externa(self):
-        """Quando a API retorna erro, deve logar e não estourar exceção."""
         mock_db = make_supabase_mock({"mensagens": [{"id": "m1"}]})
-
         with make_http_mock(500, {"error": "internal server error"}):
             resultado = await funcao_que_chama_uazapi(mock_db, phone="5511999999999")
-
-        assert resultado is False  # falhou mas não levantou exceção
+        assert resultado is False
 ```
 
 ### Regras ao Escrever Testes
@@ -361,17 +285,10 @@ class TestNomeDaFuncionalidade:
 ### Supabase — Encadeamentos Comuns
 
 ```python
-# SELECT com filtro simples
 mock = make_supabase_mock({"tabela": [{"id": "1", "campo": "valor"}]})
-
-# UPDATE que precisa verificar se foi chamado
 mock_table = mock.client.table("tabela")
 mock_table.update.return_value.eq.return_value.execute.return_value = MagicMock()
-
-# Verificar se update foi chamado com os dados certos
 mock_table.update.assert_called_once_with({"campo": "novo_valor"})
-
-# INSERT e verificar
 mock_table.insert.assert_called_once()
 ```
 
@@ -379,24 +296,14 @@ mock_table.insert.assert_called_once()
 
 ```python
 redis = make_redis_mock()
-
-# Simular chave de pausa
-redis.set("pause:agent_id:5511999999999", "1")
-
-# Simular TTL
-redis.setex("chave", 3600, "valor")  # expira em 1h
-
-# Simular ausência de chave
-assert redis.get("chave_inexistente") is None
-
-# Simular contexto de conversa
-redis.set("context:phone:5511999999999", '{"historico": []}')
+redis.set("pause:agent_id:5511999999999", "1")   # simular pausa
+redis.setex("chave", 3600, "valor")               # com TTL
+assert redis.get("chave_inexistente") is None     # ausência de chave
 ```
 
-### HTTP Externo — UAZAPI / Asaas / Qualquer API
+### HTTP Externo — UAZAPI / Asaas
 
 ```python
-# Mock de POST com sucesso
 with patch("app.services.uazapi.httpx.AsyncClient") as MockClient:
     instance = MockClient.return_value.__aenter__.return_value
     instance.post = AsyncMock(return_value=AsyncMock(
@@ -404,34 +311,15 @@ with patch("app.services.uazapi.httpx.AsyncClient") as MockClient:
         json=lambda: {"messageId": "abc123"}
     ))
     resultado = await enviar_mensagem(phone="5511999999999", texto="oi")
-
-# Mock de falha HTTP
-with patch("app.services.uazapi.httpx.AsyncClient") as MockClient:
-    instance = MockClient.return_value.__aenter__.return_value
-    instance.post = AsyncMock(return_value=AsyncMock(
-        status_code=500,
-        json=lambda: {"error": "server error"}
-    ))
-    resultado = await enviar_mensagem(phone="5511999999999", texto="oi")
-    assert resultado is False
 ```
 
 ### APScheduler / Jobs Agendados
 
 ```python
-from unittest.mock import patch, MagicMock
-
 def test_job_nao_executa_fora_do_horario():
     with patch("app.jobs.cobrar.datetime") as mock_dt:
-        mock_dt.now.return_value = datetime(2025, 1, 1, 3, 0)  # 3h da manhã
-        resultado = verificar_se_deve_executar()
-        assert resultado is False
-
-def test_job_executa_no_horario_correto():
-    with patch("app.jobs.cobrar.datetime") as mock_dt:
-        mock_dt.now.return_value = datetime(2025, 1, 1, 9, 0)  # 9h BRT
-        resultado = verificar_se_deve_executar()
-        assert resultado is True
+        mock_dt.now.return_value = datetime(2025, 1, 1, 3, 0)
+        assert verificar_se_deve_executar() is False
 ```
 
 ---
@@ -441,19 +329,342 @@ def test_job_executa_no_horario_correto():
 ```
 tipo(escopo): descrição curta em português
 
-Bug: o que estava acontecendo (ex: cobrança enviada a cliente em manutenção)
-Causa: por que acontecia (ex: status não era verificado antes do envio)
-Correção: o que foi alterado (ex: adicionado check maintenance_status em cobrar_cliente())
-Teste: test_cobranca.py 5/5 passando
+Bug: o que estava acontecendo
+Causa: por que acontecia
+Correção: o que foi alterado
+Teste: test_arquivo.py N/N passando
 ```
 
 **Tipos válidos:** `fix` `feat` `refactor` `test` `chore` `docs`
 
 ---
 
-## Modo Bombeiro vs Modo Akita
+## Infraestrutura de Processos e Roteamento
 
-| | Modo Bombeiro | Modo Akita |
+### Dois Processos — Nunca Confunda
+
+| Processo PM2 | Porta | Diretório | Recebe Webhooks? |
+|---|---|---|---|
+| `agente-ia` | 3005 | `/var/www/phant/agente-ia` | ❌ NÃO |
+| `lazaro-ia` | 3115 | `/var/www/lazaro-real/apps/ia` | ✅ SIM |
+
+**O Traefik roteia `lazaro.fazinzz.com/webhooks/*` → `lazaro-ia` (porta 3115).**
+
+> ⚠️ Debugar o `agente-ia` quando o problema é no `lazaro-ia` é perda de tempo garantida.
+
+```bash
+# webhooks Leadbox → sempre este:
+pm2 logs lazaro-ia --lines 50 --nostream
+
+# jobs internos (billing, follow-up) → este:
+pm2 logs agente-ia --lines 50 --nostream
+```
+
+---
+
+## Referência de Logs — lazaro-ia
+
+> Todas as strings abaixo são reais, extraídas de produção em 2026-03-12.  
+> Arquivo fonte: `apps/ia/app/ai/ia_gemini.py`
+
+### Fluxo Completo — Mensagem Simples (sem tool)
+
+```
+[BUFFER] Mensagem adicionada - phone=556697194084, agent=ANA
+  ↓ (14s de delay)
+[PROCESS] Iniciando processamento para 556697194084 (agente: 14e6e5ce)
+[GEMINI] Inicializando com 7 tools (calendar=False)
+[GEMINI] Enviando 13 msgs para phone=5566****4084
+[GEMINI] Resposta recebida para phone=5566****4084 (65 chars, tools=[])
+[UAZAPI] Enviando resposta para phone=5566****4084 (65 chars)
+[UAZAPI] Enviado phone=5566****4084 - 1/1 chunks OK
+Mensagem enviada com sucesso. ID: 556699673864:3EB0...
+[BUFFER] Limpo apos sucesso para phone=5566****4084
+```
+
+### Fluxo Completo — Mensagem com Tool (ex: transferência)
+
+```
+[GEMINI] Enviando 13 msgs para phone=5566****4084
+[TOOL START] transferir_departamento
+  → transfer_start departamento=None motivo='...' queue_id=453.0
+  → transfer_resolved dept_name=Atendimento final_queue_id=453
+  → transfer_api_result result={'sucesso': True, 'ticket_id': ...}
+  → transfer_success dept=Atendimento ticket_id=864480
+[TOOL END] transferir_departamento duration=4.21s result=sucesso
+[TOOL LOOP END] 1 iterações em 6.73s
+[GEMINI] Resposta recebida ... (77 chars, tools=['transferir_departamento'])
+[UAZAPI] Enviando resposta ...
+Mensagem enviada com sucesso. ID: ...
+[BUFFER] Limpo apos sucesso ...
+```
+
+### Mapa de Strings por Etapa
+
+| Etapa | String no log |
+|---|---|
+| Mensagem entra no buffer | `[BUFFER] Mensagem adicionada` |
+| Buffer liberado | `[BUFFER] Limpo apos sucesso` |
+| Início do processamento | `[PROCESS] Iniciando processamento` |
+| Gemini inicializado | `[GEMINI] Inicializando com X tools` |
+| Enviando ao Gemini | `[GEMINI] Enviando X msgs` |
+| **Tool iniciada** | **`[TOOL START] nome_da_tool`** |
+| **Tool finalizada** | **`[TOOL END] nome_da_tool duration=Xs result=sucesso`** |
+| **Loop de tools encerrado** | **`[TOOL LOOP END] X iterações em Ys`** |
+| Resposta do Gemini | `[GEMINI] Resposta recebida ... (tools=['...'])` |
+| Iniciando envio | `[UAZAPI] Enviando resposta` |
+| Envio confirmado | `[UAZAPI] Enviado ... - 1/1 chunks OK` |
+| Entrega confirmada | `Mensagem enviada com sucesso. ID: ...` |
+| Evento Leadbox chegou | `[LEADBOX WEBHOOK] Evento recebido: UpdateOnTicket` |
+| Ticket fechado | `[LEADBOX HANDLER] Ticket X FECHADO` |
+| Lead ignorado (fila humana) | `[LEADBOX] Lead X IGNORADO: banco fila=453` |
+| FAIL-SAFE ativado | `[FAIL-SAFE] API sem queue_id, usando fallback Supabase` |
+| Contexto detectado ✅ | `[CONTEXT DEBUG] ENCONTRADO context='manutencao_preventiva'` |
+| Contexto não encontrado ❌ | `[CONTEXT DEBUG] Nenhum context especial encontrado` |
+
+### Comandos de Monitoramento
+
+```bash
+# Fluxo completo de mensagem
+pm2 logs lazaro-ia | grep -iE "BUFFER|PROCESS|GEMINI|TOOL|UAZAPI|Mensagem enviada"
+
+# Só tools (o que o agente está fazendo)
+pm2 logs lazaro-ia | grep -iE "TOOL START|TOOL END|TOOL LOOP|tools=\["
+
+# Contexto de manutenção (detectado ou não)
+pm2 logs lazaro-ia | grep -i "CONTEXT DEBUG"
+
+# Webhooks Leadbox
+pm2 logs lazaro-ia | grep -iE "LEADBOX|FECHADO|IGNORADO|Evento recebido"
+
+# Só erros
+pm2 logs lazaro-ia | grep -iE "ERROR|WARNING|FAIL|IGNORADO|Pydantic"
+
+# Monitorar telefone específico
+pm2 logs lazaro-ia | grep "5566XXXXXXXX"
+
+# Tudo — modo debug completo
+pm2 logs lazaro-ia | grep -iE "BUFFER|PROCESS|GEMINI|TOOL|UAZAPI|LEADBOX|FAIL-SAFE|CONTEXT DEBUG|ERROR"
+```
+
+```bash
+# Histórico — últimas 500 linhas filtradas
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "TOOL START|TOOL END|TOOL LOOP"
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "BUFFER|PROCESS|GEMINI|UAZAPI"
+pm2 logs lazaro-ia --lines 500 --nostream | grep -i "CONTEXT DEBUG"
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "ERROR|WARNING|FAIL"
+```
+
+---
+
+## Diagnóstico por Cenário de Problema
+
+### Cenário 1 — IA disparou manutenção mas parou de responder
+
+**O que acontece:** `maintenance_notifier` disparou mensagem D-7, cliente respondeu, IA não detectou o contexto e parou de responder (ou pediu CPF).
+
+**Causa raiz mais comum:** mensagem foi enviada mas `context` não foi salvo no `conversation_history`.
+
+**Diagnóstico rápido:**
+```bash
+# Ver se contexto foi detectado na última interação do cliente
+pm2 logs lazaro-ia --lines 500 --nostream | grep -i "CONTEXT DEBUG"
+```
+
+**Sinais no log:**
+
+| Log | Significado |
+|---|---|
+| `[CONTEXT DEBUG] ENCONTRADO context='manutencao_preventiva' ref_id='<id>'` | ✅ Contexto detectado, IA sabe o que fazer |
+| `[CONTEXT DEBUG] Prompt carregado para 'manutencao_preventiva'!` | ✅ Prompt de contexto carregado |
+| `[CONTEXT DEBUG] Nenhum context especial encontrado` | ❌ Context não foi salvo no history |
+| `[CONTEXT DEBUG] context_prompts vazio ou None` | ❌ Configuração ausente no agente |
+| `[CONTEXT DEBUG] Contexto 'manutencao_preventiva' NAO encontrado em context_prompts` | ❌ Contexto não cadastrado |
+| `[CONTEXT DEBUG] Contexto 'manutencao_preventiva' esta INATIVO` | ❌ Contexto desativado no banco |
+
+**Verificar no banco se o context foi salvo:**
+```sql
+SELECT
+    remotejid,
+    conversation_history->'messages'->-1 AS ultima_mensagem,
+    jsonb_path_query_array(
+        conversation_history->'messages',
+        '$[*] ? (@.context != null)'
+    ) AS mensagens_com_contexto
+FROM "LeadboxCRM_Ana_14e6e5ce"
+WHERE remotejid LIKE '%5511999999999%'
+LIMIT 1;
+```
+
+**O campo `context` deve aparecer assim nas mensagens salvas:**
+```json
+{
+  "role": "model",
+  "context": "manutencao_preventiva",
+  "contract_id": "uuid-do-contrato"
+}
+```
+Se `mensagens_com_contexto` vier vazio → o `maintenance_notifier` não salvou o contexto → ver seção "Arquitetura de Jobs de Disparo".
+
+---
+
+### Cenário 2 — IA disse que ia transferir mas não transferiu
+
+**O que acontece:** IA respondeu ao cliente dizendo que vai transferir para atendimento, mas o lead continuou na fila da IA sem ser movido.
+
+**Diagnóstico rápido:**
+```bash
+# Ver sequência completa da tentativa de transferência
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "transfer_start|transfer_resolved|transfer_api|transfer_success|transfer_error|transfer_exception"
+
+# Ver só resultado da tool
+pm2 logs lazaro-ia --lines 500 --nostream | grep -E "TOOL START.*transferir|TOOL END.*transferir"
+```
+
+**Sinais no log — transferência OK:**
+```
+transfer_start departamento=comercial queue_id=454
+transfer_resolved final_queue_id=454 dept_name=comercial
+transfer_api_result result={'sucesso': True, 'ticket_id': ...}
+transfer_success dept=comercial ticket_id=862709
+[TOOL END] transferir_departamento duration=1.23s result=sucesso
+```
+
+**Sinais no log — transferência falhou:**
+
+| Log | Causa |
+|---|---|
+| `handoff_not_configured` | `handoff_triggers` não configurado no agente |
+| `transfer_blocked_billing_context` | Lead em contexto de cobrança, transferência bloqueada |
+| `leadbox_incomplete_config` | Configuração do Leadbox incompleta |
+| `transfer_api_error error="..."` | Erro HTTP na API do Leadbox |
+| `transfer_exception error="..."` | Exceção no código durante a tool |
+| `leadbox_transfer_http_error` | Timeout ou falha de rede com o Leadbox |
+| `[TOOL END] transferir_departamento ... result=erro` | Tool executou mas falhou |
+| `[TOOL START]` sem `[TOOL END]` | Tool travou com exceção não capturada |
+
+**Verificar no banco se o lead foi transferido:**
+```sql
+SELECT
+    remotejid,
+    "Atendimento_Finalizado",
+    current_state,
+    paused_at,
+    handoff_at,
+    transfer_reason,
+    ticket_id,
+    current_queue_id,
+    current_user_id
+FROM "LeadboxCRM_Ana_14e6e5ce"
+WHERE remotejid LIKE '%5511999999999%'
+LIMIT 1;
+```
+
+**Lead transferido com sucesso deve ter:**
+- `Atendimento_Finalizado = true`
+- `current_state = 'human'`
+- `handoff_at` = timestamp recente
+- `current_queue_id` = ID da fila destino (453, 454, etc.)
+
+---
+
+## Diagnóstico de Webhooks Leadbox
+
+### Referência Rápida — Tenant e Filas
+
+| Campo | Valor |
+|---|---|
+| Tenant Leadbox (payload real) | `123` |
+| Tenant no agente ANA (Supabase `agents`) | `123` |
+| Fila IA principal (Ana) | `537` |
+| Fila billing | `544` |
+| Fila manutenção | `545` |
+| Fila atendimento humano (Nathália) | `453` |
+| Fila financeiro (Tieli) | `454` |
+
+> ⚠️ O `tenant_id` no Supabase deve ser `"123"`, não `"124"`.
+> Se errado, o filtro pula o agente silenciosamente — o log diz "FECHADO" mas o banco não muda.
+
+### Sequência de Eventos por Cenário
+
+**Ticket fechado:**
+```
+FinishedTicket               → [LEADBOX HANDLER] Ticket X FECHADO
+UpdateOnTicket               → [LEADBOX HANDLER] Ticket X FECHADO (duplo, normal)
+FinishedTicketHistoricMessages → ignorado (correto)
+```
+
+**Lead indo para fila humana:**
+```
+UpdateOnTicket (queue=453/454) → PAUSANDO → Redis pause SETADA
+```
+
+**Lead voltando para fila IA:**
+```
+UpdateOnTicket (queue=537) → Redis pause LIMPA → Supabase: current_state=ai
+```
+
+### Tabela de Sinais de Problema
+
+| Log observado | Causa provável | Ação |
+|---|---|---|
+| `Payload sem phone ou queueId` | UpdateOnTicket com queueId=null ao fechar ticket | Verificar se FECHADO aparece logo em seguida |
+| `FAIL-SAFE ... Supabase vazio` | `current_queue_id=None` no banco | Verificar estado do lead |
+| `FAIL-SAFE ... fila humana` | Lead em fila humana — correto | Normal, não é bug |
+| `HTTP 500 /tickets?contactId=X` | Ticket recém-criado | Normal, fallback cobre |
+| FECHADO no log mas banco não muda | `tenant_id` errado | Verificar `handoff_triggers.tenant_id` |
+| Nenhum evento no `lazaro-ia` | Webhook não configurado | Verificar painel do Leadbox |
+| `[GEMINI] Inicializando` sem `Resposta recebida` | Timeout Gemini | Buscar `ERROR` no mesmo timestamp |
+| `[TOOL START]` sem `[TOOL END]` | Tool travada | Buscar `ERROR` após o `[TOOL START]` |
+| `[BUFFER] adicionada` sem `[PROCESS]` | Buffer acumulando | Verificar Redis, considerar restart |
+| `CONTEXT DEBUG` Nenhum context encontrado | Job não salvou context no history | Ver seção Jobs de Disparo |
+| `transfer_api_error` ou `transfer_exception` | Transferência falhou | Ver campos no banco + logs do Leadbox |
+
+### Verificar Estado de um Lead no Banco
+
+```bash
+cd /var/www/phant/agente-ia && venv/bin/python3 -c "
+from app.services.supabase import get_supabase_service
+svc = get_supabase_service()
+r = svc.client.table('LeadboxCRM_Ana_14e6e5ce') \
+    .select('remotejid,current_queue_id,current_state,ticket_id,Atendimento_Finalizado,handoff_at') \
+    .eq('remotejid', 'PHONE@s.whatsapp.net').execute()
+print(r.data)
+"
+```
+Substitua `PHONE` pelo número sem `+` (ex: `556697194084`).
+
+### Verificar Tenant e Filas no Agente
+
+```bash
+cd /var/www/phant/agente-ia && venv/bin/python3 -c "
+from app.services.supabase import get_supabase_service
+svc = get_supabase_service()
+r = svc.client.table('agents').select('name,handoff_triggers').eq('active', True).execute()
+for a in r.data:
+    ht = a['handoff_triggers']
+    print(a['name'], '| tenant:', ht.get('tenant_id'), '| queue_ia:', ht.get('queue_ia'))
+"
+```
+
+---
+
+## Comandos de Validação
+
+```bash
+# Testes
+python -m pytest tests/ -v
+python -m pytest tests/test_arquivo.py::Classe::test_metodo -v
+
+# Validar sintaxe antes de reiniciar
+python -m py_compile app/arquivo.py && echo "OK"
+```
+
+---
+
+## Modo Bombeiro vs Modo Normal
+
+| | Modo Bombeiro | Modo Normal |
 |---|---|---|
 | Quando usar | Produção caindo agora | Padrão de desenvolvimento |
 | Faz | Patch direto, resolve rápido | Planeja → testa → codifica → confirma |
@@ -464,39 +675,13 @@ Teste: test_cobranca.py 5/5 passando
 
 ---
 
-## Comandos de Validação
-
-```bash
-# Rodar todos os testes
-python -m pytest tests/ -v
-
-# Rodar teste específico
-python -m pytest tests/test_arquivo.py::Classe::test_metodo -v
-
-# Validar sintaxe antes de reiniciar
-python -m py_compile app/arquivo.py && echo "OK"
-
-# Logs em tempo real
-pm2 logs agente-ia | grep -iE "ERROR|WARNING|PROCESS|WEBHOOK"
-
-# Últimas 200 linhas
-pm2 logs agente-ia --lines 200 --nostream
-```
-
----
-
 ## Segurança
 
 ```bash
-# .env nunca no git
 git ls-files --error-unmatch .env 2>&1  # deve dar erro = não rastreado
-
-# .env com permissão restrita
-ls -la .env  # deve ser -rw------- (600)
+ls -la .env                              # deve ser -rw------- (600)
 chmod 600 .env
-
-# Nunca hardcode chave de API no código
-# Sempre via variável de ambiente: os.getenv("NOME_DA_CHAVE")
+# Nunca hardcode chave de API — sempre os.getenv("NOME_DA_CHAVE")
 ```
 
 ---
@@ -515,6 +700,63 @@ chmod 600 .env
 - Deixar `.env` com permissão 644
 - Hardcodar chave de API no código
 - Rodar `pm2 restart` sem validar sintaxe antes
+- **Debugar `agente-ia` quando o problema está no `lazaro-ia`**
+- **Assumir que o log "FECHADO" significa que o Supabase foi atualizado — sempre verificar**
+- **Assumir que `[TOOL START]` sem `[TOOL END]` é normal — sempre é um problema**
+- **Assumir que a IA transferiu porque ela disse que ia transferir — verificar no banco**
+
+---
+
+## 🔒 Núcleo Inalterável (Martin Fowler Method)
+
+> Baseado no artigo "Refactoring with Code Mods" de Martin Fowler.
+> **Regra:** Esses módulos funcionam. Não refatore sem cobertura de teste extensiva e aprovação explícita.
+
+### O que é Núcleo Inalterável?
+
+Código legado que:
+1. Está em produção há tempo
+2. Funciona sem bugs críticos
+3. Já foi debugado extensivamente
+4. Tem comportamento conhecido e documentado
+
+**Filosofia Fowler:** IA é útil para *entender* código legado, não para *alterar* diretamente. Se precisar mudar, use **code mods** (scripts que fazem alterações específicas), nunca edição direta via vibe coding.
+
+### Módulos Protegidos
+
+| Módulo | Arquivo(s) Principal | Motivo | Última Estabilização |
+|--------|---------------------|--------|---------------------|
+| **Fluxo de Mensagens** | `ia_gemini.py` | Pipeline BUFFER→PROCESS→GEMINI→TOOL→UAZAPI estável | 2026-03 |
+| **Webhooks Leadbox** | `leadbox_handler.py`, `leadbox.py` | Eventos UpdateOnTicket, FinishedTicket, filas 537/453/454 | 2026-03 |
+| **Webhooks Asaas** | `pagamentos.py`, `asaas_webhook_handler.py` | Pipeline de cobrança e confirmação de pagamento | 2026-03 |
+
+### Antes de Mexer em Módulo Protegido
+
+```
+[ ] Tenho aprovação explícita do humano para alterar este módulo?
+[ ] Li e entendi o fluxo completo (não só o trecho que vou mudar)?
+[ ] Existe teste cobrindo o comportamento atual?
+[ ] Se não existe teste, vou criar ANTES de alterar?
+[ ] A alteração é cirúrgica (< 10 linhas) ou estrutural (> 10 linhas)?
+[ ] Se estrutural: propus code mod ao invés de edição direta?
+```
+
+### O que Fazer vs. O que Não Fazer
+
+| ✅ Pode | ❌ Não Pode |
+|---------|-------------|
+| Usar IA para *explicar* o código | Usar IA para *refatorar* direto |
+| Adicionar logs de debug | Mudar estrutura de fluxo |
+| Corrigir bug pontual com teste | "Melhorar" código que funciona |
+| Criar code mod para alteração em massa | Aceitar sugestão de refactor da IA |
+
+### Regra de Três (Fowler)
+
+1. **Primeira vez:** Faz (mesmo que feio)
+2. **Segunda vez:** Repete (não otimiza ainda)
+3. **Terceira vez:** Refatora
+
+> Não refatore na primeira ou segunda vez. Desapego > Perfeccionismo.
 
 ---
 
@@ -524,53 +766,24 @@ Jobs que enviam mensagens automáticas (billing, manutenção, lembretes) DEVEM 
 
 ### O Problema (Bug 2026-03-11)
 
-O `maintenance_notifier.py` foi criado incompleto. Enviava mensagens via UAZAPI mas **não salvava no conversation_history**. Quando o cliente respondia, a IA não detectava o contexto e pedia CPF em vez de já ter os dados.
-
-**Sintoma:** Cliente recebe mensagem D-7, responde, IA age sem contexto.
-**Causa:** Mensagem enviada mas não registrada no histórico com `context` e `contract_id`.
-
-### Fluxo de Detecção de Contexto
-
-```
-Cliente responde
-    ↓
-Webhook WhatsApp recebe
-    ↓
-detect_conversation_context(conversation_history)
-    ↓
-Procura mensagem com campo `context` (ex: 'manutencao_preventiva', 'cobranca')
-    ↓
-SE ENCONTRAR: retorna (context, contract_id) → IA tem dados completos
-SE NÃO ENCONTRAR: retorna (None, None) → IA pergunta CPF
-```
+O `maintenance_notifier.py` enviava mensagens via UAZAPI mas **não salvava no conversation_history**. Quando o cliente respondia, `[CONTEXT DEBUG] Nenhum context especial encontrado` — a IA não sabia do que se tratava.
 
 ### Checklist Obrigatório para Jobs de Disparo
 
-Todo job que envia mensagem automática DEVE implementar:
-
 ```python
-# 1. Enviar mensagem via UAZAPI
 result = await uazapi_client.send_text_message(phone, message)
 
 if result.get("success"):
-    # 2. OBRIGATÓRIO: Criar/garantir lead existe
     await ensure_lead_exists(
-        agent=agent,
-        phone=phone,
+        agent=agent, phone=phone,
         customer_name=customer_name,
-        lead_origin="tipo_do_disparo",  # ex: "manutencao_preventiva", "billing_system"
+        lead_origin="tipo_do_disparo",
     )
-
-    # 3. OBRIGATÓRIO: Salvar no conversation_history com contexto
     await save_message_to_history(
-        agent=agent,
-        phone=phone,
-        message=message,
-        context="tipo_do_contexto",      # ex: "manutencao_preventiva", "cobranca"
+        agent=agent, phone=phone, message=message,
+        context="tipo_do_contexto",        # ← CRÍTICO: detect_conversation_context() depende disso
         reference_id=contract_or_payment_id,
     )
-
-    # 4. Atualizar status no banco
     await mark_notification_sent(...)
 ```
 
@@ -579,37 +792,20 @@ if result.get("success"):
 ```python
 {
     "role": "model",
-    "parts": [{"text": "texto da mensagem enviada"}],
+    "parts": [{"text": "texto da mensagem"}],
     "timestamp": "2026-03-11T12:00:00Z",
-    "context": "manutencao_preventiva",  # ← CRÍTICO para detect_conversation_context()
-    "contract_id": "uuid-do-contrato",   # ← OU reference_id para pagamentos
+    "context": "manutencao_preventiva",  # ← sem isso: [CONTEXT DEBUG] Nenhum context encontrado
+    "contract_id": "uuid-do-contrato",
 }
 ```
 
-### Comparação: Certo vs Errado
-
-| Aspecto | billing_charge.py (CERTO) | maintenance_notifier.py (ERRADO - antes do fix) |
-|---------|---------------------------|------------------------------------------------|
-| Envia UAZAPI | ✅ | ✅ |
-| ensure_lead_exists() | ✅ | ❌ Não existia |
-| save_to_conversation_history() | ✅ com context='cobranca' | ❌ Não existia |
-| Detecção de contexto funciona | ✅ | ❌ |
-
 ### Teste Obrigatório para Novos Jobs
-
-Ao criar um novo job de disparo, o teste DEVE verificar:
 
 ```python
 def test_job_salva_mensagem_com_contexto():
-    """Garante que a mensagem é salva com context para detect_conversation_context()."""
-    # ... mock setup ...
-
     await job_de_disparo(...)
-
-    # CRÍTICO: Verificar que save_to_history foi chamado com context
     update_args = mock_supabase.client.table.return_value.update.call_args[0][0]
     history = update_args["conversation_history"]
-
     assert any(m.get("context") == "tipo_esperado" for m in history["messages"])
     assert any(m.get("contract_id") is not None for m in history["messages"])
 ```
@@ -618,16 +814,15 @@ def test_job_salva_mensagem_com_contexto():
 
 ## Registro de Lições Aprendidas
 
-> Toda vez que um bug for corrigido em Modo Bombeiro (sem teste), documente aqui.
-> O objetivo é zerar essa lista com testes retroativos.
+> Toda vez que um bug for corrigido sem teste, documente aqui.
 
 | Data | Commit | Problema | Teste Retroativo? |
 |------|--------|----------|-------------------|
 | 09/03/2026 | 75e5a27 | maintenance_status corrigido sem teste | ⬜ Pendente |
 | 11/03/2026 | 0d165be | maintenance_notifier não salvava context no history | ✅ test_maintenance_context_save.py |
 | 11/03/2026 | 8418f4c | maintenance_notifier não criava lead com lead_origin | ✅ test_maintenance_context_save.py |
-
----
-
-> "Depois que você passa por essa imersão desapegado do código,
-> você nunca mais vê vibe coding da mesma forma." — Akita
+| 12/03/2026 | — | FinishedTicket não disparava handle_ticket_closed | ✅ test_leadbox_update_ticket_null_queue.py |
+| 12/03/2026 | — | current_queue_id=None ao fechar ticket (deveria ser 537) | ✅ test_leadbox_update_ticket_null_queue.py |
+| 12/03/2026 | — | UpdateOnTicket com queueId=null descartado silenciosamente | ✅ test_leadbox_update_ticket_null_queue.py |
+| 12/03/2026 | — | FAIL-SAFE descartava mensagens quando API retornava 500 | ✅ test_failsafe_supabase_fallback.py |
+| 12/03/2026 | — | tenant_id=124 no banco (Leadbox manda 123) — filtro silencioso | ⬜ Pendente (fix via SQL direto) |
