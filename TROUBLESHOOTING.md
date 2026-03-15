@@ -390,6 +390,42 @@ pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "FECHADO|FinishedTicket|clo
 - [ ] `ticket_id` foi limpo no banco?
 - [ ] `tenant_id` no agente bate com payload? (ex: 123)
 
+### Lead novo não criou ticket no Leadbox
+
+```bash
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "dispatch|POST PUSH|ticket_id"
+```
+
+- [ ] Lead é novo (não tem `ticket_id` no banco)?
+- [ ] Dispatch foi chamado? `grep "leadbox_dispatch"`
+- [ ] POST PUSH retornou sucesso? `grep "dispatch_success"`
+- [ ] `handoff_triggers` habilitado no agente?
+- [ ] API Leadbox respondeu OK? `grep -iE "leadbox.*error|leadbox.*failed"`
+
+### Job de billing/manutenção não criou ticket
+
+```bash
+pm2 logs lazaro-ia --lines 1000 --nostream | grep -iE "\[BILLING JOB\]|maintenance_notifier|dispatch"
+```
+
+- [ ] Job executou? `grep "[BILLING JOB]"` ou `grep "maintenance_notifier"`
+- [ ] Dispatch foi chamado para o lead?
+- [ ] Lead já tinha ticket aberto? (dispatch reutiliza ticket existente)
+- [ ] Erro de API? `grep -iE "leadbox.*error|dispatch.*failed"`
+- [ ] `queue_billing` (544) ou `queue_maintenance` (545) configurados?
+
+### Erro de API do Leadbox (timeout, 500)
+
+```bash
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "leadbox.*error|leadbox.*failed|leadbox.*timeout|HTTP.*500"
+```
+
+- [ ] Qual endpoint falhou? (POST PUSH, PUT, GET)
+- [ ] Retry automático funcionou?
+- [ ] API Leadbox fora do ar? Verificar painel deles
+- [ ] Token expirado? Verificar `handoff_triggers.api_token`
+- [ ] Rate limit? (muitas requisições em sequência)
+
 ---
 
 ## 6. Comandos de Emergência
