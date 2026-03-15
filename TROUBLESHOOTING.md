@@ -1,22 +1,22 @@
-# TROUBLESHOOTING — Aluga Ar / Lazaro-Real
+# TROUBLESHOOTING — Lazaro-Real
 
-> **Última atualização:** 2026-03-06
-> **Serviço:** Docker Swarm service `lazaro_lazaro-router`
-> **Logs:** `docker service logs lazaro_lazaro-router 2>&1`
+> **Última atualização:** 2026-03-15
+> **Serviços PM2:** `lazaro-ia` (porta 3115), `agente-ia` (porta 3005)
+> **Logs:** `pm2 logs lazaro-ia --lines 200 --nostream`
 
 ---
 
 ## 0. Health Check Rápido
 
 ```bash
-# Status do serviço
-docker ps --format 'table {{.Names}}	{{.Status}}	{{.Ports}}'
+# Status dos serviços
+pm2 list
 
 # Health check da API
 curl -s https://lazaro.fazinzz.com/health && echo " ✓ API UP" || echo " ✗ API DOWN"
 
-# Últimas 5 linhas de log
-docker service logs lazaro_lazaro-router --tail 5
+# Últimas 10 linhas de log
+pm2 logs lazaro-ia --lines 10 --nostream
 ```
 
 ---
@@ -24,25 +24,23 @@ docker service logs lazaro_lazaro-router --tail 5
 ## 1. Logs em Tempo Real
 
 ```bash
-# Todos os logs (stream)
-docker service logs -f lazaro_lazaro-router
+# Stream contínuo
+pm2 logs lazaro-ia
 
 # Últimas N linhas (sem stream)
-docker service logs lazaro_lazaro-router --tail 200
+pm2 logs lazaro-ia --lines 200 --nostream
 
 # Só erros
-docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "error|exception|traceback"
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "error|exception|traceback"
 
 # Por integração
-docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "uazapi"
-docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "asaas|pagamento"
-docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "calendar|agendamento|oauth"
-docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "leadbox|transfer"
-docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "\[BILLING"
-docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "_error|_failed"
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "uazapi"
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "asaas|pagamento"
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "leadbox|transfer"
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "\[BILLING"
 
 # Exportar logs de hoje
-docker service logs lazaro_lazaro-router --tail 10000 2>&1 | grep "$(date '+%Y-%m-%d')" > /tmp/logs-$(date '+%Y%m%d').txt
+pm2 logs lazaro-ia --lines 10000 --nostream | grep "$(date '+%Y-%m-%d')" > /tmp/logs-$(date '+%Y%m%d').txt
 ```
 
 ---
@@ -54,13 +52,13 @@ docker service logs lazaro_lazaro-router --tail 10000 2>&1 | grep "$(date '+%Y-%
 **Eventos structlog:** `uazapi_*`
 
 ```bash
-docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "uazapi_"
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "uazapi_"
 ```
 
 | Evento | Significado |
 |--------|-------------|
 | `uazapi_client_initialized` | Cliente UAZAPI inicializado |
-| `uazapi_send_text_failed` | Falha ao enviar texto (número inválido ou sessão expirada) |
+| `uazapi_send_text_failed` | Falha ao enviar texto |
 | `uazapi_send_media_failed` | Falha ao enviar mídia |
 | `uazapi_send_audio_failed` | Falha ao enviar áudio |
 | `uazapi_request_retry` | Retry automático em andamento |
@@ -73,57 +71,61 @@ docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "uazapi_"
 **Prefixo legado:** `[ASAAS WEBHOOK]`
 
 ```bash
-docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "asaas_|\[ASAAS"
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "asaas_|\[ASAAS"
 ```
 
 | Evento | Significado |
 |--------|-------------|
-| `asaas_client_initialized` | Cliente Asaas inicializado |
 | `asaas_payment_created` | Cobrança criada com sucesso |
-| `asaas_payment_retrieved` | Cobrança consultada |
-| `asaas_payment_cancelled` | Cobrança cancelada |
 | `asaas_rate_limited` | Rate limit atingido (429), aguardando |
 | `asaas_request_failed` | Requisição falhou |
 | `[ASAAS WEBHOOK]` | Processamento de webhook Asaas |
 
-### Google Calendar
-
-**Eventos structlog:** `calendar_*`
-**Prefixo legado:** `[GoogleOAuth]`, `[CONFIRMAR AGENDAMENTOS]`
-
-```bash
-docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "calendar_|GoogleOAuth|\[CONFIRMAR"
-```
-
-| Evento | Significado |
-|--------|-------------|
-| `calendar_create_event_error` | Erro ao criar evento |
-| `calendar_oauth_error` | Token OAuth expirado, refazer autenticação |
-| `calendar_list_events_error` | Erro ao listar eventos |
-| `calendar_get_availability_error` | Erro ao verificar disponibilidade |
-| `[CONFIRMAR AGENDAMENTOS]` | Job de confirmação de agendamentos |
-
 ### Leadbox (CRM)
 
 **Eventos structlog:** `leadbox_*`
-**Prefixo legado:** `[LEADBOX HANDLER]`, `[LEADBOX DISPATCH]`
+**Prefixos legados:** `[LEADBOX WEBHOOK]`, `[LEADBOX HANDLER]`, `[LEADBOX]`
 
 ```bash
-docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "leadbox_|\[LEADBOX"
+# Todos os logs Leadbox
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "leadbox_|\[LEADBOX"
+
+# Só webhooks recebidos
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "\[LEADBOX WEBHOOK\]"
+
+# Mudanças de fila e pausa
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "PAUSANDO|pause|IGNORADO|Fila IA"
+
+# Tickets fechados
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "FECHADO|resetado"
 ```
 
-| Evento | Significado |
-|--------|-------------|
+| Log | Significado |
+|-----|-------------|
+| `[LEADBOX WEBHOOK] Evento recebido: UpdateOnTicket` | Webhook de mudança de ticket |
+| `[LEADBOX WEBHOOK] Evento recebido: FinishedTicket` | Webhook de ticket fechado |
+| `[LEADBOX WEBHOOK] Evento recebido: NewMessage` | Nova mensagem do lead |
+| `[LEADBOX HANDLER] Lead X \| ticket=Y \| queue=Z` | Dados extraídos do webhook |
+| `[LEADBOX HANDLER] Fila IA detectada: queue=537` | Lead está em fila IA (ativo) |
+| `[LEADBOX HANDLER] Lead X na fila 454 ... PAUSANDO` | Lead em fila humana → pausar IA |
+| `[LEADBOX HANDLER] Redis pause SETADA` | IA pausada no Redis |
+| `Pausa removida para pause:...` | IA reativada no Redis |
+| `[LEADBOX HANDLER] Ticket X FECHADO` | Ticket fechado, resetando lead |
+| `[LEADBOX HANDLER] Ticket fechado - lead X resetado` | Lead pronto para próximo atendimento |
+| `[LEADBOX] Lead X IGNORADO: banco fila=454` | Mensagem ignorada (lead com humano) |
+| `[LEADBOX HANDLER] Core update OK` | Atualização de estado no Supabase |
+| `[LEADBOX HANDLER] Queue update OK` | Atualização de fila no Supabase |
+| `leadbox_transfer_success` | Transferência via tool bem-sucedida |
 | `leadbox_transfer_error` | Erro na transferência para fila |
-| `leadbox_transfer_success` | Transferência bem-sucedida |
-| `leadbox_assign_error` | Erro ao atribuir ticket |
-| `leadbox_get_queue_error` | Erro ao obter fila atual |
-| `leadbox_send_message_error` | Erro ao enviar mensagem via Leadbox |
 
 **Filas importantes:**
-- 537 → IA genérica
-- 544 → Billing (injeta prompt de cobrança)
-- 545 → Manutenção
+| ID | Nome | Tipo |
+|----|------|------|
+| 537 | IA Genérica | IA processa |
+| 544 | Billing | IA processa (prompt cobrança) |
+| 545 | Manutenção | IA processa (prompt manutenção) |
+| 453 | Atendimento | Humano (IA pausa) |
+| 454 | Financeiro | Humano (IA pausa) |
 
 ---
 
@@ -131,37 +133,24 @@ docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "leadbox_|\[
 
 ### Billing Pipeline
 
-**Prefixos:** `[BILLING JOB]`, `[BILLING CONTEXT]`, `[SYNC BILLING]`
+**Prefixo:** `[BILLING JOB]`
 
 ```bash
-docker service logs lazaro_lazaro-router --tail 1000 2>&1 | grep -iE "\[BILLING"
+pm2 logs lazaro-ia --lines 1000 --nostream | grep -iE "\[BILLING JOB\]"
 ```
-
-| Prefixo | Significado |
-|---------|-------------|
-| `[BILLING JOB]` | Job principal de cobrança (9h seg-sex) |
-| `[BILLING CONTEXT]` | Injeção de contexto de cobrança |
-| `[SYNC BILLING]` | Sincronização de dados Asaas |
-| `[RECONCILIAR PAGAMENTOS]` | Job de reconciliação (6h seg-sex) |
 
 ### Webhooks
 
-**Prefixos:** `[WEBHOOK]`, `[ASAAS WEBHOOK]`
+**Prefixos:** `[WEBHOOK]`, `[ASAAS WEBHOOK]`, `[LEADBOX HANDLER]`
 
 ```bash
-docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "\[WEBHOOK\]"
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "\[WEBHOOK\]|\[ASAAS WEBHOOK\]|\[LEADBOX HANDLER\]"
 ```
-
-| Prefixo | Significado |
-|---------|-------------|
-| `[WEBHOOK] Mensagem recebida` | Webhook UAZAPI processado |
-| `[ASAAS WEBHOOK]` | Webhook Asaas processado |
-| `[LEADBOX HANDLER]` | Webhook Leadbox processado |
 
 ### AI Tools
 
 ```bash
-docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "_error|tool_|TOOL"
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "buscar_cobrancas_error|transfer_exception|manut_corretiva_error"
 ```
 
 | Evento | Significado |
@@ -169,21 +158,21 @@ docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "_error|tool
 | `buscar_cobrancas_error` | Erro ao buscar cobranças |
 | `transfer_exception` | Exceção na transferência |
 | `manut_corretiva_error` | Erro em manutenção corretiva |
-| `timezone_fetch_error` | Erro ao detectar fuso horário |
-| `[AUDIT] Timeout logging tool` | Audit log demorou mais de 2s |
 
 ### Jobs Agendados
 
 ```bash
-docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "Adding job|Scheduler|JOB\]"
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "Adding job|Scheduler"
 ```
 
-| Job | Horário | Prefixo |
-|-----|---------|---------|
-| billing_reconciliation | 06:00 seg-sex | `[RECONCILIAR PAGAMENTOS]` |
-| billing_v2 | 09:00 seg-sex | `[BILLING JOB]` |
-| maintenance_notifier | 09:00 seg-sex (Cuiabá) | `[MAINTENANCE JOB]` |
-| calendar_confirmation | cada 30min | `[CONFIRMAR AGENDAMENTOS]` |
+| Job | Horário | ID no Scheduler |
+|-----|---------|-----------------|
+| billing_reconciliation | 06:00 seg-sex (São Paulo) | `billing_reconciliation` |
+| billing_charge | 09:00 seg-sex (São Paulo) | `billing_charge` |
+| maintenance_notifier | 09:00 seg-sex (Cuiabá) | `maintenance_notifier` |
+| follow_up | cada 5 minutos | `follow_up` |
+
+> **Nota:** Job `calendar_confirmation` está registrado mas inativo (nenhum agente com `google_calendar_enabled = true`).
 
 ---
 
@@ -263,13 +252,6 @@ FROM agent_audit_logs
 WHERE created_at > NOW() - INTERVAL '7 days'
 GROUP BY tool_name
 ORDER BY chamadas DESC;
-
--- Execuções de um lead específico
-SELECT tool_name, success, duration_ms, error_message, created_at
-FROM agent_audit_logs
-WHERE lead_id LIKE '5566%'  -- prefixo do telefone
-  AND created_at > NOW() - INTERVAL '1 day'
-ORDER BY created_at DESC;
 ```
 
 ### Follow-up history
@@ -315,10 +297,10 @@ ORDER BY bn.created_at DESC;
 
 ## 5. Checklist por Sintoma
 
-### ❌ Mensagem não chegou para o cliente
+### Mensagem não chegou para o cliente
 
 ```bash
-docker service logs lazaro_lazaro-router --tail 1000 2>&1 | grep -iE "uazapi_send|send_text"
+pm2 logs lazaro-ia --lines 1000 --nostream | grep -iE "uazapi_send|send_text"
 ```
 
 - [ ] Log mostra tentativa de envio?
@@ -327,89 +309,111 @@ docker service logs lazaro_lazaro-router --tail 1000 2>&1 | grep -iE "uazapi_sen
 - [ ] `UAZAPI_API_KEY` e `UAZAPI_BASE_URL` no .env?
 - [ ] Instância UAZAPI conectada?
 
-### ❌ Billing não disparou hoje
+### Billing não disparou hoje
 
 ```bash
-docker service logs lazaro_lazaro-router --tail 2000 2>&1 | grep -iE "\[BILLING JOB\]"
+pm2 logs lazaro-ia --lines 2000 --nostream | grep -iE "\[BILLING JOB\]"
 ```
 
 - [ ] Job aparece nos logs às 9h BRT?
 - [ ] `billing_notifications` tem registros de hoje?
 - [ ] É dia útil (seg–sex)?
 - [ ] Contrato não está cancelado/deletado?
-- [ ] `misfire_grace_time: 3600` configurado no scheduler?
 
-### ❌ Ana não está respondendo
+### Ana não está respondendo
 
 ```bash
-docker ps --format 'table {{.Names}}	{{.Status}}	{{.Ports}}'
+pm2 list
 curl -s https://lazaro.fazinzz.com/health
-docker service logs lazaro_lazaro-router --tail 100 2>&1 | grep -iE "error|traceback"
+pm2 logs lazaro-ia --lines 100 --nostream | grep -iE "error|traceback"
 ```
 
-- [ ] Serviço está `online`?
+- [ ] Serviço `lazaro-ia` está `online`?
 - [ ] Health check retorna OK?
 - [ ] Tem Traceback nos logs?
 - [ ] Webhook chegando? `grep -i "WEBHOOK.*recebida"`
 - [ ] `GOOGLE_API_KEY` (Gemini) no .env?
 
-### ❌ Tool falhou silenciosamente
+### Tool falhou silenciosamente
 
 ```bash
-docker service logs lazaro_lazaro-router --tail 1000 2>&1 | grep -iE "_error|_failed|tool.*fail"
+pm2 logs lazaro-ia --lines 1000 --nostream | grep -iE "buscar_cobrancas_error|transfer_exception"
 ```
 
 - [ ] Query `agent_audit_logs WHERE success = false`
 - [ ] Retorno da tool foi `None` ou string vazia?
-- [ ] API externa (Asaas/Calendar) estava fora?
-- [ ] Timeout de 2s do audit foi atingido?
+- [ ] API externa (Asaas/Leadbox) estava fora?
 
-### ❌ Prompt não injetado / agente sem contexto
-
-```bash
-docker service logs lazaro_lazaro-router --tail 500 2>&1 | grep -iE "\[BILLING CONTEXT\]|\[CONTEXT\]"
-```
-
-- [ ] Webhook Asaas chegou com `payment_id` válido?
-- [ ] Log mostra `[BILLING CONTEXT] Dados carregados`?
-- [ ] Lead está na fila 544 (billing) ou 545 (manutenção)?
-- [ ] Campo `context_prompts` na tabela `agents` preenchido?
-
-### ❌ Lead não transferido para humano
+### Lead não transferido para humano
 
 ```bash
-docker service logs lazaro_lazaro-router --tail 1000 2>&1 | grep -iE "transfer|leadbox_transfer"
+pm2 logs lazaro-ia --lines 1000 --nostream | grep -iE "leadbox_transfer|transfer_"
 ```
 
-- [ ] Queue ID correto? (verificar `[LEADBOX DISPATCH] PUT confirmacao`)
-- [ ] Query `dispatch_log WHERE notification_type = 'transfer'`
-- [ ] `LEADBOX_API_KEY` e `LEADBOX_BASE_URL` no .env?
+- [ ] Queue ID correto? (537=IA, 453=Atendimento, 454=Financeiro)
+- [ ] `leadbox_transfer_error` no log?
 - [ ] Leadbox habilitado no agente? `leadbox_enabled = true`
+- [ ] `handoff_triggers` configurado no agente?
+
+### IA não pausa quando lead vai para fila humana
+
+```bash
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "PAUSANDO|pause|IGNORADO|queue="
+```
+
+- [ ] Webhook `UpdateOnTicket` chegou? `grep "UpdateOnTicket"`
+- [ ] `queueId` extraído corretamente? `grep "queue="`
+- [ ] Log mostra `PAUSANDO`?
+- [ ] Redis pause foi setada? `grep "Redis pause SETADA"`
+- [ ] Próxima mensagem mostra `IGNORADO`?
+
+### IA não reativa quando lead volta para fila IA
+
+```bash
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "Fila IA detectada|Pausa removida|resetado"
+```
+
+- [ ] Webhook `UpdateOnTicket` com `queueId=537` chegou?
+- [ ] Log mostra `Fila IA detectada`?
+- [ ] Log mostra `Pausa removida`?
+- [ ] `current_state` voltou para `'ai'` no banco?
+
+### Ticket fechado mas lead não resetou
+
+```bash
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "FECHADO|FinishedTicket|closedAt|resetado"
+```
+
+- [ ] Webhook `FinishedTicket` ou `UpdateOnTicket` com `closedAt` chegou?
+- [ ] Log mostra `Ticket X FECHADO`?
+- [ ] Log mostra `lead X resetado para IA`?
+- [ ] `ticket_id` foi limpo no banco?
+- [ ] `tenant_id` no agente bate com payload? (ex: 123)
 
 ---
 
 ## 6. Comandos de Emergência
 
 ```bash
-# Reiniciar sem perder histórico
-docker compose -f /var/www/lazaro-real/docker-compose.yml restart
+# Reiniciar serviço IA
+pm2 restart lazaro-ia
 
-# Reiniciar com atualização de ambiente
-docker compose -f /var/www/lazaro-real/docker-compose.yml pull && docker compose up -d --force-recreate
+# Reiniciar todos os serviços
+pm2 restart all
 
 # Ver top 30 erros das últimas 24h
-docker service logs lazaro_lazaro-router --tail 5000 2>&1 | \
+pm2 logs lazaro-ia --lines 5000 --nostream | \
   grep "$(date '+%Y-%m-%d')" | \
   grep -iE "error|exception|traceback" | tail -30
 
 # Checar memória e CPU
-docker stats $(docker ps -q -f name=lazaro_lazaro-router) --no-stream
+pm2 monit
 
 # Status detalhado
-docker service inspect lazaro_lazaro-router
+pm2 describe lazaro-ia
 
-# Forçar rebuild se código mudou
-cd /var/www/lazaro-real && docker compose -f /var/www/lazaro-real/docker-compose.yml restart
+# Validar sintaxe Python antes de restart
+python3 -m py_compile apps/ia/app/main.py && echo "OK" || echo "ERRO DE SINTAXE"
 ```
 
 ---
@@ -418,7 +422,7 @@ cd /var/www/lazaro-real && docker compose -f /var/www/lazaro-real/docker-compose
 
 ```bash
 # Verificar se todas estão presentes (sem mostrar valores)
-cat /var/www/lazaro-real/.env | grep -oP '^[A-Z_]+' | sort
+cat /var/www/lazaro-real/apps/ia/.env | grep -oP '^[A-Z_]+' | sort
 ```
 
 **Obrigatórias por integração:**
@@ -428,9 +432,9 @@ cat /var/www/lazaro-real/.env | grep -oP '^[A-Z_]+' | sort
 | UAZAPI | `UAZAPI_BASE_URL`, `UAZAPI_API_KEY` |
 | Supabase | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` |
 | Gemini | `GOOGLE_API_KEY` |
-| Calendar | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
-| Leadbox | `LEADBOX_BASE_URL`, `LEADBOX_API_KEY`, `LEADBOX_API_UUID` |
 | Redis | `REDIS_URL` |
+
+> **Nota:** Configurações do Leadbox vêm do banco de dados (tabela `agents`, campo `handoff_triggers`), não de variáveis de ambiente.
 
 ---
 
@@ -442,15 +446,15 @@ cat /var/www/lazaro-real/.env | grep -oP '^[A-Z_]+' | sort
 | `uazapi_client_initialized` | info | `integration`, `base_url` |
 | `uazapi_send_text_failed` | error | `integration`, `phone`, `error` |
 | `uazapi_send_media_failed` | error | `integration`, `phone`, `media_type`, `error` |
+| `uazapi_send_audio_failed` | error | `integration`, `phone`, `ptt`, `error` |
 | `uazapi_request_retry` | warning | `integration`, `method`, `endpoint`, `status_code`, `attempt` |
 | `uazapi_request_failed` | error | `integration`, `method`, `endpoint`, `status_code` |
+| `uazapi_get_status_failed` | error | `integration`, `error` |
 
 ### Asaas (Pagamentos)
 | Evento | Nível | Campos |
 |--------|-------|--------|
-| `asaas_client_initialized` | info | `integration`, `base_url` |
 | `asaas_payment_created` | info | `integration`, `payment_id`, `customer_id`, `value` |
-| `asaas_payment_cancelled` | info | `integration`, `payment_id` |
 | `asaas_rate_limited` | warning | `integration`, `wait_time_seconds`, `endpoint` |
 | `asaas_request_failed` | error | `integration`, `method`, `endpoint`, `status_code` |
 
@@ -460,14 +464,21 @@ cat /var/www/lazaro-real/.env | grep -oP '^[A-Z_]+' | sort
 | `leadbox_transfer_success` | info | `ticket_id`, `queue_id`, `user_id` |
 | `leadbox_transfer_error` | error | `error` |
 | `leadbox_assign_error` | error | `error` |
-| `leadbox_get_queue_error` | error | `error` |
 
-### Calendar
-| Evento | Nível | Campos |
-|--------|-------|--------|
-| `calendar_create_event_error` | error | `error` |
-| `calendar_oauth_error` | error | `error` |
-| `calendar_list_events_error` | error | `error` |
+**Logs legados (prefixo):**
+| Prefixo | Nível | Contexto |
+|---------|-------|----------|
+| `[LEADBOX WEBHOOK] Evento recebido` | info | Webhook chegou |
+| `[LEADBOX HANDLER] Lead X \| ticket=Y` | info | Dados do webhook extraídos |
+| `[LEADBOX HANDLER] Fila IA detectada` | info | Lead em fila IA (537/544/545) |
+| `[LEADBOX HANDLER] ... PAUSANDO` | info | Lead movido para fila humana |
+| `[LEADBOX HANDLER] Redis pause SETADA` | info | Pausa ativada no Redis |
+| `[LEADBOX HANDLER] Pausa Redis removida` | info | Pausa desativada no Redis |
+| `[LEADBOX HANDLER] Ticket X FECHADO` | info | Ticket fechado no Leadbox |
+| `[LEADBOX HANDLER] ... resetado para IA` | info | Lead pronto para próximo atendimento |
+| `[LEADBOX] Lead X IGNORADO` | warning | Mensagem ignorada (lead com humano) |
+| `[LEADBOX HANDLER] Core update OK` | info | Supabase: estado atualizado |
+| `[LEADBOX HANDLER] Queue update OK` | info | Supabase: fila atualizada |
 
 ### AI Tools
 | Evento | Nível | Campos |
@@ -475,19 +486,36 @@ cat /var/www/lazaro-real/.env | grep -oP '^[A-Z_]+' | sort
 | `buscar_cobrancas_error` | error | `error`, `exc_info` |
 | `transfer_exception` | error | `error`, `exc_info` |
 | `manut_corretiva_error` | warning | `error` |
-| `timezone_fetch_error` | warning | `error` |
 
 ---
 
-## 9. Prefixos Legados (ainda em uso)
+## 9. Prefixos de Log Legados (em uso)
 
-| Prefixo | Quantidade | Contexto |
-|---------|------------|----------|
-| `[BILLING JOB]` | 65 | Job principal de cobrança |
-| `[ASAAS WEBHOOK]` | 49 | Processamento de webhooks Asaas |
-| `[CONFIRMAR AGENDAMENTOS]` | 39 | Job de confirmação de agenda |
-| `[MAINTENANCE]` | 23 | Jobs de manutenção |
-| `[LEADBOX HANDLER]` | 23 | Processamento de webhooks Leadbox |
-| `[FOLLOW UP JOB]` | 21 | Job de follow-up de leads |
-| `[BILLING CONTEXT]` | 8 | Injeção de contexto de cobrança |
-| `[HUMAN TAKEOVER]` | 11 | Transferência para humano |
+| Prefixo | Contexto |
+|---------|----------|
+| `[BILLING JOB]` | Job principal de cobrança |
+| `[ASAAS WEBHOOK]` | Processamento de webhooks Asaas |
+| `[LEADBOX WEBHOOK]` | Webhook Leadbox recebido |
+| `[LEADBOX HANDLER]` | Processamento de eventos Leadbox |
+| `[LEADBOX]` | Decisões de roteamento (IGNORADO, etc) |
+| `[MSG RECEBIDA]` | Mensagem do WhatsApp recebida |
+| `[BUFFER]` | Buffer de mensagens (agregação) |
+| `[PROCESS]` | Processamento de mensagem pela IA |
+| `[GEMINI]` | Interação com API Gemini |
+| `[UAZAPI]` | Envio de mensagem via UAZAPI |
+| `[TOOL START]` / `[TOOL END]` | Execução de tools da IA |
+
+---
+
+## 10. Arquitetura de Serviços
+
+| Serviço PM2 | Porta | Diretório | Função |
+|-------------|-------|-----------|--------|
+| `lazaro-ia` | 3115 | `/var/www/lazaro-real/apps/ia` | Webhooks, IA, Jobs |
+| `agente-ia` | 3005 | `/var/www/phant/agente-ia` | Legado (em migração) |
+
+**Traefik roteia:**
+- `lazaro.fazinzz.com/webhooks/*` → `lazaro-ia` (porta 3115)
+- `lazaro.fazinzz.com/api/*` → `lazaro-ia` (porta 3115)
+
+> Ao debugar, sempre verifique qual serviço está recebendo o tráfego com `pm2 logs <serviço>`.
