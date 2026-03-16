@@ -50,9 +50,12 @@ Estes checkpoints bloqueiam o avanço. Não prossiga sem completá-los.
 [ ] Li o CLAUDE.md completo?
 [ ] Entendi o problema descrito em português?
 [ ] Propus o plano de solução em texto (sem tocar em código)?
+[ ] Verifiquei se módulos/classes do plano JÁ EXISTEM no código? ← CRÍTICO
+[ ] Se existem, validei que a interface proposta é COMPATÍVEL? ← CRÍTICO
 [ ] O humano aprovou o plano? ← AGUARDE RESPOSTA
 ```
 → Se o humano não aprovou: **PARE. Não escreva nada.**
+→ Se não validou existência/interface: **PARE. Valide primeiro.**
 
 Formato obrigatório do plano:
 ```
@@ -61,6 +64,7 @@ Problema: [o que está acontecendo]
 Causa provável: [onde e por que acontece]
 Solução proposta: [o que será alterado e como]
 Arquivo(s) afetado(s): [lista]
+Validação de código existente: [módulos verificados e compatibilidade]
 Teste que será criado: [descrição do cenário]
 
 Aguardando aprovação para prosseguir.
@@ -324,6 +328,69 @@ def test_job_nao_executa_fora_do_horario():
 
 ---
 
+## Regra de Validação de Plano (CRÍTICO)
+
+> Erro comum: criar testes baseados em especificação (docs/tst.md) sem validar se o código real existe e qual sua interface.
+
+### Antes de criar testes para um plano:
+
+1. **Verificar existência do módulo**
+   ```bash
+   # O módulo já existe?
+   ls -la apps/ia/app/services/dispatch_logger.py
+
+   # O import funciona?
+   python3 -c "from app.services.dispatch_logger import DispatchLogger; print('OK')"
+   ```
+
+2. **Verificar interface real** (se módulo existe)
+   ```bash
+   # Ver assinatura do construtor e métodos
+   python3 -c "
+   from app.services.dispatch_logger import DispatchLogger
+   import inspect
+   print('__init__:', inspect.signature(DispatchLogger.__init__))
+   print('Métodos:', [m for m in dir(DispatchLogger) if not m.startswith('_')])
+   "
+   ```
+
+3. **Comparar com especificação**
+   - Construtor especificado vs. real
+   - Path do import especificado vs. real
+   - Métodos existentes vs. novos a adicionar
+
+### Exemplo de erro evitado:
+
+| Especificação (tst.md) | Código Real | Correção no Teste |
+|---|---|---|
+| `from app.domain.billing.services.dispatch_logger` | `from app.services.dispatch_logger` | Usar path real |
+| `DispatchLogger(supabase)` | `DispatchLogger()` (lazy load) | Mockar property, não construtor |
+| Método `log_deferred` existe | Método não existe | Teste DEVE falhar (TDD) |
+
+### Checklist de Validação
+
+```
+[ ] Módulo existe? Se SIM → ler código real
+[ ] Import path do plano == import path real?
+[ ] Construtor do plano == construtor real?
+[ ] Métodos existentes no código já?
+[ ] Se existem → interface compatível com plano?
+[ ] Se não existem → testes usam pytest.importorskip()?
+```
+
+### Padrão para TDD com Módulos Inexistentes
+
+```python
+# No topo do arquivo de teste (NUNCA dentro de métodos)
+module = pytest.importorskip(
+    "app.path.to.module",
+    reason="Módulo ainda não implementado"
+)
+FunctionToTest = module.function_to_test
+```
+
+---
+
 ## Estrutura de Commit
 
 ```
@@ -341,23 +408,35 @@ Teste: test_arquivo.py N/N passando
 
 ## Infraestrutura de Processos e Roteamento
 
-### Dois Processos — Nunca Confunda
+### Arquitetura Atual (2026-03-16)
 
-| Processo PM2 | Porta | Diretório | Recebe Webhooks? |
-|---|---|---|---|
-| `agente-ia` | 3005 | `/var/www/phant/agente-ia` | ❌ NÃO |
-| `lazaro-ia` | 3115 | `/var/www/lazaro-real/apps/ia` | ✅ SIM |
+| Serviço | Tipo | Porta | Diretório | Função |
+|---|---|---|---|---|
+| `lazaro-ia` | PM2 | 3115 | `/var/www/lazaro-real/apps/ia` | Backend Python (API, Webhooks, Jobs, IA) |
+| `agnes-agent` | PM2 | 3002 | `/var/www/phant/agnes-agent` | Fallback TS (asaas, manutencoes, athena) |
+| `nginx` | systemd | 3001 | `/var/www/lazaro-real/apps/web/dist` | Frontend estático |
 
-**O Traefik roteia `lazaro.fazinzz.com/webhooks/*` → `lazaro-ia` (porta 3115).**
+**Traefik roteia:**
+- `lazaro.fazinzz.com/*` → nginx (3001) → arquivos estáticos
+- `lazaro.fazinzz.com/api/*` → lazaro-ia (3115)
+- `lazaro.fazinzz.com/webhooks/*` → lazaro-ia (3115)
 
-> ⚠️ Debugar o `agente-ia` quando o problema é no `lazaro-ia` é perda de tempo garantida.
+**Proxy interno (lazaro-ia → agnes-agent):**
+- `/api/dashboard/asaas/*` → agnes-agent (3002)
+- `/api/dashboard/manutencoes/*` → agnes-agent (3002)
+- `/api/athena/*` → agnes-agent (3002)
+
+> ⚠️ Para endpoints com proxy, verifique AMBOS os logs: `lazaro-ia` e `agnes-agent`
 
 ```bash
-# webhooks Leadbox → sempre este:
+# Webhooks e API Python:
 pm2 logs lazaro-ia --lines 50 --nostream
 
-# jobs internos (billing, follow-up) → este:
-pm2 logs agente-ia --lines 50 --nostream
+# Endpoints com proxy (asaas, manutencoes, athena):
+pm2 logs agnes-agent --lines 50 --nostream
+
+# Frontend:
+tail -f /var/log/nginx/lazaro.access.log
 ```
 
 ---
@@ -623,10 +702,10 @@ UpdateOnTicket (queue=537) → Redis pause LIMPA → Supabase: current_state=ai
 ### Verificar Estado de um Lead no Banco
 
 ```bash
-cd /var/www/phant/agente-ia && venv/bin/python3 -c "
-from app.services.supabase import get_supabase_service
-svc = get_supabase_service()
-r = svc.client.table('LeadboxCRM_Ana_14e6e5ce') \
+cd /var/www/lazaro-real/apps/ia && source venv/bin/activate && python3 -c "
+from app.integrations.supabase.client import get_supabase_client
+client = get_supabase_client()
+r = client.table('LeadboxCRM_Ana_14e6e5ce') \
     .select('remotejid,current_queue_id,current_state,ticket_id,Atendimento_Finalizado,handoff_at') \
     .eq('remotejid', 'PHONE@s.whatsapp.net').execute()
 print(r.data)
@@ -637,12 +716,12 @@ Substitua `PHONE` pelo número sem `+` (ex: `556697194084`).
 ### Verificar Tenant e Filas no Agente
 
 ```bash
-cd /var/www/phant/agente-ia && venv/bin/python3 -c "
-from app.services.supabase import get_supabase_service
-svc = get_supabase_service()
-r = svc.client.table('agents').select('name,handoff_triggers').eq('active', True).execute()
+cd /var/www/lazaro-real/apps/ia && source venv/bin/activate && python3 -c "
+from app.integrations.supabase.client import get_supabase_client
+client = get_supabase_client()
+r = client.table('agents').select('name,handoff_triggers').eq('active', True).execute()
 for a in r.data:
-    ht = a['handoff_triggers']
+    ht = a['handoff_triggers'] or {}
     print(a['name'], '| tenant:', ht.get('tenant_id'), '| queue_ia:', ht.get('queue_ia'))
 "
 ```
@@ -700,7 +779,7 @@ chmod 600 .env
 - Deixar `.env` com permissão 644
 - Hardcodar chave de API no código
 - Rodar `pm2 restart` sem validar sintaxe antes
-- **Debugar `agente-ia` quando o problema está no `lazaro-ia`**
+- **Debugar o serviço errado** — verifique qual serviço processa o endpoint (lazaro-ia vs agnes-agent)
 - **Assumir que o log "FECHADO" significa que o Supabase foi atualizado — sempre verificar**
 - **Assumir que `[TOOL START]` sem `[TOOL END]` é normal — sempre é um problema**
 - **Assumir que a IA transferiu porque ela disse que ia transferir — verificar no banco**

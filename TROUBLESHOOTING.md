@@ -1,7 +1,7 @@
 # TROUBLESHOOTING — Lazaro-Real
 
-> **Última atualização:** 2026-03-15
-> **Serviços PM2:** `lazaro-ia` (porta 3115), `agente-ia` (porta 3005)
+> **Última atualização:** 2026-03-16
+> **Serviços:** `lazaro-ia` (PM2, porta 3115), `agnes-agent` (PM2, porta 3002), `nginx` (systemd, porta 3001)
 > **Logs:** `pm2 logs lazaro-ia --lines 200 --nostream`
 
 ---
@@ -545,13 +545,23 @@ cat /var/www/lazaro-real/apps/ia/.env | grep -oP '^[A-Z_]+' | sort
 
 ## 10. Arquitetura de Serviços
 
-| Serviço PM2 | Porta | Diretório | Função |
-|-------------|-------|-----------|--------|
-| `lazaro-ia` | 3115 | `/var/www/lazaro-real/apps/ia` | Webhooks, IA, Jobs |
-| `agente-ia` | 3005 | `/var/www/phant/agente-ia` | Legado (em migração) |
+| Serviço | Tipo | Porta | Diretório | Função |
+|---------|------|-------|-----------|--------|
+| `lazaro-ia` | PM2 | 3115 | `/var/www/lazaro-real/apps/ia` | Backend Python: Webhooks, IA, Jobs, API |
+| `agnes-agent` | PM2 | 3002 | `/var/www/phant/agnes-agent` | Fallback TypeScript (asaas, manutencoes, athena) |
+| `nginx` | systemd | 3001 | `/var/www/lazaro-real/apps/web/dist` | Frontend estático |
 
 **Traefik roteia:**
-- `lazaro.fazinzz.com/webhooks/*` → `lazaro-ia` (porta 3115)
-- `lazaro.fazinzz.com/api/*` → `lazaro-ia` (porta 3115)
+- `lazaro.fazinzz.com/*` → nginx (porta 3001) → arquivos estáticos
+- `lazaro.fazinzz.com/api/*` → lazaro-ia (porta 3115) → Python
+- `lazaro.fazinzz.com/webhooks/*` → lazaro-ia (porta 3115)
 
-> Ao debugar, sempre verifique qual serviço está recebendo o tráfego com `pm2 logs <serviço>`.
+**Proxy interno (lazaro-ia → agnes-agent):**
+- `/api/dashboard/asaas/*` → proxy → agnes-agent (3002)
+- `/api/dashboard/manutencoes/*` → proxy → agnes-agent (3002)
+- `/api/athena/*` → proxy → agnes-agent (3002)
+
+> Ao debugar, verifique qual serviço está processando:
+> - Webhooks/API Python: `pm2 logs lazaro-ia`
+> - Asaas/Manutencoes/Athena: `pm2 logs agnes-agent`
+> - Frontend: `tail -f /var/log/nginx/lazaro.access.log`

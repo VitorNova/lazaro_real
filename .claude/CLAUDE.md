@@ -6,11 +6,11 @@
 ## Stack
 
 - **IA** (`apps/ia/`): Python 3.11 + FastAPI + APScheduler + Gemini
-- **API** (`apps/api/`): TypeScript + Fastify
-- **Frontend** (`apps/web/`): React + Vite + Tailwind CSS v4
+- **API** (`apps/api/`): TypeScript + Fastify (deprecado, substituído por lazaro-ia)
+- **Frontend** (`apps/web/dist/`): HTML/JS estático (vanilla, servido via nginx)
 - **DB**: Supabase (PostgreSQL) + Redis (cache/sessões)
-- **Integrações**: UAZAPI (WhatsApp), Asaas (pagamentos)
-- **Deploy**: Hetzner VPS, Docker, PM2
+- **Integrações**: UAZAPI (WhatsApp), Asaas (pagamentos), Leadbox (CRM)
+- **Deploy**: Hetzner VPS, Docker, PM2, nginx
 
 ---
 
@@ -170,6 +170,25 @@ lazaro-real/
 
 ---
 
+## APIs Externas
+
+### Asaas (Pagamentos)
+- Documentação via MCP: https://docs.asaas.com/mcp
+- NUNCA invente endpoints do Asaas — sempre consulte o MCP antes de implementar
+- Versão obrigatória: /v3 em todas as URLs
+- Header obrigatório: User-Agent: "lazaro-ia"
+- Arquivo de referência do que o projeto usa: docs/apis/asaas.md
+
+### UAZAPI (WhatsApp)
+- Documentação local: docs/apis/uazapi.md
+- Consulte este arquivo antes de implementar qualquer chamada UAZAPI
+- Sempre enviar `readmessages: true` nos envios para marcar msgs anteriores como lidas
+- `/message/markread` exige id como array: `{ "id": ["ID1"] }` — nunca string
+- Verificar `/instance/status` antes de processar se houver erro de envio
+- Para novos contatos usar `/chat/check` antes do primeiro envio
+
+---
+
 ## ⚠️ Tabelas Dinâmicas por Agente (CRÍTICO)
 
 Cada agente tem tabelas próprias com nomes dinâmicos:
@@ -232,33 +251,39 @@ from app.config import settings
 
 ```bash
 # Logs em tempo real
-pm2 logs agente-ia | grep -iE "PROCESS|WEBHOOK|LEADBOX"
+pm2 logs lazaro-ia | grep -iE "PROCESS|WEBHOOK|LEADBOX"
 
 # Últimas 200 linhas
-pm2 logs agente-ia --lines 200 --nostream
-pm2 logs lazaro-api --lines 200 --nostream
+pm2 logs lazaro-ia --lines 200 --nostream
+pm2 logs agnes-agent --lines 200 --nostream  # endpoints com proxy
 
 # Restart
-pm2 restart agente-ia
-pm2 restart lazaro-api
+pm2 restart lazaro-ia
+systemctl reload nginx  # frontend
 
 # Validar sintaxe Python
 python3 -m py_compile apps/ia/app/<arquivo>.py
 
 # Logs por domínio
-pm2 logs agente-ia --lines 200 --nostream | grep -i "billing\|charge"
-pm2 logs agente-ia --lines 200 --nostream | grep -i "webhook\|uazapi"
+pm2 logs lazaro-ia --lines 200 --nostream | grep -i "billing\|charge"
+pm2 logs lazaro-ia --lines 200 --nostream | grep -i "webhook\|uazapi"
+pm2 logs agnes-agent --lines 200 --nostream | grep -i "asaas\|manutencoes"  # proxy
 ```
 
 ---
 
-## Infraestrutura de Produção
+## Infraestrutura de Produção (2026-03-16)
 
-| Path | Serviço | Porta |
-|---|---|---|
-| `/var/www/lazaro-v2/` | Código fonte (este repo) | — |
-| `/var/www/phant/agente-ia/` | Produção Python | 3005 |
-| `/var/www/phant/agnes-agent/` | Produção TypeScript | 3000 |
+| Serviço | Tipo | Porta | Path/Função |
+|---|---|---|---|
+| `lazaro-ia` | PM2 | 3115 | `/var/www/lazaro-real/apps/ia` — Backend Python (API, Webhooks, Jobs, IA) |
+| `agnes-agent` | PM2 | 3002 | `/var/www/phant/agnes-agent` — Fallback TS (asaas, manutencoes, athena) |
+| `nginx` | systemd | 3001 | `/var/www/lazaro-real/apps/web/dist` — Frontend estático |
+
+**Traefik:** `lazaro.fazinzz.com`
+- `/*` → nginx (3001)
+- `/api/*` → lazaro-ia (3115)
+- `/webhooks/*` → lazaro-ia (3115)
 
 ---
 
