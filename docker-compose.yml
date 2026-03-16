@@ -1,29 +1,7 @@
 # Lazaro V2 - Docker Compose
-# Stack completa (Web + API + IA + Redis)
+# Stack: API + IA + Redis (Frontend via PM2 em /var/www/lazaro)
 
 services:
-  # ==========================================================================
-  # LAZARO WEB - Frontend React/Vite
-  # ==========================================================================
-  lazaro-web:
-    build:
-      context: ./apps/web
-      dockerfile: Dockerfile
-    container_name: lazaro-web-v2
-    restart: unless-stopped
-    ports:
-      - "3100:80"  # Host:Container (3100 para evitar conflito)
-    depends_on:
-      - lazaro-api
-    networks:
-      - lazaro-network
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-
   # ==========================================================================
   # LAZARO API - Backend Fastify/TypeScript
   # ==========================================================================
