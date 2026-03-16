@@ -131,8 +131,16 @@ async def handle_asaas_event(
 
     elif event == "SUBSCRIPTION_UPDATED" and subscription:
         await sincronizar_contrato(supabase, subscription, effective_agent_id)
+        if background_tasks:
+            background_tasks.add_task(
+                processar_subscription_created_background,
+                subscription_id=subscription.get("id"),
+                customer_id=subscription.get("customer"),
+                agent_id=effective_agent_id,
+                force_reprocess=True,
+            )
         logger.info(
-            "[WEBHOOK_HANDLER] SUBSCRIPTION_UPDATED sincronizado: %s",
+            "[WEBHOOK_HANDLER] SUBSCRIPTION_UPDATED sincronizado e PDF agendado: %s",
             subscription.get("id"),
         )
         return True
