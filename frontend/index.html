@@ -7771,12 +7771,6 @@
                 </svg>
                 <span>Leads</span>
             </a>
-            <a href="#" class="mobile-nav-item" data-mobile-nav="conversas" onclick="mobileNavTo('conversas'); return false;">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
-                </svg>
-                <span>Chat</span>
-            </a>
             <a href="#" class="mobile-nav-item" data-mobile-nav="mais" onclick="toggleFabMenu(); return false;">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h16M4 18h16"/>
@@ -8657,32 +8651,6 @@
         </section>
     </div>
 
-    <!-- ==================== CONVERSAS PAGE ==================== -->
-    <div data-page="conversas" style="display:none;" aria-hidden="true">
-        <div class="conversas-layout">
-            <!-- Sidebar: lista de conversas -->
-            <div class="conversas-sidebar">
-                <div class="conversas-sidebar-header">
-                    <h2>Conversas</h2>
-                    <div class="conversas-count" id="conversasCount"></div>
-                </div>
-                <div class="conversas-search">
-                    <input type="text" id="conversasSearchInput" placeholder="Buscar por nome ou telefone..." oninput="filterConversasList()">
-                </div>
-                <div class="conversas-list" id="conversasList">
-                    <div class="conversas-loading">Carregando conversas...</div>
-                </div>
-            </div>
-            <!-- Area principal: chat -->
-            <div class="conversas-chat" id="conversasChat">
-                <div class="chat-placeholder" id="chatPlaceholder">
-                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                    <p>Selecione uma conversa</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- ==================== CRIAR AGENTE PAGE ==================== -->
     <div data-page="criar" style="display:none;" aria-hidden="true">
         <!-- ESCOLHA DO AGENTE -->
@@ -9416,7 +9384,6 @@ REGRAS:
             'criar': 'Novo Agente',
             'criar-agente': 'Novo Agente',
             'config': 'Configurações',
-            'conversas': 'Conversas',
             'campanhas': 'Campanhas'
         };
 
@@ -9435,7 +9402,6 @@ REGRAS:
                 'leads': 'leads',
                 'athena': 'athena',
                 'criar': 'criar-agente',
-                'conversas': 'conversas',
                 'config': 'config'
             };
             var targetPage = pageMap[page] || page;
@@ -9487,8 +9453,6 @@ REGRAS:
                 if (typeof loadAgents === 'function') loadAgents();
             } else if (targetPage === 'leads') {
                 if (typeof initPipeline2 === 'function') initPipeline2();
-            } else if (targetPage === 'conversas') {
-                if (typeof loadConversations === 'function') loadConversations();
             } else if (targetPage === 'criar-agente') {
                 if (typeof goWizardStep === 'function') goWizardStep(1);
                 if (typeof updateWizardDots === 'function') updateWizardDots();
@@ -9556,7 +9520,6 @@ REGRAS:
                 'dashboard': 'dashboard',
                 'agentes': 'agentes',
                 'leads': 'leads',
-                'conversas': 'conversas',
                 'athena': 'athena',
                 'criar-agente': 'criar',
                 'config': 'config'
@@ -9583,10 +9546,6 @@ REGRAS:
             } else if (hash === 'leads') {
                 if (typeof initPipeline2 === 'function') {
                     initPipeline2();
-                }
-            } else if (hash === 'conversas') {
-                if (typeof loadConversations === 'function') {
-                    loadConversations();
                 }
             }
         }
@@ -9677,10 +9636,6 @@ REGRAS:
                     updateWizardDots();
                     showAgentPicker();
                 }
-                // Load conversations when entering Conversas page
-                if (page === 'conversas') {
-                    if (typeof loadConversations === 'function') loadConversations();
-                }
                 // Load leads pipeline when entering Leads page
                 if (page === 'leads') {
                     if (typeof initPipeline2 === 'function') initPipeline2();
@@ -9699,7 +9654,7 @@ REGRAS:
         function handleHashNavigation() {
             var hash = window.location.hash.replace('#', '') || 'dashboard';
             // Validar se a pagina existe
-            var validPages = ['dashboard', 'agentes', 'leads', 'athena', 'criar', 'config', 'conversas', 'campanhas'];
+            var validPages = ['dashboard', 'agentes', 'leads', 'athena', 'criar', 'config', 'campanhas'];
             if (validPages.indexOf(hash) === -1) {
                 hash = 'dashboard';
             }
@@ -14056,7 +14011,6 @@ REGRAS:
     });
     </script>
 
-    <script src="/conversas.js"></script>
 
     </div><!-- /app-content -->
 
@@ -14132,7 +14086,7 @@ REGRAS:
                     }
                 });
                 if (isLazaro) {
-                    document.querySelectorAll('[data-nav="conversas"], [data-nav="config"]').forEach(function(el) { el.style.display = 'none'; });
+                    document.querySelectorAll('[data-nav="config"]').forEach(function(el) { el.style.display = 'none'; });
                     // Esconder aba Campanhas para Lazaro
                     document.querySelectorAll('a[href="/campanhas-diana.html"]').forEach(function(el) {
                         el.style.display = 'none';
