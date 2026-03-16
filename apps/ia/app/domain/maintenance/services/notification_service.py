@@ -18,6 +18,7 @@ from dateutil.relativedelta import relativedelta
 
 from app.core.utils.dias_uteis import format_date_br, get_today_brasilia
 from app.core.utils.phone import find_message_record_by_phone
+from app.domain.leads.services.lead_availability import check_lead_availability
 from app.services.dispatch_logger import get_dispatch_logger
 from app.services.leadbox_push import QUEUE_MAINTENANCE, leadbox_push_silent
 from app.services.supabase import get_supabase_service
@@ -230,6 +231,7 @@ async def mark_notification_sent(
         )
 
         if lead_record:
+            # Lead existe - UPDATE no historico existente
             lead_id = lead_record["id"]
             raw_history = lead_record.get("conversation_history")
 
@@ -258,11 +260,57 @@ async def mark_notification_sent(
                 f"(lead {str(lead_id)[:8]}..., context=manutencao_preventiva)"
             )
         else:
+            # Lead NAO existe - INSERT novo registro com contexto
+            # Bug fix 2026-03-16: Criar registro quando lead nao existe
+            # Estrutura: msg fake "ola" (user) + msg manutencao (model)
+            # Regra Gemini: primeira mensagem deve ser role="user"
             masked_phone = customer_phone[:8] + "***" if customer_phone else "N/A"
-            logger.warning(
+            logger.info(
                 f"[MAINTENANCE] Lead nao encontrado para {masked_phone} | "
-                f"customer_id={customer_id} | contexto NAO salvo"
+                f"customer_id={customer_id} | CRIANDO novo registro"
             )
+
+            # Converter telefone para remotejid (formato WhatsApp)
+            cleaned_phone = re.sub(r"\D", "", customer_phone)
+            remotejid = f"{cleaned_phone}@s.whatsapp.net"
+
+            # Construir conversation_history com mensagem fake + mensagem real
+            # Regra Gemini: primeira mensagem DEVE ser role="user"
+            initial_messages = [
+                {
+                    "role": "user",
+                    "parts": [{"text": "ola"}],
+                    "timestamp": now_iso,
+                    "context": "manutencao_preventiva",
+                },
+                {
+                    "role": "model",
+                    "parts": [{"text": message_sent}],
+                    "timestamp": now_iso,
+                    "context": "manutencao_preventiva",
+                    "contract_id": contract_id,
+                },
+            ]
+
+            new_record = {
+                "remotejid": remotejid,
+                "conversation_history": {"messages": initial_messages},
+                "creat": now_iso,
+                "Msg_model": now_iso,
+            }
+
+            result = supabase.client.table(table_name).insert(new_record).execute()
+
+            if result.data:
+                new_id = result.data[0].get("id", "unknown")
+                logger.info(
+                    f"[MAINTENANCE] Novo registro criado: {str(new_id)[:8]}... | "
+                    f"context=manutencao_preventiva | contract_id={contract_id[:8]}..."
+                )
+            else:
+                logger.error(
+                    f"[MAINTENANCE] Falha ao criar registro para {masked_phone}"
+                )
 
     except Exception as e:
         logger.warning(f"[MAINTENANCE] Erro ao salvar no conversation_history: {e}")
@@ -399,6 +447,38 @@ async def process_maintenance_notifications(
             btus=btus,
             endereco=endereco,
         )
+
+        # Verificar disponibilidade ANTES de disparar
+        available, reason = await check_lead_availability(
+            agent=agent,
+            phone=phone,
+            agent_id=agent_id,
+        )
+
+        if not available:
+            logger.info({
+                "event": "maintenance_deferred",
+                "contract_id": contract_id,
+                "reason": reason,
+            })
+
+            dispatch_logger = get_dispatch_logger()
+            await dispatch_logger.log_deferred(
+                phone=phone,
+                job_type="maintenance",
+                reason=reason,
+                context={
+                    "contract_id": contract_id,
+                    "customer_name": customer_name,
+                    "notification_type": "d7",
+                    "message": message,
+                    "proxima_manutencao": proxima_manutencao.isoformat(),
+                },
+                reference_id=contract_id,
+            )
+
+            stats["skipped"] += 1
+            continue
 
         try:
             signed = sign_message(message, agent_name)
