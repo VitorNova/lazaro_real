@@ -414,7 +414,7 @@ Teste: test_arquivo.py N/N passando
 |---|---|---|---|---|
 | `lazaro-ia` | PM2 | 3115 | `/var/www/lazaro-real/apps/ia` | Backend Python (API, Webhooks, Jobs, IA) |
 | `agnes-agent` | PM2 | 3002 | `/var/www/phant/agnes-agent` | Fallback TS (asaas, manutencoes, athena) |
-| `nginx` | systemd | 3001 | `/var/www/lazaro-real/apps/web/dist` | Frontend estático |
+| `nginx` | systemd | 3001 | `/var/www/lazaro-real/frontend` | Frontend estático (monolito vanilla JS) |
 
 **Traefik roteia:**
 - `lazaro.fazinzz.com/*` → nginx (3001) → arquivos estáticos

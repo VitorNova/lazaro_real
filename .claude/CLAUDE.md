@@ -7,7 +7,7 @@
 
 - **IA** (`apps/ia/`): Python 3.11 + FastAPI + APScheduler + Gemini
 - **API** (`apps/api/`): TypeScript + Fastify (deprecado, substituído por lazaro-ia)
-- **Frontend** (`apps/web/dist/`): HTML/JS estático (vanilla, servido via nginx)
+- **Frontend** (`frontend/`): Monolito vanilla JS (index.html 846KB, servido via nginx)
 - **DB**: Supabase (PostgreSQL) + Redis (cache/sessões)
 - **Integrações**: UAZAPI (WhatsApp), Asaas (pagamentos), Leadbox (CRM)
 - **Deploy**: Hetzner VPS, Docker, PM2, nginx
@@ -80,16 +80,10 @@ lazaro-real/
 │   │       ├── core/
 │   │       └── utils/
 │   │
-│   └── web/                         # Frontend React
-│       └── src/
-│           ├── pages/
-│           ├── components/
-│           │   ├── ui/
-│           │   └── conversations/
-│           ├── services/
-│           ├── stores/
-│           ├── types/
-│           └── lib/
+├── frontend/                        # Frontend Vanilla JS (monolito)
+│   └── index.html                   # 846KB - HTML/CSS/JS inline (19.144 linhas)
+│                                    # Roteamento: hash-based SPA (#dashboard, #agentes, etc)
+│                                    # Assets legados: /var/www/phant/crm/ (conversas.js, icons/)
 │
 ├── docs/
 ├── scripts/
@@ -107,6 +101,7 @@ lazaro-real/
 | `apps/ia/app/webhooks/pagamentos.py` | 2984 | NÃO editar diretamente |
 | `apps/ia/app/main.py` | 2068 | NÃO editar — usar `main_refactored.py` |
 | `apps/api/src/api/agents/index.ts` | 1782 | NÃO editar — quebrar em route groups |
+| `frontend/index.html` | 19144 | Monolito frontend — CSS/JS inline |
 
 ---
 
@@ -259,7 +254,7 @@ pm2 logs agnes-agent --lines 200 --nostream  # endpoints com proxy
 
 # Restart
 pm2 restart lazaro-ia
-systemctl reload nginx  # frontend
+systemctl reload nginx  # frontend (reload config, não necessário para mudanças em index.html)
 
 # Validar sintaxe Python
 python3 -m py_compile apps/ia/app/<arquivo>.py
@@ -278,12 +273,17 @@ pm2 logs agnes-agent --lines 200 --nostream | grep -i "asaas\|manutencoes"  # pr
 |---|---|---|---|
 | `lazaro-ia` | PM2 | 3115 | `/var/www/lazaro-real/apps/ia` — Backend Python (API, Webhooks, Jobs, IA) |
 | `agnes-agent` | PM2 | 3002 | `/var/www/phant/agnes-agent` — Fallback TS (asaas, manutencoes, athena) |
-| `nginx` | systemd | 3001 | `/var/www/lazaro-real/apps/web/dist` — Frontend estático |
+| `nginx` | systemd | 3001 | `/var/www/lazaro-real/frontend` — Frontend estático (monolito vanilla JS) |
 
 **Traefik:** `lazaro.fazinzz.com`
-- `/*` → nginx (3001)
+- `/*` → nginx (3001) → `/var/www/lazaro-real/frontend/index.html`
 - `/api/*` → lazaro-ia (3115)
 - `/webhooks/*` → lazaro-ia (3115)
+
+**Assets legados (nginx aliases):**
+- `/uploads/*` → `/var/www/phant/crm/uploads/`
+- `/conversas.js` → `/var/www/phant/crm/conversas.js`
+- `/icons/*` → `/var/www/phant/crm/icons/`
 
 ---
 
@@ -299,3 +299,35 @@ Fase 9 pendente:
 5. Remover pasta `production/` (cópia desnecessária)
 
 > Ver `REFACTOR_LOG.md` para histórico completo.
+
+---
+
+## Frontend — Arquitetura Atual
+
+**Localização:** `/var/www/lazaro-real/frontend/index.html`
+
+| Característica | Valor |
+|---|---|
+| Tipo | Monolito vanilla JS (SPA hash-based) |
+| Tamanho | 846KB, 19.144 linhas |
+| Build system | Nenhum (sem Vite/Webpack) |
+| Framework | Nenhum (vanilla JS) |
+| CSS | Inline no `<head>` (~800KB) |
+| Roteamento | `window.location.hash` (#dashboard, #agentes, etc) |
+
+**Rotas disponíveis:**
+- `#dashboard` — Métricas, gráficos, status agentes
+- `#agentes` — Grid de agentes (Ana, Agnes, Salvador)
+- `#leads` — Pipeline kanban
+- `#athena` — Chat com IA
+- `#conversas` — WhatsApp viewer
+- `#criar` — Wizard criação agente
+- `#config` — Configurações
+
+**Dependências externas (CDN):**
+- Chart.js (gráficos)
+- SF Pro Display Font
+- Supabase JS SDK
+- Google API Client (Calendar)
+
+> **Nota:** `apps/web/` foi removido (commit b20b6b1). Frontend React substituído por vanilla JS.
