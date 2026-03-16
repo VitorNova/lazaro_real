@@ -84,7 +84,8 @@ SALVAR_DADOS_LEAD_DECLARATION = {
     }
 }
 
-# Declaration do transferir_departamento (mantida igual)
+# Declaration do transferir_departamento
+# IMPORTANTE: Apenas departamentos reais, sem queue_id/user_id (resolvidos automaticamente)
 TRANSFERIR_DEPARTAMENTO_DECLARATION = {
     "name": "transferir_departamento",
     "description": "Transfere o atendimento para outro departamento ou atendente humano. Use quando o assunto foge do seu escopo ou quando o cliente solicita falar com humano.",
@@ -93,15 +94,7 @@ TRANSFERIR_DEPARTAMENTO_DECLARATION = {
         "properties": {
             "departamento": {
                 "type": "string",
-                "description": "Nome do departamento de destino (ex: financeiro, vendas, suporte). Opcional se queue_id for informado."
-            },
-            "queue_id": {
-                "type": "integer",
-                "description": "ID da fila/departamento no sistema. Use quando souber o ID direto."
-            },
-            "user_id": {
-                "type": "integer",
-                "description": "ID do usuario/atendente especifico. Opcional."
+                "description": "Nome do departamento de destino. SOMENTE USE: 'atendimento', 'financeiro', 'cobrancas' ou 'lazaro'. NAO invente outros nomes."
             },
             "motivo": {
                 "type": "string",
@@ -112,7 +105,7 @@ TRANSFERIR_DEPARTAMENTO_DECLARATION = {
                 "description": "Observacoes adicionais para o atendente de destino"
             }
         },
-        "required": ["motivo"]
+        "required": ["departamento", "motivo"]
     }
 }
 

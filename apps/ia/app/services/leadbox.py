@@ -839,15 +839,29 @@ def resolve_department(
     dept_names = ", ".join(departments.keys())
     logger.debug(f"[TRANSFER] Departamentos configurados: {dept_names}")
 
-    # 1. Se queue_id foi informado, usa direto
+    # 1. Se queue_id foi informado, valida e usa
     if queue_id:
+        queue_ia = handoff_triggers.get("queue_ia")
+
+        # CRÍTICO: Rejeitar transferência para a própria fila da IA
+        if queue_ia and int(queue_id) == int(queue_ia):
+            logger.warning(
+                f"[TRANSFER] REJEITADO: tentativa de transferir para fila IA "
+                f"(queue_id={queue_id} == queue_ia={queue_ia})"
+            )
+            return None, None, None
+
+        # Buscar departamento correspondente ao queue_id
         for dept_key, dept in departments.items():
             if dept.get("id") == int(queue_id):
                 logger.debug(f"[TRANSFER] Usando departamento informado: {dept.get('name')} (queue={queue_id})")
                 return int(queue_id), dept.get("userId"), dept.get("name")
-        # queue_id nao encontrado nos departments, usa mesmo assim
-        logger.debug(f"[TRANSFER] queue_id={queue_id} nao encontrado nos departments, usando direto")
-        return int(queue_id), None, "Desconhecido"
+
+        # queue_id nao encontrado nos departments -> usar default (nao aceitar cegamente)
+        logger.warning(
+            f"[TRANSFER] queue_id={queue_id} nao encontrado nos departments, "
+            "usando departamento default"
+        )
 
     # 2. Se nao tem queue_id, busca por keywords no motivo
     if motivo:
