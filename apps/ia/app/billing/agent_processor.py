@@ -7,7 +7,7 @@ from app.billing.collector import collect_payments
 from app.billing.dispatcher import dispatch_single
 from app.billing.eligibility import run_eligibility_checks
 from app.billing.models import EligiblePayment
-from app.billing.ruler import evaluate
+from app.billing.ruler import evaluate, DEFAULT_SCHEDULE
 from app.core.utils.dias_uteis import add_business_days, subtract_business_days
 
 logger = logging.getLogger(__name__)
@@ -59,6 +59,14 @@ async def process_agent(agent: Dict[str, Any], today: date) -> Dict[str, Any]:
             decision = evaluate(today, eligible.payment.due_date)
 
             if not decision.should_send:
+                logger.info({
+                    "event": "billing_skipped_not_in_schedule",
+                    "phase": "reminder",
+                    "payment_id": eligible.payment.id,
+                    "customer_name": eligible.payment.customer_name,
+                    "offset": decision.offset,
+                    "due_date": str(eligible.payment.due_date),
+                })
                 stats["skipped"] += 1
                 continue
 
@@ -97,6 +105,14 @@ async def process_agent(agent: Dict[str, Any], today: date) -> Dict[str, Any]:
                 decision = evaluate(today, eligible.payment.due_date)
 
                 if not decision.should_send:
+                    logger.info({
+                        "event": "billing_skipped_not_in_schedule",
+                        "phase": "due_date",
+                        "payment_id": eligible.payment.id,
+                        "customer_name": eligible.payment.customer_name,
+                        "offset": decision.offset,
+                        "due_date": str(eligible.payment.due_date),
+                    })
                     stats["skipped"] += 1
                     continue
 
@@ -152,6 +168,14 @@ async def process_agent(agent: Dict[str, Any], today: date) -> Dict[str, Any]:
                     decision = evaluate(today, eligible.payment.due_date)
 
                     if not decision.should_send:
+                        logger.info({
+                            "event": "billing_skipped_not_in_schedule",
+                            "phase": "overdue",
+                            "payment_id": eligible.payment.id,
+                            "customer_name": eligible.payment.customer_name,
+                            "offset": decision.offset,
+                            "due_date": str(eligible.payment.due_date),
+                        })
                         stats["skipped"] += 1
                         continue
 
