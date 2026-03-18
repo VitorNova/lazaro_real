@@ -9,8 +9,9 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, Query, Request, HTTPException
+from fastapi import APIRouter, Depends, Query, Request, HTTPException
 
+from app.middleware.auth import get_current_user
 from app.services.supabase import get_supabase_service
 
 logger = logging.getLogger(__name__)
@@ -144,7 +145,13 @@ SOURCE_COLORS = {
 
 
 def _get_user_id_from_request(request: Request, query_user_id: Optional[str] = None) -> str:
-    """Extrai user_id do JWT ou query param."""
+    """
+    Extrai user_id do JWT.
+
+    SECURITY FIX: Removido fallback para query_user_id (CVE bypass auth).
+    O parâmetro query_user_id é mantido por compatibilidade de assinatura,
+    mas NUNCA é usado como fonte de autenticação.
+    """
     auth_header = request.headers.get("authorization", "")
     if auth_header.startswith("Bearer "):
         token = auth_header.replace("Bearer ", "")
@@ -156,8 +163,8 @@ def _get_user_id_from_request(request: Request, query_user_id: Optional[str] = N
         except Exception as e:
             logger.warning(f"[Dashboard] JWT auth failed: {e}")
 
-    if query_user_id:
-        return query_user_id
+    # SECURITY: Fallback para query_user_id REMOVIDO
+    # Anteriormente: if query_user_id: return query_user_id
 
     raise HTTPException(status_code=401, detail="Authentication required")
 
