@@ -146,13 +146,17 @@ app = FastAPI(
 )
 
 # CORS middleware - SECURITY: Restrito a domínios específicos
+# localhost:3001 só permitido em desenvolvimento
+_cors_origins = [
+    "https://lazaro.fazinzz.com",
+    "https://www.lazaro.fazinzz.com",
+]
+if settings.is_development:
+    _cors_origins.append("http://localhost:3001")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://lazaro.fazinzz.com",
-        "https://www.lazaro.fazinzz.com",
-        "http://localhost:3001",  # Dev local
-    ],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-Tenant-ID"],
