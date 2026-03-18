@@ -12,9 +12,10 @@ This module provides endpoints for:
 from typing import Any, Dict
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Depends
 
 from app.core.config import app_state
+from app.middleware.auth import get_current_user, require_admin
 
 logger = structlog.get_logger(__name__)
 
@@ -26,7 +27,10 @@ router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 # =============================================================================
 
 @router.post("/billing-charge/run")
-async def run_billing_charge_manually(background_tasks: BackgroundTasks) -> Dict[str, Any]:
+async def run_billing_charge_manually(
+    background_tasks: BackgroundTasks,
+    _admin: dict = Depends(require_admin),  # SECURITY: Require admin
+) -> Dict[str, Any]:
     """
     Executa o job de cobranca manualmente.
     Roda em background para nao bloquear a request.
@@ -41,7 +45,10 @@ async def run_billing_charge_manually(background_tasks: BackgroundTasks) -> Dict
 
 
 @router.post("/billing-charge/run-force")
-async def run_billing_charge_force(background_tasks: BackgroundTasks) -> Dict[str, Any]:
+async def run_billing_charge_force(
+    background_tasks: BackgroundTasks,
+    _admin: dict = Depends(require_admin),  # SECURITY: Require admin
+) -> Dict[str, Any]:
     """
     Executa o job de cobranca FORCANDO execucao (ignora verificacoes de horario/dia util).
     APENAS PARA DEBUG/TESTES.
@@ -56,7 +63,9 @@ async def run_billing_charge_force(background_tasks: BackgroundTasks) -> Dict[st
 
 
 @router.get("/billing-charge/status")
-async def billing_charge_status() -> Dict[str, Any]:
+async def billing_charge_status(
+    _user: dict = Depends(get_current_user),  # SECURITY: Require auth
+) -> Dict[str, Any]:
     """Retorna o status do job de cobranca."""
     from app.jobs.cobrar_clientes import is_billing_charge_running
 
@@ -71,7 +80,10 @@ async def billing_charge_status() -> Dict[str, Any]:
 # =============================================================================
 
 @router.post("/billing-reconciliation/run")
-async def run_billing_reconciliation_manually(background_tasks: BackgroundTasks) -> Dict[str, Any]:
+async def run_billing_reconciliation_manually(
+    background_tasks: BackgroundTasks,
+    _admin: dict = Depends(require_admin),
+) -> Dict[str, Any]:
     """
     Executa o job de reconciliacao de cobrancas manualmente.
     Sincroniza asaas_cobrancas com API Asaas (fonte da verdade).
@@ -86,7 +98,10 @@ async def run_billing_reconciliation_manually(background_tasks: BackgroundTasks)
 
 
 @router.post("/billing-reconciliation/run-force")
-async def run_billing_reconciliation_force(background_tasks: BackgroundTasks) -> Dict[str, Any]:
+async def run_billing_reconciliation_force(
+    background_tasks: BackgroundTasks,
+    _admin: dict = Depends(require_admin),
+) -> Dict[str, Any]:
     """
     Executa o job de reconciliacao FORCANDO execucao.
     APENAS PARA DEBUG/TESTES.
@@ -101,7 +116,9 @@ async def run_billing_reconciliation_force(background_tasks: BackgroundTasks) ->
 
 
 @router.get("/billing-reconciliation/status")
-async def billing_reconciliation_status() -> Dict[str, Any]:
+async def billing_reconciliation_status(
+    _user: dict = Depends(get_current_user),
+) -> Dict[str, Any]:
     """Retorna o status do job de reconciliacao."""
     from app.jobs.reconciliar_pagamentos import is_billing_reconciliation_running
 
@@ -116,7 +133,10 @@ async def billing_reconciliation_status() -> Dict[str, Any]:
 # =============================================================================
 
 @router.post("/calendar-confirmation/run")
-async def run_calendar_confirmation_manually(background_tasks: BackgroundTasks) -> Dict[str, Any]:
+async def run_calendar_confirmation_manually(
+    background_tasks: BackgroundTasks,
+    _admin: dict = Depends(require_admin),
+) -> Dict[str, Any]:
     """Executa o job de confirmacao de agenda manualmente."""
     from app.jobs.confirmar_agendamentos import run_calendar_confirmation_job, is_calendar_confirmation_running
 
@@ -128,7 +148,10 @@ async def run_calendar_confirmation_manually(background_tasks: BackgroundTasks) 
 
 
 @router.post("/calendar-confirmation/run-force")
-async def run_calendar_confirmation_force(background_tasks: BackgroundTasks) -> Dict[str, Any]:
+async def run_calendar_confirmation_force(
+    background_tasks: BackgroundTasks,
+    _admin: dict = Depends(require_admin),
+) -> Dict[str, Any]:
     """
     Executa o job de confirmacao de agenda FORCANDO execucao.
     APENAS PARA DEBUG/TESTES.
@@ -143,7 +166,9 @@ async def run_calendar_confirmation_force(background_tasks: BackgroundTasks) -> 
 
 
 @router.get("/calendar-confirmation/status")
-async def calendar_confirmation_status() -> Dict[str, Any]:
+async def calendar_confirmation_status(
+    _user: dict = Depends(get_current_user),
+) -> Dict[str, Any]:
     """Retorna o status do job de confirmacao de agenda."""
     from app.jobs.confirmar_agendamentos import is_calendar_confirmation_running
 
@@ -158,7 +183,10 @@ async def calendar_confirmation_status() -> Dict[str, Any]:
 # =============================================================================
 
 @router.post("/follow-up/run")
-async def run_follow_up_manually(background_tasks: BackgroundTasks) -> Dict[str, Any]:
+async def run_follow_up_manually(
+    background_tasks: BackgroundTasks,
+    _admin: dict = Depends(require_admin),
+) -> Dict[str, Any]:
     """Executa o job de follow-up manualmente (respeita horario comercial)."""
     from app.jobs.reengajar_leads import run_follow_up_job, is_follow_up_running
 
@@ -170,7 +198,10 @@ async def run_follow_up_manually(background_tasks: BackgroundTasks) -> Dict[str,
 
 
 @router.post("/follow-up/run-force")
-async def run_follow_up_force(background_tasks: BackgroundTasks) -> Dict[str, Any]:
+async def run_follow_up_force(
+    background_tasks: BackgroundTasks,
+    _admin: dict = Depends(require_admin),
+) -> Dict[str, Any]:
     """
     Executa o job de follow-up FORCANDO execucao (ignora verificacoes de horario/dia util).
     APENAS PARA DEBUG/TESTES.
@@ -185,7 +216,9 @@ async def run_follow_up_force(background_tasks: BackgroundTasks) -> Dict[str, An
 
 
 @router.get("/follow-up/status")
-async def follow_up_status() -> Dict[str, Any]:
+async def follow_up_status(
+    _user: dict = Depends(get_current_user),
+) -> Dict[str, Any]:
     """Retorna o status do job de follow-up."""
     from app.jobs.reengajar_leads import is_follow_up_running
 
@@ -200,7 +233,10 @@ async def follow_up_status() -> Dict[str, Any]:
 # =============================================================================
 
 @router.post("/maintenance-notifier/run")
-async def run_maintenance_notifier_manually(background_tasks: BackgroundTasks) -> Dict[str, Any]:
+async def run_maintenance_notifier_manually(
+    background_tasks: BackgroundTasks,
+    _admin: dict = Depends(require_admin),
+) -> Dict[str, Any]:
     """
     Executa o job de notificacao de manutencao preventiva manualmente.
     Respeita verificacoes de dia util e horario comercial.
@@ -215,7 +251,10 @@ async def run_maintenance_notifier_manually(background_tasks: BackgroundTasks) -
 
 
 @router.post("/maintenance-notifier/run-force")
-async def run_maintenance_notifier_force(background_tasks: BackgroundTasks) -> Dict[str, Any]:
+async def run_maintenance_notifier_force(
+    background_tasks: BackgroundTasks,
+    _admin: dict = Depends(require_admin),
+) -> Dict[str, Any]:
     """
     Executa o job de notificacao de manutencao FORCANDO execucao.
     Ignora verificacoes de horario/dia util. APENAS PARA DEBUG/TESTES.
@@ -230,7 +269,9 @@ async def run_maintenance_notifier_force(background_tasks: BackgroundTasks) -> D
 
 
 @router.get("/maintenance-notifier/status")
-async def maintenance_notifier_status() -> Dict[str, Any]:
+async def maintenance_notifier_status(
+    _user: dict = Depends(get_current_user),
+) -> Dict[str, Any]:
     """Retorna o status do job de manutencao preventiva."""
     from app.jobs.notificar_manutencoes import is_maintenance_notifier_running
 
@@ -241,7 +282,10 @@ async def maintenance_notifier_status() -> Dict[str, Any]:
 
 
 @router.post("/maintenance-notifier/test")
-async def test_maintenance_notifier(phone: str = "556697194084") -> Dict[str, Any]:
+async def test_maintenance_notifier(
+    phone: str = "556697194084",
+    _admin: dict = Depends(require_admin),
+) -> Dict[str, Any]:
     """
     Envia notificacao de TESTE para um numero especifico.
     APENAS PARA DEBUG/TESTES.

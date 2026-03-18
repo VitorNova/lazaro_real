@@ -100,6 +100,15 @@ async def lifespan(app: FastAPI):
         logger.error("Gemini initialization failed", error=str(e))
         app_state.gemini_initialized = False
 
+    # 3. Start APScheduler
+    try:
+        from app.jobs.scheduler import create_scheduler, start_scheduler
+        scheduler = create_scheduler()
+        if scheduler and start_scheduler(scheduler):
+            app_state.scheduler = scheduler
+            logger.info("APScheduler started")
+    except Exception as e:
+        logger.error("APScheduler startup failed", error=str(e))
 
     logger.info("Agente IA startup complete")
     yield
@@ -136,13 +145,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS middleware
+# CORS middleware - SECURITY: Restrito a domínios específicos
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://lazaro.fazinzz.com",
+        "https://www.lazaro.fazinzz.com",
+        "http://localhost:3001",  # Dev local
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Tenant-ID"],
 )
 
 

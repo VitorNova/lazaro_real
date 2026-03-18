@@ -12,7 +12,7 @@ services:
     container_name: lazaro-api-v2
     restart: unless-stopped
     ports:
-      - "3112:3102"  # Host:Container (3112 para evitar conflito)
+      - "127.0.0.1:3112:3102"  # SECURITY: Apenas localhost (nginx proxy)
     env_file:
       - .env
     environment:
@@ -31,28 +31,14 @@ services:
       start_period: 10s
 
   # ==========================================================================
-  # LAZARO IA - Agente Python (imagem pré-construída)
+  # LAZARO IA - Agente Python (DESABILITADO - roda via PM2)
   # ==========================================================================
-  lazaro-ia:
-    image: lazaro-ia:v1.0
-    container_name: lazaro-ia-v2
-    restart: unless-stopped
-    ports:
-      - "3115:3105"  # Host:Container (3115 para nginx)
-    env_file:
-      - .env
-    environment:
-      - REDIS_URL=redis://lazaro-redis:6379
-    depends_on:
-      - lazaro-redis
-    networks:
-      - lazaro-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3105/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
+  # NOTA: lazaro-ia roda via PM2 em /var/www/lazaro-real/apps/ia
+  # Não usar container Docker para evitar conflito de porta 3115
+  # lazaro-ia:
+  #   image: lazaro-ia:v1.0
+  #   container_name: lazaro-ia-v2
+  #   ...
 
   # ==========================================================================
   # LAZARO REDIS - Cache compartilhado
@@ -62,7 +48,7 @@ services:
     container_name: lazaro-redis-v2
     restart: unless-stopped
     ports:
-      - "6380:6379"
+      - "127.0.0.1:6380:6379"  # SECURITY: Apenas localhost
     volumes:
       - lazaro-redis-data:/data
     networks:

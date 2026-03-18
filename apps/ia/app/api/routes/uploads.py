@@ -12,7 +12,9 @@ import uuid
 from typing import Any, Dict, List
 
 import structlog
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, Depends, File, UploadFile
+
+from app.middleware.auth import get_current_user
 
 logger = structlog.get_logger(__name__)
 
@@ -24,7 +26,10 @@ MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 
 
 @router.post("/upload")
-async def upload_file(file: UploadFile = File(...)) -> Dict[str, Any]:
+async def upload_file(
+    file: UploadFile = File(...),
+    _user: dict = Depends(get_current_user),  # SECURITY: Require auth
+) -> Dict[str, Any]:
     """Upload a file to the CRM uploads directory."""
     try:
         if not file.filename:
@@ -56,7 +61,9 @@ async def upload_file(file: UploadFile = File(...)) -> Dict[str, Any]:
 
 
 @router.get("/uploads")
-async def list_uploads() -> List[Dict[str, str]]:
+async def list_uploads(
+    _user: dict = Depends(get_current_user),  # SECURITY: Require auth
+) -> List[Dict[str, str]]:
     """List all uploaded files."""
     try:
         if not os.path.exists(UPLOAD_DIR):
@@ -78,7 +85,10 @@ async def list_uploads() -> List[Dict[str, str]]:
 
 
 @router.delete("/upload/{filename}")
-async def delete_upload(filename: str) -> Dict[str, Any]:
+async def delete_upload(
+    filename: str,
+    _user: dict = Depends(get_current_user),  # SECURITY: Require auth
+) -> Dict[str, Any]:
     """Delete an uploaded file."""
     try:
         filepath = os.path.join(UPLOAD_DIR, filename)
