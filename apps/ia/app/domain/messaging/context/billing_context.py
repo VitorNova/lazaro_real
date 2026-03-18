@@ -10,6 +10,7 @@ import logging
 import re
 from typing import Any, Dict, Optional
 
+from app.core.security.prompt_sanitizer import escape_prompt_value
 from app.services.redis import get_redis_service
 from app.services.supabase import SupabaseService
 
@@ -276,8 +277,9 @@ def build_billing_context_prompt(billing_data: Dict[str, Any]) -> str:
     Returns:
         String com o prompt formatado
     """
-    cliente_nome = billing_data.get("cliente_nome", "Cliente")
-    cliente_cpf = billing_data.get("cliente_cpf")
+    # Sanitizar valores do banco para evitar prompt injection
+    cliente_nome = escape_prompt_value(billing_data.get("cliente_nome", "Cliente"), "nome")
+    cliente_cpf = escape_prompt_value(billing_data.get("cliente_cpf"), "cpf")
 
     # Formatar cobranças
     cobrancas_str = ""
@@ -295,24 +297,24 @@ def build_billing_context_prompt(billing_data: Dict[str, Any]) -> str:
     if not cobrancas_str:
         cobrancas_str = "  (nenhuma cobrança pendente encontrada)\n"
 
-    # Formatar contratos
+    # Formatar contratos (sanitizar valores do banco)
     contratos_str = ""
     for contr in billing_data.get("contratos", []):
-        numero = contr.get("numero", "N/I")
-        endereco = contr.get("endereco", "N/I")
+        numero = escape_prompt_value(contr.get("numero", "N/I"), "default")
+        endereco = escape_prompt_value(contr.get("endereco", "N/I"), "endereco")
         valor_mensal = contr.get("valor_mensal", 0)
         contratos_str += f"  - Contrato {numero}: R$ {valor_mensal:.2f}/mês - {endereco}\n"
 
     if not contratos_str:
         contratos_str = "  (nenhum contrato encontrado)\n"
 
-    # Formatar equipamentos
+    # Formatar equipamentos (sanitizar valores do banco)
     equipamentos_str = ""
     for eq in billing_data.get("equipamentos", []):
-        marca = eq.get("marca", "N/I")
-        btus = eq.get("btus", "N/I")
-        patrimonio = eq.get("patrimonio", "")
-        patrimonio_str = f" (patrimônio {patrimonio})" if patrimonio else ""
+        marca = escape_prompt_value(eq.get("marca", "N/I"), "default")
+        btus = eq.get("btus", "N/I")  # numérico, não precisa sanitizar
+        patrimonio = escape_prompt_value(eq.get("patrimonio", ""), "default")
+        patrimonio_str = f" (patrimônio {patrimonio})" if patrimonio and patrimonio != "(não informado)" else ""
         equipamentos_str += f"  - {marca} {btus} BTUs{patrimonio_str}\n"
 
     if not equipamentos_str:

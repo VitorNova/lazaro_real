@@ -9,6 +9,7 @@ Extraido de mensagens.py (Fase 2.3)
 import logging
 from typing import Any, Dict, Optional
 
+from app.core.security.prompt_sanitizer import escape_prompt_value
 from app.services.supabase import SupabaseService
 
 logger = logging.getLogger(__name__)
@@ -102,36 +103,43 @@ def build_maintenance_context_prompt(contract_data: Dict[str, Any]) -> str:
     Returns:
         String com o prompt formatado
     """
-    # Formatar equipamentos
+    # Formatar equipamentos (sanitizar valores do banco)
     equipamentos_str = ""
     for i, equip in enumerate(contract_data.get("equipamentos", []), 1):
-        marca = equip.get("marca", "N/I")
-        btus = equip.get("btus", "N/I")
-        patrimonio = equip.get("patrimonio", "")
-        patrimonio_str = f" (patrimonio {patrimonio})" if patrimonio else ""
+        marca = escape_prompt_value(equip.get("marca", "N/I"), "default")
+        btus = equip.get("btus", "N/I")  # numérico, não precisa sanitizar
+        patrimonio = escape_prompt_value(equip.get("patrimonio", ""), "default")
+        patrimonio_str = f" (patrimonio {patrimonio})" if patrimonio and patrimonio != "(não informado)" else ""
         equipamentos_str += f"  {i}. {marca} {btus} BTUs{patrimonio_str}\n"
 
     if not equipamentos_str:
         equipamentos_str = "  (nao informado)\n"
 
-    # Formatar endereco
-    endereco = contract_data.get("endereco_instalacao") or "(nao informado no contrato)"
+    # Formatar endereco (sanitizar valor do banco)
+    endereco = escape_prompt_value(
+        contract_data.get("endereco_instalacao") or "(nao informado no contrato)",
+        "endereco"
+    )
 
     # Formatar data da manutencao
     prox_manut = contract_data.get("proxima_manutencao") or "(a definir)"
 
-    # Criar string do equipamento principal para exemplos
+    # Criar string do equipamento principal para exemplos (sanitizar)
     equip_principal = ""
     if contract_data.get("equipamentos"):
         eq = contract_data["equipamentos"][0]
-        equip_principal = f"{eq.get('marca', 'seu ar')} {eq.get('btus', '')} BTUs".strip()
+        marca_sanitizada = escape_prompt_value(eq.get("marca", "seu ar"), "default")
+        equip_principal = f"{marca_sanitizada} {eq.get('btus', '')} BTUs".strip()
     else:
         equip_principal = "seu ar-condicionado"
+
+    # Sanitizar nome do cliente
+    cliente_nome = escape_prompt_value(contract_data.get("cliente_nome", "Cliente"), "nome")
 
     prompt = f"""
 ## DADOS DO CONTRATO (JA CARREGADOS - NAO PERGUNTE)
 
-**Cliente:** {contract_data.get("cliente_nome", "Cliente")}
+**Cliente:** {cliente_nome}
 **Contract ID:** {contract_data.get("contract_id", "")}
 **Equipamento(s):**
 {equipamentos_str}
