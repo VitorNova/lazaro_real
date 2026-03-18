@@ -13,7 +13,6 @@ import structlog
 
 from app.ai.tools.scheduling_tools import SchedulingTools
 from app.ai.tools.transfer_tools import TransferTools
-from app.ai.tools.maintenance_tools import MaintenanceTools
 from app.ai.tools.billing_tools import BillingTools
 from app.ai.tools.customer_tools import CustomerTools
 from app.services.supabase import SupabaseService
@@ -52,7 +51,6 @@ class ToolRegistry:
         # Inicializar todas as tool classes
         self._scheduling_tools = SchedulingTools(supabase, context)
         self._transfer_tools = TransferTools(supabase, context)
-        self._maintenance_tools = MaintenanceTools(context)
         self._billing_tools = BillingTools(context)
         self._customer_tools = CustomerTools(context, supabase)
 
@@ -87,12 +85,6 @@ class ToolRegistry:
         - salvar_dados_lead: Salva CPF/nome do lead
         - transferir_departamento: Transfere para departamento
 
-        Tools de manutencao (habilitadas Fase 9.7):
-        - identificar_equipamento: Identifica ACs do cliente (qtd, local)
-        - analisar_foto_equipamento: Analisa foto via Gemini Vision
-        - verificar_disponibilidade_manutencao: Verifica slots
-        - confirmar_agendamento_manutencao: Confirma agendamento
-
         Tools legadas (desabilitadas):
         - consulta_agenda: Consulta horarios disponiveis
         - agendar: Cria agendamento
@@ -113,7 +105,6 @@ class ToolRegistry:
 
         # Tools legadas (mantidas para fallback)
         handlers.update(self._scheduling_tools.get_handlers())
-        handlers.update(self._maintenance_tools.get_handlers())
 
         self.logger.debug(
             "handlers_registered",

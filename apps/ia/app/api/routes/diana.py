@@ -11,11 +11,12 @@ Endpoints:
 """
 
 import logging
-from typing import Optional
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, UploadFile, File, Form, Query, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, Form, Query, HTTPException
 from pydantic import BaseModel
 
+from app.middleware.auth import get_current_user
 from app.services.diana import (
     DianaCampaignService,
     get_diana_campaign_service,
@@ -79,6 +80,7 @@ async def create_campaign(
     delay_min: int = Form(30, description="Delay minimo entre mensagens (segundos)"),
     delay_max: int = Form(60, description="Delay maximo entre mensagens (segundos)"),
     auto_dispatch: bool = Form(True, description="Disparar imediatamente"),
+    user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Cria uma nova campanha de prospecao.
@@ -146,7 +148,10 @@ async def create_campaign(
 
 
 @router.get("/campaigns/{agent_id}")
-async def list_campaigns(agent_id: str):
+async def list_campaigns(
+    agent_id: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+):
     """Lista todas as campanhas de um agente."""
     service = get_diana_campaign_service()
     campaigns = service.list_campaigns(agent_id)
@@ -154,7 +159,11 @@ async def list_campaigns(agent_id: str):
 
 
 @router.get("/campaigns/{agent_id}/{campaign_id}/stats", response_model=CampaignStatsResponse)
-async def get_campaign_stats(agent_id: str, campaign_id: str):
+async def get_campaign_stats(
+    agent_id: str,
+    campaign_id: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+):
     """Retorna estatisticas de uma campanha."""
     service = get_diana_campaign_service()
     stats = service.get_campaign_stats(agent_id, campaign_id)
@@ -168,6 +177,7 @@ async def list_prospects(
     status: Optional[str] = Query(None, description="Filtrar por status"),
     limit: int = Query(100, ge=1, le=1000, description="Limite de resultados"),
     offset: int = Query(0, ge=0, description="Offset para paginacao"),
+    user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Lista prospects de uma campanha com filtros opcionais."""
     service = get_diana_campaign_service()
@@ -187,6 +197,7 @@ async def pause_campaign(
     campaign_id: str,
     uazapi_base_url: str = Form(...),
     uazapi_token: str = Form(...),
+    user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Pausa uma campanha em andamento."""
     service = get_diana_campaign_service()
@@ -205,6 +216,7 @@ async def resume_campaign(
     campaign_id: str,
     uazapi_base_url: str = Form(...),
     uazapi_token: str = Form(...),
+    user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Retoma uma campanha pausada."""
     service = get_diana_campaign_service()

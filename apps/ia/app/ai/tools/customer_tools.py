@@ -74,6 +74,177 @@ class CustomerTools:
                 f"Informado: {len(cpf_limpo)} digitos.",
             )
 
+    def _buscar_cliente_por_cpf(self, cpf_limpo: str) -> Optional[Dict[str, Any]]:
+        """
+        Busca cliente em asaas_clientes por CPF.
+
+        Args:
+            cpf_limpo: CPF apenas numeros
+
+        Returns:
+            Dict com dados do cliente ou None
+        """
+        try:
+            agent_id = self.context.get("agent_id")
+
+            query = self.supabase.client.table("asaas_clientes").select(
+                "id, name, cpf_cnpj, mobile_phone, email"
+            ).eq("cpf_cnpj", cpf_limpo)
+
+            if agent_id:
+                query = query.eq("agent_id", agent_id)
+
+            result = query.limit(1).execute()
+
+            if result.data:
+                return result.data[0]
+            return None
+
+        except Exception as e:
+            self.logger.warning("buscar_cliente_error", error=str(e))
+            return None
+
+    def _buscar_contrato_por_customer(self, customer_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Busca contrato em contract_details por customer_id.
+
+        Args:
+            customer_id: ID do cliente no Asaas
+
+        Returns:
+            Dict com dados do contrato ou None
+        """
+        try:
+            agent_id = self.context.get("agent_id")
+
+            query = self.supabase.client.table("contract_details").select(
+                "id, numero_contrato, maintenance_status, proxima_manutencao, "
+                "endereco_instalacao, equipamentos, valor_mensal"
+            ).eq("customer_id", customer_id)
+
+            if agent_id:
+                query = query.eq("agent_id", agent_id)
+
+            result = query.limit(1).execute()
+
+            if result.data:
+                return result.data[0]
+            return None
+
+        except Exception as e:
+            self.logger.warning("buscar_contrato_error", error=str(e))
+            return None
+
+    def _montar_retorno_enriquecido(
+        self,
+        cpf_limpo: str,
+        tipo_doc: str,
+        cliente_data: Optional[Dict[str, Any]],
+        contrato_data: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """
+        Monta retorno enriquecido com dados de cliente e contrato.
+
+        Args:
+            cpf_limpo: CPF salvo
+            tipo_doc: Tipo do documento (CPF/CNPJ)
+            cliente_data: Dados do cliente ou None
+            contrato_data: Dados do contrato ou None
+
+        Returns:
+            Dict com retorno enriquecido
+        """
+        result = {
+            "sucesso": True,
+            "cpf": cpf_limpo,
+            "tipo": tipo_doc,
+        }
+
+        # Adicionar dados do cliente
+        if cliente_data:
+            result["cliente"] = {
+                "nome": cliente_data.get("name"),
+                "cpf": cliente_data.get("cpf_cnpj"),
+                "telefone": cliente_data.get("mobile_phone"),
+                "email": cliente_data.get("email"),
+            }
+        else:
+            result["cliente"] = None
+
+        # Adicionar dados do contrato
+        if contrato_data:
+            result["contrato"] = {
+                "id": contrato_data.get("id"),
+                "numero": contrato_data.get("numero_contrato"),
+                "maintenance_status": contrato_data.get("maintenance_status"),
+                "proxima_manutencao": contrato_data.get("proxima_manutencao"),
+                "endereco": contrato_data.get("endereco_instalacao"),
+                "equipamentos": contrato_data.get("equipamentos"),
+                "valor_mensal": contrato_data.get("valor_mensal"),
+            }
+        else:
+            result["contrato"] = None
+
+        # Montar mensagem e instrucao contextuais
+        result["mensagem"], result["instrucao"] = self._montar_mensagem_contextual(
+            cliente_data, contrato_data
+        )
+
+        return result
+
+    def _montar_mensagem_contextual(
+        self,
+        cliente_data: Optional[Dict[str, Any]],
+        contrato_data: Optional[Dict[str, Any]],
+    ) -> tuple[str, str]:
+        """
+        Monta mensagem e instrucao contextuais baseadas nos dados encontrados.
+
+        Returns:
+            Tupla (mensagem, instrucao)
+        """
+        # Cenario 1: Cliente encontrado com contrato e manutencao notificada
+        if cliente_data and contrato_data:
+            nome = cliente_data.get("name", "Cliente")
+            status = contrato_data.get("maintenance_status", "pending")
+            proxima = contrato_data.get("proxima_manutencao")
+            endereco = contrato_data.get("endereco_instalacao")
+
+            if status == "notified" and proxima:
+                mensagem = (
+                    f"Cliente {nome} encontrado. "
+                    f"Manutencao preventiva notificada para {proxima}."
+                )
+                instrucao = (
+                    "Pergunte qual o melhor dia e horario para a visita tecnica, "
+                    "e confirme o endereco de instalacao."
+                )
+            elif status == "scheduled":
+                mensagem = f"Cliente {nome} encontrado. Manutencao ja agendada."
+                instrucao = "Pergunte se deseja remarcar ou se tem alguma duvida sobre a visita."
+            else:
+                mensagem = f"Cliente {nome} encontrado."
+                if endereco:
+                    mensagem += f" Endereco: {endereco}."
+                instrucao = "Pergunte como pode ajudar o cliente."
+
+            return mensagem, instrucao
+
+        # Cenario 2: Cliente encontrado sem contrato
+        if cliente_data and not contrato_data:
+            nome = cliente_data.get("name", "Cliente")
+            mensagem = f"Cliente {nome} encontrado, mas sem contrato ativo."
+            instrucao = "Pergunte como pode ajudar. Se for sobre aluguel, colete os dados necessarios."
+            return mensagem, instrucao
+
+        # Cenario 3: Cliente nao encontrado
+        mensagem = "CPF registrado, mas nao encontrei cadastro no sistema."
+        instrucao = (
+            "Verifique se o CPF esta correto. "
+            "Se o cliente for novo, colete os dados para cadastro."
+        )
+        return mensagem, instrucao
+
     async def salvar_dados_lead(
         self,
         cpf: str = None,
@@ -147,12 +318,24 @@ class CustomerTools:
                 tipo=tipo_doc,
             )
 
-            return {
-                "sucesso": True,
-                "cpf": cpf_limpo,
-                "tipo": tipo_doc,
-                "mensagem": f"{tipo_doc} salvo com sucesso",
-            }
+            # Enriquecer retorno buscando cliente e contrato
+            cliente_data = self._buscar_cliente_por_cpf(cpf_limpo)
+            contrato_data = None
+
+            if cliente_data:
+                customer_id = cliente_data.get("id")
+                if customer_id:
+                    contrato_data = self._buscar_contrato_por_customer(customer_id)
+
+            self.logger.info(
+                "salvar_dados_lead_enriched",
+                cliente_encontrado=cliente_data is not None,
+                contrato_encontrado=contrato_data is not None,
+            )
+
+            return self._montar_retorno_enriquecido(
+                cpf_limpo, tipo_doc, cliente_data, contrato_data
+            )
 
         except Exception as e:
             self.logger.error(

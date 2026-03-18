@@ -28,7 +28,6 @@ import re
 from supabase import create_client
 from app.config import settings
 from app.ai.tools.cliente import CONSULTAR_CLIENTE_DECLARATION
-from app.domain.maintenance.services.equipment_tools import MAINTENANCE_FUNCTION_DECLARATIONS
 
 logger = logging.getLogger(__name__)
 
@@ -109,12 +108,12 @@ TRANSFERIR_DEPARTAMENTO_DECLARATION = {
     }
 }
 
-# FUNCTION_DECLARATIONS exportado - 7 TOOLS ATIVAS (3 base + 4 manutencao)
+# FUNCTION_DECLARATIONS exportado - 3 TOOLS ATIVAS
 FUNCTION_DECLARATIONS = [
     CONSULTAR_CLIENTE_DECLARATION,
     SALVAR_DADOS_LEAD_DECLARATION,
     TRANSFERIR_DEPARTAMENTO_DECLARATION,
-] + MAINTENANCE_FUNCTION_DECLARATIONS
+]
 
 
 # ============================================================================
