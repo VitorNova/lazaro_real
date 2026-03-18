@@ -186,6 +186,17 @@ import fakeredis
 # ─── Helpers de Mock ────────────────────────────────────────────────────────
 
 def make_supabase_mock(table_data: dict) -> MagicMock:
+    """
+    Mock BASICO do Supabase - para testes que so verificam SELECT.
+
+    Args:
+        table_data: Dict com nome_tabela -> lista de registros
+                    Ex: {"clientes": [{"id": "1", "nome": "Joao"}]}
+
+    Uso:
+        mock = make_supabase_mock({"clientes": [{"id": "1"}]})
+        # Simula: supabase.client.table("clientes").select().execute()
+    """
     mock = MagicMock()
 
     def table_side_effect(table_name):
@@ -194,13 +205,84 @@ def make_supabase_mock(table_data: dict) -> MagicMock:
         resp = MagicMock()
         resp.data = data
 
+        # SELECT chains
         t.select.return_value.eq.return_value.eq.return_value \
          .limit.return_value.execute.return_value = resp
         t.select.return_value.eq.return_value \
          .limit.return_value.execute.return_value = resp
+        t.select.return_value.or_.return_value \
+         .limit.return_value.execute.return_value = resp
         t.select.return_value.execute.return_value = resp
         t.update.return_value.eq.return_value.execute.return_value = MagicMock()
         t.insert.return_value.execute.return_value = MagicMock()
+        return t
+
+    mock.client.table.side_effect = table_side_effect
+    return mock
+
+
+def make_supabase_mock_with_capture(table_data: dict) -> MagicMock:
+    """
+    Mock AVANCADO do Supabase - captura chamadas INSERT/UPDATE para assertions.
+
+    Args:
+        table_data: Dict com nome_tabela -> lista de registros
+
+    Uso:
+        mock = make_supabase_mock_with_capture({"leads": []})
+        # ... executa codigo ...
+
+        # Verificar INSERT:
+        insert_calls = mock._insert_calls.get("leads", [])
+        assert len(insert_calls) == 1
+        assert insert_calls[0]["campo"] == "valor_esperado"
+
+        # Verificar UPDATE:
+        update_calls = mock._update_calls.get("leads", [])
+        assert len(update_calls) == 1
+        assert update_calls[0]["status"] == "novo_status"
+    """
+    mock = MagicMock()
+    mock._insert_calls = {}  # {table_name: [dados_inseridos, ...]}
+    mock._update_calls = {}  # {table_name: [dados_atualizados, ...]}
+
+    def table_side_effect(table_name):
+        t = MagicMock()
+        data = table_data.get(table_name, [])
+        resp = MagicMock()
+        resp.data = data
+
+        # SELECT chains
+        t.select.return_value.eq.return_value.eq.return_value \
+         .limit.return_value.execute.return_value = resp
+        t.select.return_value.eq.return_value \
+         .limit.return_value.execute.return_value = resp
+        t.select.return_value.or_.return_value \
+         .limit.return_value.execute.return_value = resp
+        t.select.return_value.execute.return_value = resp
+
+        # INSERT - captura argumentos
+        def capture_insert(insert_data):
+            if table_name not in mock._insert_calls:
+                mock._insert_calls[table_name] = []
+            mock._insert_calls[table_name].append(insert_data)
+            insert_result = MagicMock()
+            insert_result.execute.return_value = MagicMock(data=[{"id": "new-id"}])
+            return insert_result
+
+        t.insert.side_effect = capture_insert
+
+        # UPDATE - captura argumentos
+        def capture_update(update_data):
+            if table_name not in mock._update_calls:
+                mock._update_calls[table_name] = []
+            mock._update_calls[table_name].append(update_data)
+            update_chain = MagicMock()
+            update_chain.eq.return_value.execute.return_value = MagicMock(data=[{"id": "updated-id"}])
+            return update_chain
+
+        t.update.side_effect = capture_update
+
         return t
 
     mock.client.table.side_effect = table_side_effect
@@ -241,7 +323,7 @@ class TestNomeDaFuncionalidade:
 
     def test_cenario_principal_funciona(self):
         mock_db = make_supabase_mock({
-            "clientes": [{"id": "abc123", "status": "ativo", "nome": "João"}]
+            "clientes": [{"id": "abc123", "status": "ativo", "nome": "Joao"}]
         })
         resultado = funcao_a_testar(mock_db, parametro_valido)
         assert resultado is not None
@@ -286,14 +368,63 @@ class TestNomeDaFuncionalidade:
 
 ## Mocks de Referência
 
-### Supabase — Encadeamentos Comuns
+### Supabase — Quando usar cada mock
+
+| Cenário | Mock a usar |
+|---------|-------------|
+| Testar leitura (SELECT) | `make_supabase_mock` |
+| Verificar se INSERT foi chamado com dados corretos | `make_supabase_mock_with_capture` |
+| Verificar se UPDATE foi chamado com dados corretos | `make_supabase_mock_with_capture` |
+| Testar fluxos que criam ou atualizam registros | `make_supabase_mock_with_capture` |
+
+### Supabase — Mock basico (SELECT)
 
 ```python
-mock = make_supabase_mock({"tabela": [{"id": "1", "campo": "valor"}]})
-mock_table = mock.client.table("tabela")
-mock_table.update.return_value.eq.return_value.execute.return_value = MagicMock()
-mock_table.update.assert_called_once_with({"campo": "novo_valor"})
-mock_table.insert.assert_called_once()
+# Simular tabela com dados
+mock = make_supabase_mock({
+    "clientes": [{"id": "1", "nome": "Joao", "status": "ativo"}]
+})
+# Simular tabela vazia
+mock = make_supabase_mock({"clientes": []})
+```
+
+### Supabase — Mock com captura (INSERT/UPDATE)
+
+```python
+# Arrange - mock que captura chamadas
+mock = make_supabase_mock_with_capture({"leads": []})
+
+# Act - executa codigo que faz INSERT ou UPDATE
+await funcao_que_insere_ou_atualiza(mock)
+
+# Assert - verificar INSERT
+insert_calls = mock._insert_calls.get("leads", [])
+assert len(insert_calls) == 1, "Deveria ter inserido um registro"
+assert insert_calls[0]["nome"] == "Novo Lead"
+assert insert_calls[0]["status"] == "ativo"
+
+# Assert - verificar UPDATE
+update_calls = mock._update_calls.get("leads", [])
+assert len(update_calls) == 1, "Deveria ter atualizado um registro"
+assert update_calls[0]["status"] == "convertido"
+```
+
+### Supabase — Verificar estrutura complexa (ex: conversation_history)
+
+```python
+mock = make_supabase_mock_with_capture({"mensagens": []})
+await funcao_que_salva_historico(mock)
+
+insert_calls = mock._insert_calls.get("mensagens", [])
+insert_data = insert_calls[0]
+
+# Verificar estrutura do JSONB
+history = insert_data["conversation_history"]
+messages = history.get("messages", [])
+assert len(messages) == 2
+assert messages[0]["role"] == "user"
+assert messages[1]["role"] == "model"
+assert messages[1].get("context") == "manutencao_preventiva"
 ```
 
 ### Redis — Cenários Comuns
@@ -649,6 +780,24 @@ LIMIT 1;
 
 ## Diagnóstico de Webhooks Leadbox
 
+### Conceito Fundamental: Ticket = Conversa Ativa
+
+> **Regras de ouro do Leadbox — entenda antes de debugar:**
+
+1. **Não existe lead com conversa ativa sem ticket** — Se está conversando, TEM ticket
+2. **Ticket fechado = Sem conversa** — Lead aguarda próximo contato, `ticket_id` deve ser null
+3. **Abertura automática** — Qualquer mensagem (cliente OU empresa) cria ticket automaticamente
+4. **userId vem null** — Ticket novo chega sem atendente, sistema força via `PUT /tickets/{id}`
+
+**Fluxo típico:**
+```
+FECHAMENTO: FinishedTicket → status=closed → ticket_id limpo do lead
+
+REABERTURA: Mensagem enviada → Leadbox cria ticket NOVO (ID diferente!)
+            → UpdateOnTicket com userId=null, queueId=537
+            → Sistema força: PUT /tickets/{id} com userId=1095
+```
+
 ### Referência Rápida — Tenant e Filas
 
 | Campo | Valor |
@@ -905,3 +1054,55 @@ def test_job_salva_mensagem_com_contexto():
 | 12/03/2026 | — | UpdateOnTicket com queueId=null descartado silenciosamente | ✅ test_leadbox_update_ticket_null_queue.py |
 | 12/03/2026 | — | FAIL-SAFE descartava mensagens quando API retornava 500 | ✅ test_failsafe_supabase_fallback.py |
 | 12/03/2026 | — | tenant_id=124 no banco (Leadbox manda 123) — filtro silencioso | ⬜ Pendente (fix via SQL direto) |
+| 18/03/2026 | e2afcc8 | salvar_dados_lead retornava texto literal da tool — IA parava o fluxo após salvar CPF | ✅ test_customer_tools_salvar_cpf.py |
+
+---
+
+## Fixtures Centralizadas
+
+> Dados de teste ficam em `tests/fixtures.py`. Nunca redefina inline o que já existe aqui.
+> Usa Faker com locale pt_BR — dados brasileiros reais gerados automaticamente.
+
+### Instalar
+```bash
+cd /var/www/lazaro-real/apps/ia
+source venv/bin/activate
+pip install faker
+```
+
+### Uso básico
+```python
+from tests.fixtures import make_pessoa, make_lead, make_webhook, LEAD_SEM_NOME
+
+# Gerar dados dinâmicos
+pessoa = make_pessoa()
+lead   = make_lead(queue_id=537, tenant_id=123)
+webhook = make_webhook(event="FinishedTicket", queue_id=537, tenant_id=123)
+
+# Edge cases prontos
+LEAD_SEM_NOME       # nome=None — bug que já quebrou
+LEAD_HUMANO         # lead em fila humana
+WEBHOOK_SEM_QUEUE   # queue=None — bug que já quebrou
+WEBHOOK_TENANT_ERRADO # tenant errado — filtro silencioso
+```
+
+### Nos testes
+```python
+from tests.fixtures import make_lead, LEAD_SEM_NOME
+
+def test_sistema_nao_quebra_com_lead_sem_nome():
+    mock = make_supabase_mock({"leads": [LEAD_SEM_NOME]})
+    resultado = processar_lead(mock, LEAD_SEM_NOME["remotejid"])
+    assert resultado is not None
+
+def test_lead_normal_processado():
+    lead = make_lead(queue_id=537, tenant_id=123)
+    mock = make_supabase_mock({"leads": [lead]})
+    resultado = processar_lead(mock, lead["remotejid"])
+    assert resultado["status"] == "processado"
+```
+
+### Regra
+
+Cada bug que quebrou em produção → vira um edge case em `tests/fixtures.py`.
+Nunca mais o mesmo bug volta sem o teste falhar primeiro.
