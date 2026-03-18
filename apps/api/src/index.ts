@@ -32,8 +32,16 @@ async function bootstrap() {
   try {
     logger.info('Starting Lazaro API...', { environment: config.nodeEnv });
 
-    // CORS
-    await fastify.register(cors, { origin: true });
+    // CORS - Whitelist de origens permitidas (fix: CVE CORS wildcard)
+    await fastify.register(cors, {
+      origin: [
+        'https://lazaro.fazinzz.com',
+        'https://www.lazaro.fazinzz.com',
+        ...(process.env.NODE_ENV === 'development' ? ['http://localhost:3001'] : []),
+      ],
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    });
 
     // Health check
     fastify.get('/health', async () => ({
