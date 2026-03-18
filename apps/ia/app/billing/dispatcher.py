@@ -1,7 +1,9 @@
 """Dispatcher - envio de notificacoes via WhatsApp."""
 import logging
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+
+import httpx
 
 from app.billing.models import EligiblePayment, RulerDecision, DispatchResult
 from app.billing.templates import get_overdue_template, DEFAULT_MESSAGES
@@ -11,13 +13,125 @@ from app.domain.billing.services.billing_notifier import (
     update_notification_status,
 )
 from app.domain.billing.services.lead_ensurer import save_message_to_conversation_history
+from app.domain.leads.services.lead_availability import check_lead_availability
 from app.services.dispatch_logger import get_dispatch_logger
 from app.services.leadbox_push import leadbox_push_silent, QUEUE_BILLING
 from app.services.supabase import get_supabase_service
 from app.services.whatsapp_api import UazapiService, sign_message
 from app.core.utils.dias_uteis import format_date
+from app.core.utils.phone import generate_phone_variants
 
 logger = logging.getLogger(__name__)
+
+
+async def _search_leadbox_contact(
+    api_url: str,
+    api_token: str,
+    search_phone: str,
+    headers: dict,
+) -> Optional[str]:
+    """
+    Busca um contato no Leadbox pelo telefone.
+
+    Returns:
+        Telefone normalizado se encontrado, None se não encontrado
+    """
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(
+            f"{api_url.rstrip('/')}/contacts",
+            params={"searchParam": search_phone, "limit": 1},
+            headers=headers,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    contacts = data.get("contacts", [])
+    if contacts:
+        leadbox_number = contacts[0].get("number")
+        if leadbox_number:
+            # Normalizar: remover +, espaços, hífens, parênteses (só dígitos)
+            normalized = "".join(filter(str.isdigit, leadbox_number))
+            if normalized:
+                return normalized
+
+    return None
+
+
+async def get_leadbox_phone(
+    handoff_triggers: Dict[str, Any],
+    phone: str,
+) -> str:
+    """
+    Busca o telefone correto no Leadbox via GET /contacts.
+
+    O Asaas pode ter telefone com 9 extra (5566992028039) enquanto o Leadbox
+    tem o telefone correto do WhatsApp (556692028039). Essa função busca
+    o telefone que o Leadbox conhece para evitar criar registros duplicados.
+
+    Se a busca exata não encontrar, tenta variações do número brasileiro
+    (com/sem o 9 após o DDD).
+
+    Args:
+        handoff_triggers: Config do Leadbox do agente (api_url, api_token)
+        phone: Telefone original (do Asaas)
+
+    Returns:
+        Telefone do Leadbox se encontrado, senao telefone original (fail-safe)
+    """
+    api_url = handoff_triggers.get("api_url")
+    api_token = handoff_triggers.get("api_token")
+
+    # Se Leadbox nao configurado, retorna telefone original
+    if not api_url or not api_token:
+        logger.debug(f"[PHONE NORM] Leadbox nao configurado, usando telefone original")
+        return phone
+
+    # Limpar telefone para busca
+    clean_phone = phone.replace("@s.whatsapp.net", "").replace("@c.us", "")
+    clean_phone = "".join(filter(str.isdigit, clean_phone))
+
+    # Gerar variações do telefone brasileiro (usa função centralizada)
+    variations = generate_phone_variants(clean_phone)
+
+    try:
+        headers = {
+            "Authorization": f"Bearer {api_token}",
+            "Content-Type": "application/json",
+        }
+
+        # Tentar cada variação até encontrar
+        for i, search_phone in enumerate(variations):
+            result = await _search_leadbox_contact(api_url, api_token, search_phone, headers)
+
+            if result:
+                if i > 0:
+                    logger.info(
+                        f"[PHONE NORM] Encontrado na variacao {i+1}: "
+                        f"{clean_phone} -> {search_phone} -> {result}"
+                    )
+                else:
+                    logger.debug(
+                        f"[PHONE NORM] Leadbox retornou number={result} "
+                        f"(original={phone[:8]}***)"
+                    )
+                return result
+
+        # Nenhuma variação encontrou
+        logger.debug(
+            f"[PHONE NORM] Contato nao encontrado no Leadbox "
+            f"(tentou {len(variations)} variacoes), usando original"
+        )
+        return phone
+
+    except httpx.TimeoutException:
+        logger.warning(f"[PHONE NORM] Timeout ao buscar contato no Leadbox, usando original")
+        return phone
+    except httpx.HTTPStatusError as e:
+        logger.warning(f"[PHONE NORM] HTTP {e.response.status_code} do Leadbox, usando original")
+        return phone
+    except Exception as e:
+        logger.warning(f"[PHONE NORM] Erro ao buscar contato no Leadbox: {e}, usando original")
+        return phone
 
 
 async def dispatch_single(
@@ -39,6 +153,47 @@ async def dispatch_single(
     """
     today_str = format_date(datetime.utcnow().date())
     payment = eligible.payment
+
+    # 0. Verificar disponibilidade ANTES de disparar
+    available, reason = await check_lead_availability(
+        agent=agent,
+        phone=eligible.phone,
+        agent_id=agent["id"],
+    )
+
+    if not available:
+        logger.info({
+            "event": "dispatch_deferred",
+            "payment_id": payment.id,
+            "reason": reason,
+        })
+
+        # Guardar na "caixa" para retry
+        dispatch_logger = get_dispatch_logger()
+        await dispatch_logger.log_deferred(
+            phone=eligible.phone,
+            job_type="billing",
+            reason=reason,
+            context={
+                "payment_id": payment.id,
+                "customer_id": payment.customer_id,
+                "customer_name": payment.customer_name,
+                "value": payment.value,
+                "due_date": str(payment.due_date),
+                "notification_type": decision.phase,
+                "template_key": decision.template_key,
+                "offset": decision.offset,
+            },
+            reference_id=payment.id,
+        )
+
+        return DispatchResult(
+            status="deferred",
+            payment_id=payment.id,
+            template_used=decision.template_key,
+            offset=decision.offset,
+            error=None,
+        )
 
     # 1. Claim atomico
     claimed = await claim_notification(
@@ -98,6 +253,13 @@ async def dispatch_single(
                 raise ValueError(result.get("error", "Erro desconhecido no UAZAPI"))
 
         # 4. Salvar historico
+        # Normalizar telefone: buscar no Leadbox para evitar duplicatas
+        # (Asaas pode ter 5566992028039, Leadbox tem 556692028039)
+        normalized_phone = await get_leadbox_phone(
+            agent.get("handoff_triggers", {}),
+            eligible.phone,
+        )
+
         payment_dict = {
             "id": payment.id,
             "customer_id": payment.customer_id,
@@ -107,7 +269,7 @@ async def dispatch_single(
             "status": payment.status,
         }
         await save_message_to_conversation_history(
-            agent, eligible.phone, message, decision.phase, payment_dict
+            agent, normalized_phone, message, decision.phase, payment_dict
         )
 
         # 5. Log dispatch

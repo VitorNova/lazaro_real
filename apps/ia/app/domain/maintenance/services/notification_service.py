@@ -17,12 +17,13 @@ from typing import Any, Dict, List, Optional, Tuple
 from dateutil.relativedelta import relativedelta
 
 from app.core.utils.dias_uteis import format_date_br, get_today_brasilia
-from app.core.utils.phone import find_message_record_by_phone
+from app.core.utils.phone import find_message_record_by_phone, generate_phone_variants
 from app.domain.leads.services.lead_availability import check_lead_availability
 from app.services.dispatch_logger import get_dispatch_logger
 from app.services.leadbox_push import QUEUE_MAINTENANCE, leadbox_push_silent
 from app.services.supabase import get_supabase_service
 from app.services.whatsapp_api import UazapiService, sign_message
+from app.billing.dispatcher import get_leadbox_phone
 
 logger = logging.getLogger(__name__)
 
@@ -509,10 +510,17 @@ async def process_maintenance_notifications(
                     f"telefone={phone[:8]}*** | manutencao={format_date_br(proxima_manutencao)}"
                 )
 
+                # Normalizar telefone antes de salvar (evita duplicatas)
+                # O Asaas pode ter telefone diferente do Leadbox (ex: 5566992028039 vs 556692028039)
+                normalized_phone = await get_leadbox_phone(
+                    agent.get("handoff_triggers", {}),
+                    phone,
+                )
+
                 await mark_notification_sent(
                     contract_id=contract_id,
                     proxima_manutencao=proxima_manutencao,
-                    customer_phone=phone,
+                    customer_phone=normalized_phone,
                     message_sent=message,
                     table_messages=agent.get("table_messages"),
                     customer_id=contract.get("customer_id"),

@@ -104,19 +104,35 @@ async def leadbox_webhook(request: Request, background_tasks: BackgroundTasks) -
 
     # ==========================================================================
     # VERIFICAR SE TICKET FOI FECHADO
+    # Regra: Só considera fechado se event_type=FinishedTicket OU status=closed.
+    # IGNORA closedAt quando status=open (pode ser timestamp legado de fechamento anterior).
     # ==========================================================================
     ticket_status = ticket.get("status", "")
     closed_at = ticket.get("closedAt")
 
-    if phone and (ticket_status == "closed" or closed_at is not None):
+    if phone and (
+        event_type == "FinishedTicket" or
+        ticket_status == "closed"
+    ):
         return await handle_ticket_closed(phone, ticket_id, ticket_status, closed_at, payload_tenant_id)
+
+    # ==========================================================================
+    # UpdateOnTicket com queueId=None = ticket fechado/removido da fila
+    # ==========================================================================
+    if event_type == "UpdateOnTicket" and phone and queue_id is None:
+        logger.info("[LEADBOX WEBHOOK] UpdateOnTicket com queueId=None detectado para %s - tratando como ticket fechado", phone)
+        return await handle_ticket_closed(
+            phone, ticket_id, ticket_status, closed_at, payload_tenant_id
+        )
 
     # ==========================================================================
     # PROCESSAR MUDANÇA DE FILA
     # ==========================================================================
     if phone and queue_id:
+        contact_name = contact.get("name")
         return await handle_queue_change(
-            phone, queue_id, user_id, ticket_id, payload_tenant_id, event_type
+            phone, queue_id, user_id, ticket_id, payload_tenant_id, event_type,
+            contact_name=contact_name
         )
     else:
         logger.warning("[LEADBOX WEBHOOK] Payload sem phone ou queueId: phone=%s, queue=%s", phone, queue_id)

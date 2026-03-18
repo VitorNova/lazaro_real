@@ -89,22 +89,33 @@ class TestMaintenanceNotificationQueueHandling:
                         mock_logger_instance = MagicMock()
                         mock_logger_instance.log_dispatch = AsyncMock()
                         mock_logger_instance.log_failure = AsyncMock()
+                        mock_logger_instance.log_deferred = AsyncMock()
                         mock_dispatch_logger.return_value = mock_logger_instance
 
                         with patch(
                             "app.domain.maintenance.services.notification_service.logger"
                         ) as mock_logger:
-                            stats = await process_maintenance_notifications(
-                                mock_agent["id"], mock_agent, hoje
-                            )
+                            with patch(
+                                "app.domain.maintenance.services.notification_service.get_leadbox_phone",
+                                new_callable=AsyncMock,
+                                return_value="5566999725973",
+                            ):
+                                with patch(
+                                    "app.domain.maintenance.services.notification_service.check_lead_availability",
+                                    new_callable=AsyncMock,
+                                    return_value=(True, None),
+                                ):
+                                    stats = await process_maintenance_notifications(
+                                        mock_agent["id"], mock_agent, hoje
+                                    )
 
-                            # Deve ter logado warning sobre queue_confirmation_failed
-                            warning_calls = [
-                                call for call in mock_logger.warning.call_args_list
-                                if "queue" in str(call).lower() or "fila" in str(call).lower()
-                            ]
-                            assert len(warning_calls) >= 1, \
-                                "Deve logar WARNING quando queue_confirmation_failed=True"
+                                    # Deve ter logado warning sobre queue_confirmation_failed
+                                    warning_calls = [
+                                        call for call in mock_logger.warning.call_args_list
+                                        if "queue" in str(call).lower() or "fila" in str(call).lower()
+                                    ]
+                                    assert len(warning_calls) >= 1, \
+                                        "Deve logar WARNING quando queue_confirmation_failed=True"
 
     @pytest.mark.asyncio
     async def test_deve_registrar_queue_errors_nas_stats(
@@ -141,17 +152,28 @@ class TestMaintenanceNotificationQueueHandling:
                     ) as mock_dispatch_logger:
                         mock_logger_instance = MagicMock()
                         mock_logger_instance.log_dispatch = AsyncMock()
+                        mock_logger_instance.log_deferred = AsyncMock()
                         mock_dispatch_logger.return_value = mock_logger_instance
 
-                        stats = await process_maintenance_notifications(
-                            mock_agent["id"], mock_agent, hoje
-                        )
+                        with patch(
+                            "app.domain.maintenance.services.notification_service.get_leadbox_phone",
+                            new_callable=AsyncMock,
+                            return_value="5566999725973",
+                        ):
+                            with patch(
+                                "app.domain.maintenance.services.notification_service.check_lead_availability",
+                                new_callable=AsyncMock,
+                                return_value=(True, None),
+                            ):
+                                stats = await process_maintenance_notifications(
+                                    mock_agent["id"], mock_agent, hoje
+                                )
 
-                        # ESTE TESTE DEVE FALHAR COM O CODIGO ATUAL
-                        assert "queue_errors" in stats, \
-                            "Stats deve incluir queue_errors quando PUT de fila falha"
-                        assert stats["queue_errors"] >= 1, \
-                            "Deve contabilizar ao menos 1 queue_error"
+                                # ESTE TESTE DEVE FALHAR COM O CODIGO ATUAL
+                                assert "queue_errors" in stats, \
+                                    "Stats deve incluir queue_errors quando PUT de fila falha"
+                                assert stats["queue_errors"] >= 1, \
+                                    "Deve contabilizar ao menos 1 queue_error"
 
     @pytest.mark.asyncio
     async def test_deve_registrar_no_dispatch_log_com_warning_de_fila(
@@ -188,19 +210,30 @@ class TestMaintenanceNotificationQueueHandling:
                     ) as mock_dispatch_logger:
                         mock_logger_instance = MagicMock()
                         mock_logger_instance.log_dispatch = AsyncMock()
+                        mock_logger_instance.log_deferred = AsyncMock()
                         mock_dispatch_logger.return_value = mock_logger_instance
 
-                        await process_maintenance_notifications(
-                            mock_agent["id"], mock_agent, hoje
-                        )
+                        with patch(
+                            "app.domain.maintenance.services.notification_service.get_leadbox_phone",
+                            new_callable=AsyncMock,
+                            return_value="5566999725973",
+                        ):
+                            with patch(
+                                "app.domain.maintenance.services.notification_service.check_lead_availability",
+                                new_callable=AsyncMock,
+                                return_value=(True, None),
+                            ):
+                                await process_maintenance_notifications(
+                                    mock_agent["id"], mock_agent, hoje
+                                )
 
-                        # Verificar que log_dispatch foi chamado com metadata indicando problema
-                        assert mock_logger_instance.log_dispatch.called, \
-                            "Deve chamar log_dispatch mesmo com queue_confirmation_failed"
+                                # Verificar que log_dispatch foi chamado com metadata indicando problema
+                                assert mock_logger_instance.log_dispatch.called, \
+                                    "Deve chamar log_dispatch mesmo com queue_confirmation_failed"
 
-                        call_kwargs = mock_logger_instance.log_dispatch.call_args.kwargs
-                        metadata = call_kwargs.get("metadata", {})
+                                call_kwargs = mock_logger_instance.log_dispatch.call_args.kwargs
+                                metadata = call_kwargs.get("metadata", {})
 
-                        # ESTE TESTE DEVE FALHAR COM O CODIGO ATUAL
-                        assert metadata.get("queue_confirmation_failed") is True, \
-                            "Metadata deve indicar queue_confirmation_failed=True"
+                                # ESTE TESTE DEVE FALHAR COM O CODIGO ATUAL
+                                assert metadata.get("queue_confirmation_failed") is True, \
+                                    "Metadata deve indicar queue_confirmation_failed=True"
