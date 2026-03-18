@@ -91,6 +91,7 @@ async def health_check_detailed() -> JSONResponse:
         gemini_healthy = False
 
     # Build detailed status
+    # SECURITY: Removed sensitive internal info (model name, tools list)
     services = {
         "redis": {
             "status": "healthy" if redis_healthy else "unhealthy",
@@ -99,12 +100,10 @@ async def health_check_detailed() -> JSONResponse:
         "gemini": {
             "status": "healthy" if gemini_healthy else "unhealthy",
             "initialized": app_state.gemini_initialized,
-            "model": settings.gemini_model if gemini_healthy else None,
-            "tools_registered": get_gemini_service().registered_tools if gemini_healthy else [],
+            # SECURITY: model and tools_registered removed (internal info)
         },
         "calendar": {
-            "status": "per_agent_oauth",
-            "note": "Calendar is configured per-agent via Google OAuth",
+            "status": "configured",
         },
     }
 
@@ -112,11 +111,11 @@ async def health_check_detailed() -> JSONResponse:
     critical_services_healthy = redis_healthy and gemini_healthy
     overall_status = "healthy" if critical_services_healthy else "degraded"
 
+    # SECURITY: Removed environment from response (internal info)
     response_data = {
         "status": overall_status,
         "timestamp": datetime.utcnow().isoformat(),
         "uptime_seconds": uptime_seconds,
-        "environment": settings.app_env,
         "version": "1.0.0",
         "services": services,
     }
