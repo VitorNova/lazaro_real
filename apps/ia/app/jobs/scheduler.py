@@ -7,10 +7,15 @@ This module provides:
 - Scheduler lifecycle management
 """
 
+import os
 import structlog
 from typing import Optional, Any
 
 logger = structlog.get_logger(__name__)
+
+# Controle do job de billing da tarde (16h45)
+# Default: true (habilitado). Para desativar: BILLING_AFTERNOON_JOB_ENABLED=false
+BILLING_AFTERNOON_ENABLED = os.getenv("BILLING_AFTERNOON_JOB_ENABLED", "true").lower() == "true"
 
 
 def create_scheduler() -> Optional[Any]:
@@ -38,13 +43,11 @@ def register_jobs(scheduler: Any) -> None:
         scheduler: AsyncIOScheduler instance
     """
     from apscheduler.triggers.cron import CronTrigger
-    from apscheduler.triggers.interval import IntervalTrigger
 
     from app.jobs.billing_job_v2 import run_billing_v2
     from app.jobs.reconciliar_pagamentos import run_billing_reconciliation_job
-    from app.jobs.confirmar_agendamentos import run_calendar_confirmation_job
-    from app.jobs.reengajar_leads import run_follow_up_job
     from app.jobs.notificar_manutencoes import run_maintenance_notifier_job
+    from app.jobs.retry_deferred_job import retry_deferred_dispatches
 
     # Reconciliacao: 6h horario de Brasilia, seg-sex (ANTES do billing charge)
     scheduler.add_job(
@@ -64,23 +67,17 @@ def register_jobs(scheduler: Any) -> None:
         replace_existing=True,
     )
 
-    # Calendar confirmation: a cada 30 minutos
-    scheduler.add_job(
-        run_calendar_confirmation_job,
-        IntervalTrigger(minutes=30),
-        id="calendar_confirmation",
-        name="Calendar Confirmation Job",
-        replace_existing=True,
-    )
-
-    # Follow-up (Salvador): a cada 5 minutos
-    scheduler.add_job(
-        run_follow_up_job,
-        IntervalTrigger(minutes=5),
-        id="follow_up",
-        name="Follow Up Job (Salvador)",
-        replace_existing=True,
-    )
+    # Cobranca tarde: 16h45 horario de Brasilia, seg-sex
+    # Mesmo job, segundo horário para alcançar clientes ocupados pela manhã
+    # Proteção contra duplicata via claim_notification (UNIQUE constraint)
+    if BILLING_AFTERNOON_ENABLED:
+        scheduler.add_job(
+            run_billing_v2,
+            CronTrigger(hour=16, minute=45, day_of_week="mon-fri", timezone="America/Sao_Paulo"),
+            id="billing_charge_afternoon",
+            name="Billing Charge Job V2 - Tarde",
+            replace_existing=True,
+        )
 
     # Manutencao preventiva (ANA/Lazaro): 09:00 dias uteis, timezone Cuiaba
     scheduler.add_job(
@@ -91,14 +88,27 @@ def register_jobs(scheduler: Any) -> None:
         replace_existing=True,
     )
 
-    logger.info(
+    # Retry de dispatches adiados: 14h e 18h, seg-sex
+    scheduler.add_job(
+        retry_deferred_dispatches,
+        CronTrigger(hour="14,18", minute=0, day_of_week="mon-fri", timezone="America/Sao_Paulo"),
+        id="retry_deferred_dispatches",
+        name="Retry Deferred Dispatches",
+        replace_existing=True,
+    )
+
+    jobs_msg = (
         "APScheduler jobs registered: "
         "billing_reconciliation (6h seg-sex), "
         "billing_charge (9h seg-sex), "
-        "calendar_confirmation (30min), "
-        "follow_up (5min), "
-        "maintenance_notifier (9h seg-sex Cuiaba)"
     )
+    if BILLING_AFTERNOON_ENABLED:
+        jobs_msg += "billing_charge_afternoon (16h45 seg-sex), "
+    jobs_msg += (
+        "maintenance_notifier (9h seg-sex Cuiaba), "
+        "retry_deferred_dispatches (14h,18h seg-sex)"
+    )
+    logger.info(jobs_msg)
 
 
 def start_scheduler(scheduler: Any) -> bool:
