@@ -778,6 +778,399 @@ LIMIT 1;
 
 ---
 
+### Cenário 3 — Cliente não recebeu cobrança
+
+**O que acontece:** Um cliente específico não recebeu a mensagem de cobrança esperada (D-2, D-1, D0, ou D+N para vencidos).
+
+**Causas raiz mais comuns:**
+1. Job de billing não executou (lock, dia não útil, fora do horário)
+2. Cobrança não existe no Asaas ou já está paga
+3. Cliente sem telefone válido cadastrado
+4. Notificação já enviada (duplicata bloqueada)
+5. Falha no envio via UAZAPI/Leadbox
+
+**Diagnóstico rápido:**
+```bash
+# Ver se job de billing executou hoje
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "billing_v2_start|billing_v2_complete|billing_v2_skipped"
+
+# Ver notificações enviadas para telefone específico
+pm2 logs lazaro-ia --lines 500 --nostream | grep "5566XXXXXXXX" | grep -i billing
+
+# Ver erros de billing
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "BILLING JOB.*ERROR|DISPATCH_LOG.*FAILED"
+```
+
+**Sinais no log:**
+
+| Log | Significado |
+|---|---|
+| `billing_v2_start agents_count=N` | ✅ Job iniciou, processando N agentes |
+| `billing_v2_complete sent=X skipped=Y errors=Z` | ✅ Job finalizou com estatísticas |
+| `billing_v2_skipped reason=already_running` | ❌ Outra instância já estava rodando |
+| `billing_v2_skipped reason=not_business_day` | ❌ Fim de semana ou feriado |
+| `billing_v2_skipped reason=outside_hours` | ❌ Fora do horário comercial (8h-20h) |
+| `[BILLING JOB] Notificacao enviada: pay_XXX` | ✅ Cobrança enviada com sucesso |
+| `[BILLING JOB] Notificacao ja enviada para pay_XXX` | ⚠️ Duplicata bloqueada (normal) |
+| `[BILLING JOB] Cliente *** sem telefone valido` | ❌ Telefone ausente ou inválido no Asaas |
+| `[BILLING JOB] Erro ao enviar notificacao pay_XXX` | ❌ Falha no envio |
+| `[DISPATCH_LOG] billing/overdue FAILED: pay_XXX` | ❌ Falha registrada no dispatch_log |
+| `[LEADBOX PUSH] ticket_check_failed` | ❌ Não conseguiu verificar ticket no Leadbox |
+
+**Onde buscar o token do Asaas:**
+
+O token **não é global** — cada agente tem seu próprio token no banco:
+
+| Local | Campo | Uso |
+|---|---|---|
+| Tabela `agents` | `asaas_api_key` | **Fonte primária** (multi-tenant) |
+| Variável de ambiente | `ASAAS_API_KEY` | Fallback legado |
+
+```bash
+# Buscar token do agente no banco
+cd /var/www/lazaro-real/apps/ia && source venv/bin/activate && python3 -c "
+from app.integrations.supabase.client import get_supabase_client
+client = get_supabase_client()
+r = client.table('agents').select('name,asaas_api_key').eq('active', True).execute()
+for a in r.data:
+    key = a.get('asaas_api_key', '')
+    masked = f'{key[:10]}...{key[-4:]}' if key and len(key) > 14 else 'NAO CONFIGURADO'
+    print(f\"{a['name']}: {masked}\")
+"
+```
+
+**Status possíveis no Asaas (usar na query):**
+
+| Status | Significado |
+|---|---|
+| `PENDING` | Aguardando pagamento |
+| `OVERDUE` | Vencido (não pago após due_date) |
+| `RECEIVED` | Pago (saldo disponível) |
+| `CONFIRMED` | Pago (aguardando compensação bancária) |
+| `CANCELLED` | Cancelado |
+
+**Verificar se cobrança existe no Asaas:**
+```bash
+cd /var/www/lazaro-real/apps/ia && source venv/bin/activate && python3 -c "
+import httpx
+from app.integrations.supabase.client import get_supabase_client
+
+# Buscar token do agente Ana
+client = get_supabase_client()
+agent = client.table('agents').select('asaas_api_key').eq('name', 'Ana').limit(1).execute().data[0]
+api_key = agent['asaas_api_key']
+
+# Buscar cobrança por customer_id
+customer_id = 'cus_XXXXXXXX'  # substituir
+
+resp = httpx.get(
+    f'https://api.asaas.com/v3/payments?customer={customer_id}&status=PENDING,OVERDUE,RECEIVED',
+    headers={'access_token': api_key, 'User-Agent': 'lazaro-ia'}
+)
+print(resp.json())
+"
+```
+
+> ⚠️ **Asaas é a fonte da verdade** — se o status no Asaas é `RECEIVED` mas o `asaas_cobrancas` local ainda mostra `PENDING`, o webhook não foi processado corretamente.
+
+**Verificar no banco se disparo foi registrado:**
+```sql
+-- dispatch_log: registros de disparo
+SELECT
+    id, job_type, notification_type, phone, status,
+    error_message, failure_reason, created_at
+FROM dispatch_log
+WHERE phone LIKE '%5566XXXXXXXX%'
+  AND job_type = 'billing'
+ORDER BY created_at DESC
+LIMIT 10;
+
+-- billing_notifications: controle de duplicatas
+SELECT
+    payment_id, notification_type, scheduled_date, status,
+    error_message, sent_at
+FROM billing_notifications
+WHERE phone LIKE '%5566XXXXXXXX%'
+ORDER BY scheduled_date DESC
+LIMIT 10;
+```
+
+**Verificar se context foi salvo no conversation_history:**
+```sql
+SELECT
+    remotejid,
+    jsonb_path_query_array(
+        conversation_history->'messages',
+        '$[*] ? (@.context == "billing")'
+    ) AS mensagens_billing
+FROM "leadbox_messages_Ana_14e6e5ce"
+WHERE remotejid LIKE '%5566XXXXXXXX%'
+LIMIT 1;
+```
+
+**O campo `context` deve aparecer assim:**
+```json
+{
+  "role": "model",
+  "parts": [{"text": "mensagem de cobrança..."}],
+  "context": "billing",
+  "reference_id": "pay_XXXXXXXX"
+}
+```
+
+---
+
+### Cenário 4 — Lead no departamento errado após disparo de cobrança
+
+**O que acontece:** Após disparo de cobrança, o lead aparece em uma fila errada (ex: fila 537 quando deveria estar na 544, ou fila humana 453 quando deveria estar na 544).
+
+**Causas raiz mais comuns:**
+1. `leadbox_push_silent` não conseguiu mover o ticket para a fila correta
+2. PUT de confirmação de fila falhou após PUSH
+3. Webhook do Leadbox moveu o lead de volta para outra fila
+4. `dispatch_departments` não configurado corretamente para billing
+
+**Diagnóstico rápido:**
+```bash
+# Ver em qual fila o lead está agora (log)
+pm2 logs lazaro-ia --lines 500 --nostream | grep "5566XXXXXXXX" | grep -iE "queue|fila|push"
+
+# Ver se PUSH funcionou
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "LEADBOX PUSH.*PUT ok|LEADBOX PUSH.*PUSH ok|queue_confirmation_failed"
+
+# Ver eventos de mudança de fila
+pm2 logs lazaro-ia --lines 500 --nostream | grep "5566XXXXXXXX" | grep -iE "UpdateOnTicket|queueId"
+```
+
+**Sinais no log:**
+
+| Log | Significado |
+|---|---|
+| `[LEADBOX PUSH] PUT ok (ticket existia): ticketId=X -> queueId=544` | ✅ Ticket movido para fila billing |
+| `[LEADBOX PUSH] PUSH ok (ticket novo): queueId=544, ticketId=X` | ✅ Ticket criado na fila billing |
+| `[LEADBOX PUSH] PUT confirmação: ticketId=X -> queueId=544` | ✅ Confirmação de fila executada |
+| `[LEADBOX PUSH] PUT confirmação falhou` | ❌ Ticket pode estar na fila errada |
+| `[LEADBOX PUSH] ticket_check_failed` | ❌ Não verificou ticket, pode ter duplicado |
+| `[LEADBOX PUSH] Config incompleta` | ❌ `handoff_triggers` não configurado |
+| `UpdateOnTicket (queue=453)` | ⚠️ Lead foi para fila humana (atendente pegou?) |
+| `UpdateOnTicket (queue=537)` | ⚠️ Lead voltou para fila genérica |
+
+**Verificar em qual fila o lead está no banco:**
+```bash
+cd /var/www/lazaro-real/apps/ia && source venv/bin/activate && python3 -c "
+from app.integrations.supabase.client import get_supabase_client
+client = get_supabase_client()
+r = client.table('LeadboxCRM_Ana_14e6e5ce') \
+    .select('remotejid,current_queue_id,current_state,ticket_id,billing_context') \
+    .eq('remotejid', 'PHONE@s.whatsapp.net').execute()
+print(r.data)
+"
+```
+Substitua `PHONE` pelo número sem `+` (ex: `556697194084`).
+
+**Referência de filas:**
+
+| Fila | ID | Descrição |
+|---|---|---|
+| Fila IA principal (Ana) | `537` | Onde leads novos caem |
+| **Fila billing** | **`544`** | Contexto de cobrança |
+| Fila manutenção | `545` | Contexto de manutenção |
+| Fila atendimento humano | `453` | Nathália |
+| Fila financeiro | `454` | Tieli |
+
+**Verificar configuração de dispatch_departments:**
+```bash
+cd /var/www/lazaro-real/apps/ia && source venv/bin/activate && python3 -c "
+from app.integrations.supabase.client import get_supabase_client
+client = get_supabase_client()
+r = client.table('agents').select('name,handoff_triggers').eq('active', True).execute()
+for a in r.data:
+    ht = a['handoff_triggers'] or {}
+    dispatch = ht.get('dispatch_departments', {})
+    print(a['name'])
+    print('  billing:', dispatch.get('billing', 'NAO CONFIGURADO'))
+    print('  maintenance:', dispatch.get('maintenance', 'NAO CONFIGURADO'))
+"
+```
+
+**Estrutura esperada de dispatch_departments:**
+```json
+{
+  "dispatch_departments": {
+    "billing": {
+      "queueId": 544,
+      "userId": 1095,
+      "name": "Cobrança"
+    },
+    "maintenance": {
+      "queueId": 545,
+      "userId": 1095,
+      "name": "Manutenção"
+    }
+  }
+}
+```
+
+**Corrigir manualmente a fila de um lead:**
+
+```bash
+# Via API Leadbox (recomendado)
+cd /var/www/lazaro-real/apps/ia && source venv/bin/activate && python3 -c "
+import httpx
+from app.integrations.supabase.client import get_supabase_client
+
+# Buscar config do agente
+client = get_supabase_client()
+agent = client.table('agents').select('handoff_triggers').eq('active', True).limit(1).execute().data[0]
+ht = agent['handoff_triggers']
+
+# PUT no ticket
+ticket_id = 123456  # substituir pelo ID real do ticket
+queue_id = 544      # fila destino (544=billing, 545=manutenção, 537=IA)
+user_id = 1095      # usuário que assumirá
+
+resp = httpx.put(
+    f\"{ht['api_url']}/tickets/{ticket_id}\",
+    json={'queueId': queue_id, 'userId': user_id},
+    headers={'Authorization': f\"Bearer {ht['api_token']}\"}
+)
+print(resp.status_code, resp.text)
+"
+```
+
+```sql
+-- Corrigir fila no Supabase (apenas emergência - não sincroniza com Leadbox)
+UPDATE "LeadboxCRM_Ana_14e6e5ce"
+SET current_queue_id = 544,
+    current_state = 'active'
+WHERE remotejid = 'PHONE@s.whatsapp.net';
+```
+
+> ⚠️ A correção via Supabase NÃO move o ticket no Leadbox. O lead pode voltar para a fila errada no próximo evento de webhook. Use sempre a API do Leadbox para garantir sincronia.
+
+---
+
+### Cenário 5 — IA perdeu contexto após pagamento confirmado
+
+**O que acontece:** Cliente pagou, recebeu mensagem de confirmação ("Confirmamos o recebimento do seu pagamento..."), respondeu essa mensagem, mas a IA continua enviando link de pagamento como se ainda não tivesse pago.
+
+**Exemplo real (lead 556699133755, 2026-03-19):**
+```
+[model] ctx=billing "Sua mensalidade vence amanhã..."  ← Cobrança D-1
+[user]  ctx=VAZIO  "[sticker]"                         ← Cliente respondeu
+[model] ctx=VAZIO  "É só abrir o link que enviei..."   ← IA ignorou que já pagou
+```
+
+**Causa raiz:** A mensagem de confirmação de pagamento foi **enviada via WhatsApp** mas **não foi salva** no `conversation_history`. Quando o cliente responde, a IA não tem contexto de que o pagamento foi recebido.
+
+**Por que não salvou?** `payment_message_service.py:salvar_no_historico()` faz busca **exata** por telefone:
+```python
+phone_jid = f"{phone}@s.whatsapp.net"
+.eq("remotejid", phone_jid)  # ← Busca exata, sem variantes
+```
+Se o telefone no Asaas é `5566991337555` (com 9 extra) mas o lead está cadastrado como `556699133755` (sem 9 extra), a busca **não encontra o lead** e retorna silenciosamente.
+
+**Diagnóstico rápido:**
+```bash
+# Ver se mensagem de confirmação foi salva
+pm2 logs lazaro-ia --lines 500 --nostream | grep -i "PAYMENT MSG"
+
+# Ver se webhook PAYMENT_RECEIVED foi processado
+pm2 logs lazaro-ia --lines 500 --nostream | grep -iE "PAYMENT_RECEIVED|PAYMENT_CONFIRMED"
+```
+
+**Sinais no log:**
+
+| Log | Significado |
+|---|---|
+| `[PAYMENT MSG] Confirmação enviada: payment_id=X` | ✅ Mensagem enviada |
+| `[PAYMENT MSG] Mensagem salva no conversation_history` | ✅ Contexto salvo |
+| `[PAYMENT MSG] Lead não encontrado para XXX` | ❌ **Bug!** Telefone não bateu |
+| `[PAYMENT MSG] Confirmação já enviada anteriormente` | ⚠️ Duplicata (normal) |
+| `[ASAAS WEBHOOK] Pagamento recebido: pay_XXX` | ✅ Webhook processado |
+
+**Verificar no banco se mensagem de confirmação foi salva:**
+```bash
+cd /var/www/lazaro-real/apps/ia && source venv/bin/activate && python3 -c "
+from app.integrations.supabase.client import get_supabase_client
+client = get_supabase_client()
+
+phone = '5566XXXXXXXX'  # substituir
+r = client.table('leadbox_messages_Ana_14e6e5ce') \
+    .select('conversation_history') \
+    .eq('remotejid', f'{phone}@s.whatsapp.net').execute()
+
+if r.data and r.data[0].get('conversation_history'):
+    msgs = r.data[0]['conversation_history'].get('messages', [])
+    confirmacoes = [m for m in msgs if m.get('context') == 'pagamento_confirmado']
+    print(f'Total msgs: {len(msgs)}')
+    print(f'Confirmações de pagamento: {len(confirmacoes)}')
+    for c in confirmacoes:
+        print(f\"  payment_id: {c.get('payment_id')}, timestamp: {c.get('timestamp')}\")
+    if not confirmacoes:
+        print('⚠️ NENHUMA mensagem com context=pagamento_confirmado!')
+        print('Últimas 5 mensagens:')
+        for m in msgs[-5:]:
+            print(f\"  [{m.get('role')}] ctx={m.get('context','')} | {str(m.get('parts',[{}])[0].get('text',''))[:50]}...\")
+"
+```
+
+**Verificar se pagamento foi recebido no Asaas mas não refletiu no sistema:**
+```sql
+-- Comparar status no cache local vs. Asaas
+SELECT
+    id, customer_id, status, value, due_date,
+    ia_cobrou, ia_recebeu, updated_at
+FROM asaas_cobrancas
+WHERE customer_id IN (
+    SELECT asaas_customer_id FROM "LeadboxCRM_Ana_14e6e5ce"
+    WHERE remotejid LIKE '%5566XXXXXXXX%'
+)
+ORDER BY due_date DESC
+LIMIT 5;
+```
+
+**Correção manual — forçar contexto de pagamento:**
+```bash
+cd /var/www/lazaro-real/apps/ia && source venv/bin/activate && python3 -c "
+from app.integrations.supabase.client import get_supabase_client
+from datetime import datetime
+client = get_supabase_client()
+
+phone = '5566XXXXXXXX'  # substituir
+payment_id = 'pay_XXXXXXXX'  # substituir
+
+# Buscar lead
+r = client.table('leadbox_messages_Ana_14e6e5ce') \
+    .select('id, conversation_history') \
+    .eq('remotejid', f'{phone}@s.whatsapp.net').execute()
+
+if r.data:
+    lead = r.data[0]
+    history = lead.get('conversation_history') or {'messages': []}
+    msgs = history.get('messages', [])
+
+    # Adicionar mensagem de confirmação
+    msgs.append({
+        'role': 'model',
+        'parts': [{'text': 'Confirmamos o recebimento do seu pagamento. Obrigada!'}],
+        'timestamp': datetime.utcnow().isoformat(),
+        'context': 'pagamento_confirmado',
+        'payment_id': payment_id,
+    })
+
+    client.table('leadbox_messages_Ana_14e6e5ce').update({
+        'conversation_history': {'messages': msgs}
+    }).eq('id', lead['id']).execute()
+
+    print(f'Contexto de pagamento adicionado ao lead {lead[\"id\"]}')
+"
+```
+
+> ⚠️ **Bug conhecido:** `payment_message_service.py` não usa `generate_phone_variants()` para buscar o lead. Se o telefone no Asaas difere do cadastro (9 extra), a busca falha silenciosamente. Correção pendente.
+
+---
+
 ## Diagnóstico de Webhooks Leadbox
 
 ### Conceito Fundamental: Ticket = Conversa Ativa
