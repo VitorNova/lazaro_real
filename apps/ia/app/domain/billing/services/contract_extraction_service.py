@@ -193,14 +193,12 @@ async def processar_customer_created_background(
                 logger.info("[CUSTOMER_CREATED] Nenhum documento encontrado para assinatura %s", subscription_id)
                 continue
 
-            # 6. Merge dados de todos os PDFs
-            merged_data = merge_contract_data(all_contract_data)
+            # 6. Agrupar por numero_contrato e salvar cada contrato separadamente
+            grupos = agrupar_contratos_por_numero(all_contract_data, all_pdf_data)
 
-            # Salvar contrato
-            await _salvar_contract_details(
+            await _salvar_multiplos_contratos(
                 supabase=supabase,
-                merged_data=merged_data,
-                all_pdf_data=all_pdf_data,
+                grupos=grupos,
                 subscription_id=subscription_id,
                 customer_id=customer_id,
                 customer_name=customer_name,
@@ -368,14 +366,12 @@ async def processar_subscription_created_background(
             logger.info("[SUBSCRIPTION_CREATED] Nenhum documento encontrado para subscription %s", subscription_id)
             return
 
-        # Merge dados de todos os PDFs
-        merged_data = merge_contract_data(all_contract_data)
+        # Agrupar por numero_contrato e salvar cada contrato separadamente
+        grupos = agrupar_contratos_por_numero(all_contract_data, all_pdf_data)
 
-        # Salvar contrato
-        await _salvar_contract_details(
+        await _salvar_multiplos_contratos(
             supabase=supabase,
-            merged_data=merged_data,
-            all_pdf_data=all_pdf_data,
+            grupos=grupos,
             subscription_id=subscription_id,
             customer_id=customer_id,
             customer_name=None,
@@ -472,9 +468,10 @@ async def _salvar_contract_details(
         }
 
         try:
+            # on_conflict inclui numero_contrato para permitir multiplos contratos por subscription
             supabase.client.table("contract_details").upsert(
                 record,
-                on_conflict="subscription_id,agent_id"
+                on_conflict="subscription_id,agent_id,numero_contrato"
             ).execute()
 
             logger.info(
@@ -645,6 +642,85 @@ def merge_contract_data(data_list: List[Dict[str, Any]]) -> Dict[str, Any]:
     result["equipamentos"] = all_equipamentos
 
     return result
+
+
+def agrupar_contratos_por_numero(
+    all_contract_data: List[Dict[str, Any]],
+    all_pdf_data: List[Dict[str, Any]],
+) -> Dict[str, tuple]:
+    """
+    Agrupa PDFs pelo numero_contrato extraido.
+
+    Quando multiplos PDFs tem numeros de contrato DIFERENTES,
+    cada grupo sera salvo como um contract_details separado.
+
+    Quando multiplos PDFs tem o MESMO numero de contrato,
+    serao mergeados em um unico registro (comportamento anterior).
+
+    Args:
+        all_contract_data: Lista de dados extraidos de cada PDF
+        all_pdf_data: Lista de metadados de cada PDF (doc_id, doc_name, etc)
+
+    Returns:
+        Dict[numero_contrato] = (lista_contract_data, lista_pdf_data)
+        PDFs sem numero_contrato vao para chave especial "__sem_numero__"
+    """
+    grupos: Dict[str, tuple] = {}
+
+    for i, contract_data in enumerate(all_contract_data):
+        numero = contract_data.get("numero_contrato") or "__sem_numero__"
+
+        if numero not in grupos:
+            grupos[numero] = ([], [])
+
+        grupos[numero][0].append(contract_data)
+        grupos[numero][1].append(all_pdf_data[i])
+
+    logger.info(
+        "[AGRUPAR] %d PDFs agrupados em %d contratos distintos: %s",
+        len(all_contract_data),
+        len(grupos),
+        list(grupos.keys())
+    )
+
+    return grupos
+
+
+async def _salvar_multiplos_contratos(
+    supabase: Any,
+    grupos: Dict[str, tuple],
+    subscription_id: str,
+    customer_id: str,
+    customer_name: Optional[str],
+    agent_id: str,
+    log_prefix: str,
+) -> None:
+    """
+    Salva multiplos contratos quando ha PDFs com numeros diferentes.
+
+    Para cada grupo (por numero_contrato):
+    1. Faz merge apenas dos PDFs do mesmo numero_contrato
+    2. Salva um contract_details separado
+
+    Args:
+        grupos: Dict retornado por agrupar_contratos_por_numero()
+        Demais args: mesmos de _salvar_contract_details()
+    """
+    for numero_contrato, (contract_list, pdf_list) in grupos.items():
+        # Merge apenas PDFs do mesmo contrato
+        merged_data = merge_contract_data(contract_list)
+
+        # Salvar
+        await _salvar_contract_details(
+            supabase=supabase,
+            merged_data=merged_data,
+            all_pdf_data=pdf_list,
+            subscription_id=subscription_id,
+            customer_id=customer_id,
+            customer_name=customer_name,
+            agent_id=agent_id,
+            log_prefix=f"{log_prefix} [{numero_contrato}]"
+        )
 
 
 def _get_contract_extraction_prompt(pdf_text: str) -> str:
