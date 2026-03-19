@@ -1171,6 +1171,163 @@ if r.data:
 
 ---
 
+### Cenário 6 — Cobrança parou antes do tempo configurado
+
+**O que acontece:** Lead recebeu cobrança no D-1 ou D-2, mas parou de receber nos dias seguintes (D+1, D+2, etc.) antes de atingir o máximo configurado na régua.
+
+**Causas raiz mais comuns:**
+1. `maxAttempts` atingido (padrão: 15)
+2. Pagamento mudou de status no Asaas (RECEIVED, CANCELLED)
+3. Lead em fila humana (pausa ativa no Redis)
+4. `overdueDays` não inclui o dia atual na configuração
+5. Erro silencioso no job de billing
+
+**Diagnóstico rápido — ver configuração da régua:**
+```bash
+cd /var/www/lazaro-real/apps/ia && source venv/bin/activate && python3 -c "
+from app.integrations.supabase.client import get_supabase_client
+import json
+client = get_supabase_client()
+r = client.table('agents').select('name,asaas_config').eq('name', 'Ana').execute()
+if r.data:
+    config = r.data[0].get('asaas_config', {}).get('autoCollection', {})
+    print('=== Configuração da Régua ===')
+    print(f\"reminderDays: {config.get('reminderDays', [2, 1])}\")
+    print(f\"onDueDate: {config.get('onDueDate', True)}\")
+    after = config.get('afterDue', {})
+    print(f\"afterDue.enabled: {after.get('enabled', True)}\")
+    print(f\"afterDue.maxAttempts: {after.get('maxAttempts', 15)}\")
+    print(f\"afterDue.overdueDays: {after.get('overdueDays', list(range(1,16)))}\")
+"
+```
+
+**Ver histórico de cobranças do lead (por telefone):**
+```bash
+cd /var/www/lazaro-real/apps/ia && source venv/bin/activate && python3 -c "
+from app.integrations.supabase.client import get_supabase_client
+client = get_supabase_client()
+
+phone = '5566XXXXXXXX'  # substituir
+
+r = client.table('billing_notifications') \
+    .select('payment_id,notification_type,days_from_due,scheduled_date,status,sent_at') \
+    .ilike('phone', f'%{phone}%') \
+    .order('scheduled_date', desc=True) \
+    .limit(20) \
+    .execute()
+
+print(f'=== Notificações para {phone} ({len(r.data)} encontradas) ===')
+print()
+print(f'{\"DATA\":<12} | {\"TIPO\":<10} | {\"DIAS\":<5} | {\"STATUS\":<8} | PAYMENT_ID')
+print('-' * 70)
+for n in r.data:
+    dias = f\"D{n['days_from_due']:+d}\" if n.get('days_from_due') is not None else '?'
+    print(f\"{n['scheduled_date']:<12} | {n['notification_type']:<10} | {dias:<5} | {n['status']:<8} | {n['payment_id']}\")
+"
+```
+
+**Ver dispatch_log com falhas e motivos:**
+```bash
+cd /var/www/lazaro-real/apps/ia && source venv/bin/activate && python3 -c "
+from app.integrations.supabase.client import get_supabase_client
+client = get_supabase_client()
+
+phone = '5566XXXXXXXX'  # substituir
+
+r = client.table('dispatch_log') \
+    .select('reference_id,notification_type,days_from_due,status,failure_reason,deferred_reason,created_at') \
+    .ilike('phone', f'%{phone}%') \
+    .eq('job_type', 'billing') \
+    .order('created_at', desc=True) \
+    .limit(20) \
+    .execute()
+
+print(f'=== Dispatch Log para {phone} ({len(r.data)} encontrados) ===')
+print()
+for d in r.data:
+    reason = d.get('failure_reason') or d.get('deferred_reason') or ''
+    dias = f\"D{d['days_from_due']:+d}\" if d.get('days_from_due') is not None else '?'
+    print(f\"{d['created_at'][:10]} | {d['notification_type']:<10} | {dias:<5} | {d['status']:<8} | {reason:<20} | {d['reference_id']}\")
+"
+```
+
+**Verificar se lead está pausado (fila humana):**
+```bash
+cd /var/www/lazaro-real/apps/ia && source venv/bin/activate && python3 -c "
+from app.integrations.redis.client import get_redis_client
+import asyncio
+
+async def check():
+    redis = await get_redis_client()
+    phone = '5566XXXXXXXX'  # substituir
+    agent_id = '14e6e5ce-4627-4e38-aac8-f0191669ff53'  # Ana
+
+    key = f'pause:{agent_id}:{phone}'
+    value = await redis.get(key)
+
+    if value:
+        print(f'⚠️ LEAD PAUSADO: {key} = {value}')
+        print('Lead está em fila humana, billing não envia.')
+    else:
+        print(f'✅ Lead NÃO está pausado (key {key} não existe)')
+
+asyncio.run(check())
+"
+```
+
+**Verificar status atual do pagamento no Asaas:**
+```bash
+cd /var/www/lazaro-real/apps/ia && source venv/bin/activate && python3 -c "
+import httpx
+from app.integrations.supabase.client import get_supabase_client
+client = get_supabase_client()
+
+payment_id = 'pay_XXXXXXXX'  # substituir
+
+# Buscar token
+agent = client.table('agents').select('asaas_api_key').eq('name', 'Ana').limit(1).execute().data[0]
+
+resp = httpx.get(
+    f'https://api.asaas.com/v3/payments/{payment_id}',
+    headers={'access_token': agent['asaas_api_key'], 'User-Agent': 'lazaro-ia'}
+)
+data = resp.json()
+print(f\"Payment: {data.get('id')}\")
+print(f\"Status: {data.get('status')}\")
+print(f\"Value: R$ {data.get('value')}\")
+print(f\"DueDate: {data.get('dueDate')}\")
+print(f\"PaymentDate: {data.get('paymentDate')}\")
+"
+```
+
+**Tabela de sinais:**
+
+| Sinal | Causa | Ação |
+|---|---|---|
+| Total enviadas >= `maxAttempts` | Atingiu limite configurado | Normal, aumentar `maxAttempts` se necessário |
+| Status `RECEIVED` ou `CONFIRMED` no Asaas | Cliente já pagou | Normal, billing para automaticamente |
+| Status `CANCELLED` no Asaas | Cobrança cancelada | Verificar por que foi cancelada |
+| `pause:agent_id:phone` existe no Redis | Lead em fila humana | Aguardar ou remover pausa manualmente |
+| Dia atual não está em `overdueDays` | Configuração incompleta | Ajustar `overdueDays` no agente |
+| `deferred_reason` = `human_queue_*` | Disparo adiado | Ver `/api/jobs/retry-deferred` |
+| Nenhuma notificação após D0 | `afterDue.enabled = false` | Verificar configuração |
+
+**Resumo por lead — quantas cobranças por tipo:**
+```sql
+SELECT
+    notification_type,
+    status,
+    COUNT(*) as total,
+    MIN(scheduled_date) as primeira,
+    MAX(scheduled_date) as ultima
+FROM billing_notifications
+WHERE phone LIKE '%5566XXXXXXXX%'
+GROUP BY notification_type, status
+ORDER BY notification_type, status;
+```
+
+---
+
 ## Diagnóstico de Webhooks Leadbox
 
 ### Conceito Fundamental: Ticket = Conversa Ativa
