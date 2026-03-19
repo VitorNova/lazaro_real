@@ -292,6 +292,13 @@ async def dispatch_single(
             agent["id"], payment.id, decision.phase, today_str, "sent"
         )
 
+        # 7. Atualizar colunas de billing no lead
+        await _update_lead_billing_info(
+            table_leads=agent["table_leads"],
+            phone=normalized_phone,
+            billing_type=decision.phase,
+        )
+
         logger.info({
             "event": "dispatch_sent",
             "payment_id": payment.id,
@@ -386,3 +393,35 @@ async def _update_payment_status(
         }).eq("id", payment_id).eq("agent_id", agent_id).execute()
     except Exception as e:
         logger.warning({"event": "increment_notifications_error", "error": str(e)})
+
+
+async def _update_lead_billing_info(
+    table_leads: str,
+    phone: str,
+    billing_type: str,
+) -> None:
+    """
+    Atualiza last_billing_sent_at e last_billing_type no lead.
+
+    Desnormaliza a data do ultimo disparo de cobranca para evitar
+    N queries ao listar leads no dashboard.
+    """
+    supabase = get_supabase_service()
+    try:
+        remotejid = f"{phone}@s.whatsapp.net"
+        supabase.client.table(table_leads).update({
+            "last_billing_sent_at": datetime.utcnow().isoformat(),
+            "last_billing_type": billing_type,
+        }).eq("remotejid", remotejid).execute()
+
+        logger.debug({
+            "event": "lead_billing_info_updated",
+            "phone": phone[:8] + "***",
+            "billing_type": billing_type,
+        })
+    except Exception as e:
+        logger.warning({
+            "event": "update_lead_billing_error",
+            "error": str(e),
+            "phone": phone[:8] + "***",
+        })
