@@ -1251,7 +1251,7 @@ class WhatsAppWebhookHandler:
                 current_queue = None
 
             if current_queue is not None and current_queue not in IA_QUEUES:
-                logger.debug(f"[LEADBOX] Lead {phone} na fila {current_queue} (pré-agendamento) - aguardando 3s para recheck...")
+                logger.info(f"[FILA CHECK] Lead {phone[-4:]} — banco diz queue={current_queue}, aguardando 3s para re-check")
                 await asyncio.sleep(3)
                 fresh_lead = supabase.get_lead_by_remotejid(table_leads, remotejid)
                 if fresh_lead:
@@ -1260,6 +1260,7 @@ class WhatsAppWebhookHandler:
                         fresh_queue = int(fresh_queue_raw) if fresh_queue_raw else None
                     except (ValueError, TypeError):
                         fresh_queue = None
+                    logger.info(f"[FILA RECHECK] Lead {phone[-4:]} — após 3s: queue={fresh_queue} (mudou={current_queue != fresh_queue})")
                     if fresh_queue is not None and fresh_queue not in IA_QUEUES:
                         # ================================================================
                         # FAIL-SAFE: Consultar API do Leadbox antes de ignorar
@@ -1269,6 +1270,7 @@ class WhatsAppWebhookHandler:
                         lb_api_token = handoff.get("api_token")
 
                         if lb_api_url and lb_api_token:
+                            logger.info(f"[FILA API] Lead {phone[-4:]} — consultando Leadbox (banco inconsistente após 3s)")
                             try:
                                 ticket_id_for_check = fresh_lead.get("ticket_id")
                                 try:
@@ -1289,8 +1291,7 @@ class WhatsAppWebhookHandler:
                                     if realtime_queue and int(realtime_queue) in IA_QUEUES:
                                         # API diz que está em fila IA! Banco desatualizado.
                                         logger.warning(
-                                            "[SYNC FIX] Lead %s: banco diz fila %s, API Leadbox diz fila %s - CORRIGINDO e processando",
-                                            phone, fresh_queue, realtime_queue
+                                            f"[FILA CORRIGIDA] Lead {phone[-4:]} — banco dizia queue={fresh_queue}, API diz queue={realtime_queue} — CORRIGINDO e processando"
                                         )
                                         # Atualizar banco com dados reais da API
                                         new_ticket_id = realtime_result.get("ticket_id")
@@ -1307,8 +1308,7 @@ class WhatsAppWebhookHandler:
                                     else:
                                         # API confirma que está em fila não-IA - ignorar
                                         logger.warning(
-                                            "[LEADBOX] Lead %s IGNORADO: banco fila=%s, API fila=%s (CONFIRMADO não-IA)",
-                                            phone, fresh_queue, realtime_queue
+                                            f"[FILA CONFIRMADA HUMANA] Lead {phone[-4:]} — API confirma queue={realtime_queue} — IGNORANDO"
                                         )
                                         return {"status": "ignored", "reason": "lead_em_outra_fila_confirmado_api"}
                                 else:
@@ -1321,8 +1321,7 @@ class WhatsAppWebhookHandler:
                             except Exception as api_err:
                                 # Erro na API - comportamento fail-safe: ignorar
                                 logger.warning(
-                                    "[LEADBOX] Lead %s na fila %s - erro ao consultar API Leadbox (%s), IGNORANDO",
-                                    phone, fresh_queue, str(api_err)
+                                    f"[FILA API ERRO] Lead {phone[-4:]} — API Leadbox falhou: {api_err} — IGNORANDO por segurança"
                                 )
                                 return {"status": "ignored", "reason": "lead_em_outra_fila"}
                         else:
@@ -1383,7 +1382,7 @@ class WhatsAppWebhookHandler:
                 queue_check = None
 
             if queue_check is not None and queue_check in IA_QUEUES:
-                logger.info(f"Pausa ignorada para {phone} - lead em fila IA {queue_check} (race condition fix)")
+                logger.info(f"[RACE FIX] Lead {phone[-4:]} — pausa ignorada pois banco mostra fila IA queue={queue_check}")
                 is_paused = False
 
         if is_paused:
@@ -1423,6 +1422,13 @@ class WhatsAppWebhookHandler:
         logger.debug(f"  -> Agent ID: {agent_id}")
         logger.debug(f"  -> Phone: {phone}")
         logger.debug(f"  -> Texto: {text[:50]}...")
+
+        # Log de diagnóstico: estado exato do lead ao entrar no processamento
+        logger.info(
+            f"[IA PROCESSANDO] Lead {phone[-4:]} — queue={lead.get('current_queue_id')} "
+            f"| state={lead.get('current_state')} | ticket={lead.get('ticket_id')} "
+            f"| user={lead.get('current_user_id')} — aprovado para Gemini"
+        )
 
         # Adicionar ao buffer
         await redis.buffer_add_message(agent_id, phone, text)
