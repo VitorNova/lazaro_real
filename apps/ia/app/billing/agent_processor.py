@@ -28,14 +28,18 @@ async def process_agent(agent: Dict[str, Any], today: date) -> Dict[str, Any]:
     messages_config = config.get("messages") or {}
     max_attempts = (config.get("afterDue") or {}).get("maxAttempts", 15)
 
+    # Construir schedule a partir da config do agente
+    # BUG FIX: Antes usava DEFAULT_SCHEDULE hardcoded, ignorando overdueDays do agente
+    reminder_days = config.get("reminderDays") or [2, 1]
+    overdue_days = (config.get("afterDue") or {}).get("overdueDays") or list(range(1, 16))
+    schedule = [-d for d in reminder_days] + [0] + overdue_days
+
     stats = {"sent": 0, "skipped": 0, "errors": 0, "degraded": False}
     agent_id = agent["id"]
 
     # ========================================================================
     # FASE 1: PENDING - Lembretes (D-2, D-1)
     # ========================================================================
-    reminder_days = config.get("reminderDays") or [2, 1]
-
     for days_ahead in reminder_days:
         target_date = add_business_days(today, days_ahead)
 
@@ -56,7 +60,7 @@ async def process_agent(agent: Dict[str, Any], today: date) -> Dict[str, Any]:
         stats["skipped"] += len(eligibility.rejected)
 
         for eligible in eligibility.eligible:
-            decision = evaluate(today, eligible.payment.due_date)
+            decision = evaluate(today, eligible.payment.due_date, schedule=schedule)
 
             if not decision.should_send:
                 logger.info({
@@ -102,7 +106,7 @@ async def process_agent(agent: Dict[str, Any], today: date) -> Dict[str, Any]:
             stats["skipped"] += len(eligibility.rejected)
 
             for eligible in eligibility.eligible:
-                decision = evaluate(today, eligible.payment.due_date)
+                decision = evaluate(today, eligible.payment.due_date, schedule=schedule)
 
                 if not decision.should_send:
                     logger.info({
@@ -165,7 +169,7 @@ async def process_agent(agent: Dict[str, Any], today: date) -> Dict[str, Any]:
                 # Por enquanto, processar cada fatura individualmente
                 # TODO: Implementar mensagem consolidada quando > 1 fatura
                 for eligible in customer_payments:
-                    decision = evaluate(today, eligible.payment.due_date)
+                    decision = evaluate(today, eligible.payment.due_date, schedule=schedule)
 
                     if not decision.should_send:
                         logger.info({
