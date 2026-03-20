@@ -30,8 +30,8 @@ async def process_agent(agent: Dict[str, Any], today: date) -> Dict[str, Any]:
 
     # Construir schedule a partir da config do agente
     # BUG FIX: Antes usava DEFAULT_SCHEDULE hardcoded, ignorando overdueDays do agente
-    reminder_days = config.get("reminderDays") or [2, 1]
-    overdue_days = (config.get("afterDue") or {}).get("overdueDays") or list(range(1, 16))
+    reminder_days = config.get("reminderDays") or []
+    overdue_days = (config.get("afterDue") or {}).get("overdueDays") or []
     schedule = [-d for d in reminder_days] + [0] + overdue_days
 
     stats = {"sent": 0, "skipped": 0, "errors": 0, "degraded": False}
@@ -135,7 +135,7 @@ async def process_agent(agent: Dict[str, Any], today: date) -> Dict[str, Any]:
     # FASE 3: OVERDUE - Atrasos (D+1 a D+15, agrupado por cliente)
     # ========================================================================
     after_due_config = config.get("afterDue") or {}
-    after_due_enabled = after_due_config.get("enabled", True)
+    after_due_enabled = after_due_config.get("enabled", False)
 
     if after_due_enabled:
         # Buscar faturas vencidas nos ultimos 30 dias uteis
