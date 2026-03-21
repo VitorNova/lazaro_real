@@ -10,7 +10,7 @@ The _process_buffered_messages function alone is ~740 lines.
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 from app.config import settings
@@ -624,7 +624,6 @@ async def process_buffered_messages(
         # Fallback 3: verificar contract_details pelo telefone (cliente sem lead no momento do disparo)
         if not conversation_context:
             try:
-                from datetime import datetime, timezone, timedelta
                 import re as _re
                 phone_limpo = _re.sub(r"\D", "", phone)
                 if phone_limpo.startswith("55"):
