@@ -1,3 +1,14 @@
+# ╔══════════════════════════════════════════════════════════════╗
+# ║  PROCESSAR MENSAGEM — Recebe msg do cliente, IA responde   ║
+# ║                                                            ║
+# ║  Pipeline: buffer → Gemini → tools → resposta → WhatsApp   ║
+# ║                                                            ║
+# ║  Quando o cliente manda uma msg no WhatsApp, este arquivo  ║
+# ║  junta o historico, envia pro Gemini, executa tools se     ║
+# ║  necessario, e envia a resposta de volta pelo WhatsApp.    ║
+# ║                                                            ║
+# ║  NUCLEO INALTERAVEL — nao alterar sem teste extensivo      ║
+# ╚══════════════════════════════════════════════════════════════╝
 """
 Message processor module - core message processing pipeline.
 
@@ -14,6 +25,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 from app.config import settings
+from app.core.langfuse_tracer import tracer
 from app.domain.messaging.context.billing_context import (
     build_billing_context_prompt,
     get_billing_data_for_context,
@@ -521,10 +533,15 @@ async def process_buffered_messages(
                         resp = await client.get(image_url)
                         if resp.status_code == 200:
                             image_bytes = resp.content
-                            # Detectar mimetype do header ou da URL
+                            # Detectar mimetype do header
                             content_type = resp.headers.get("content-type", "image/jpeg")
                             if ";" in content_type:
                                 content_type = content_type.split(";")[0].strip()
+                            # WhatsApp (mmg.whatsapp.net) retorna application/octet-stream
+                            # Usar fallback baseado no tipo de midia detectado
+                            if content_type in ("application/octet-stream", "binary/octet-stream"):
+                                content_type = "application/pdf" if is_document else "image/jpeg"
+                                logger.info(f"[MEDIA] Mimetype generico do servidor, usando fallback: {content_type}")
 
                             import base64
                             image_b64 = base64.b64encode(image_bytes).decode("utf-8")
@@ -758,19 +775,42 @@ Considere que ele já conhece o processo e pode estar retornando para acompanham
         elif image_data:
             media_info = " +imagem"
         logger.info(f"[GEMINI] Enviando {len(gemini_messages)} msgs para phone={mask_phone(phone)}{media_info}")
-        logger.debug(f"[DEBUG 5/6] ENVIANDO PARA GEMINI...")
-        logger.debug(f"[DEBUG 5/6] System prompt: {context['system_prompt'][:100]}...")
-        logger.debug(f"[DEBUG 5/6] Audio data presente: {bool(audio_data)}, Image data presente: {bool(image_data)}")
 
         # Set execution context for audit logging
         gemini.set_execution_context(context)
 
-        response = await gemini.send_message(
-            messages=gemini_messages,
-            system_prompt=context["system_prompt"],
-            audio_data=audio_data,
-            image_data=image_data,
-        )
+        # ── LANGFUSE: trace do processamento completo ──
+        agent_name_tag = context.get("agent_name", "unknown").lower()
+        with tracer.trace(
+            name="process_and_respond",
+            user_id=phone,
+            session_id=remotejid,
+            metadata={"agent_id": agent_id[:8], "agent_name": agent_name_tag, "msg_count": len(gemini_messages), "media": media_info.strip()},
+            tags=["gemini", agent_name_tag],
+        ) as trace:
+            trace.span("buffer_consumed", input={"messages_count": len(messages), "combined_text": combined_text[:200]})
+
+            import time as _time
+            _gemini_start = _time.time()
+
+            response = await gemini.send_message(
+                messages=gemini_messages,
+                system_prompt=context["system_prompt"],
+                audio_data=audio_data,
+                image_data=image_data,
+            )
+
+            _gemini_duration = int((_time.time() - _gemini_start) * 1000)
+
+            # ── LANGFUSE: registra chamada ao Gemini ──
+            trace.generation(
+                name="gemini_call",
+                model=context.get("model", "gemini-2.5-flash"),
+                input={"messages_count": len(gemini_messages), "has_audio": bool(audio_data), "has_image": bool(image_data)},
+                output={"text": response.get("text", "")[:500], "function_calls": [fc.get("name") for fc in response.get("function_calls", [])]},
+                usage=response.get("usage", {}),
+                metadata={"duration_ms": _gemini_duration},
+            )
 
         # =================================================================
         # VERIFICAR SE GEMINI RETORNOU ERRO (após retry exausto)
