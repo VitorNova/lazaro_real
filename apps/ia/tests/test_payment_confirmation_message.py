@@ -162,9 +162,9 @@ class TestFluxoPrincipal:
         mock_table_clientes = MagicMock()
         mock_table_clientes.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = cliente_asaas
 
-        # Mock para buscar lead
+        # Mock para buscar lead (usa .or_() com variantes de telefone)
         mock_table_messages = MagicMock()
-        mock_table_messages.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [lead_com_historico]
+        mock_table_messages.select.return_value.or_.return_value.limit.return_value.execute.return_value.data = [lead_com_historico]
         mock_table_messages.update.return_value.eq.return_value.execute.return_value.data = lead_com_historico
 
         def table_router(name):
@@ -308,7 +308,7 @@ class TestProtecaoDuplicata:
             "conversation_history": historico_com_confirmacao,
         }
 
-        mock_supabase.client.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [lead_com_confirmacao]
+        mock_supabase.client.table.return_value.select.return_value.or_.return_value.limit.return_value.execute.return_value.data = [lead_com_confirmacao]
 
         # Act
         ja_enviou = await ja_enviou_confirmacao(
@@ -327,7 +327,7 @@ class TestProtecaoDuplicata:
     ):
         """Se não existe mensagem de confirmação para esse payment_id, retorna False."""
         # Arrange
-        mock_supabase.client.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [lead_com_historico]
+        mock_supabase.client.table.return_value.select.return_value.or_.return_value.limit.return_value.execute.return_value.data = [lead_com_historico]
 
         # Act
         ja_enviou = await ja_enviou_confirmacao(
@@ -362,7 +362,7 @@ class TestProtecaoDuplicata:
         mock_table_clientes.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = cliente_asaas
 
         mock_table_messages = MagicMock()
-        mock_table_messages.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [lead]
+        mock_table_messages.select.return_value.or_.return_value.limit.return_value.execute.return_value.data = [lead]
 
         def table_router(name):
             if name == "asaas_clientes":
@@ -470,7 +470,7 @@ class TestFalhas:
         mock_table_clientes.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = cliente_asaas
 
         mock_table_messages = MagicMock()
-        mock_table_messages.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [lead]
+        mock_table_messages.select.return_value.or_.return_value.limit.return_value.execute.return_value.data = [lead]
         mock_table_messages.update.return_value.eq.return_value.execute.return_value.data = lead
 
         def table_router(name):

@@ -15,6 +15,7 @@ import re
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from app.core.utils.phone import generate_phone_variants
 from app.services.leadbox_push import QUEUE_BILLING, leadbox_push_silent
 from app.services.supabase import get_supabase_service
 from app.services.whatsapp_api import UazapiService, sign_message
@@ -144,12 +145,15 @@ async def ja_enviou_confirmacao(
         True se já enviou, False caso contrário
     """
     try:
-        phone_jid = f"{phone}@s.whatsapp.net"
+        variants = generate_phone_variants(phone)
+        or_conditions = ",".join([
+            f"remotejid.eq.{v}@s.whatsapp.net" for v in variants
+        ])
 
         result = (
             supabase.client.table(table_messages)
             .select("id, conversation_history")
-            .eq("remotejid", phone_jid)
+            .or_(or_conditions)
             .limit(1)
             .execute()
         )
@@ -206,19 +210,22 @@ async def salvar_no_historico(
         True se salvou, False caso contrário
     """
     try:
-        phone_jid = f"{phone}@s.whatsapp.net"
+        variants = generate_phone_variants(phone)
+        or_conditions = ",".join([
+            f"remotejid.eq.{v}@s.whatsapp.net" for v in variants
+        ])
         now_iso = datetime.utcnow().isoformat()
 
         result = (
             supabase.client.table(table_messages)
             .select("id, conversation_history")
-            .eq("remotejid", phone_jid)
+            .or_(or_conditions)
             .limit(1)
             .execute()
         )
 
         if not result.data:
-            logger.debug(f"[PAYMENT MSG] Lead não encontrado para {phone_jid[:15]}...")
+            logger.debug(f"[PAYMENT MSG] Lead não encontrado para variantes de {phone[-4:]}...")
             return False
 
         lead = result.data[0]
