@@ -1,3 +1,6 @@
+# ╔════════════════════════════════════════════════════════════╗
+# ║  WEBHOOK MENSAGENS — Recebe msgs do WhatsApp (NUCLEO)      ║
+# ╚════════════════════════════════════════════════════════════╝
 """
 WhatsApp Webhook Handler - Processamento de mensagens do WhatsApp via UAZAPI.
 
@@ -1454,7 +1457,7 @@ class WhatsAppWebhookHandler:
         # Determinar se e mensagem de imagem e guardar message_id e/ou URL
         image_message_id = None
         image_url = None
-        if media_type in ["image", "imageMessage", "document", "documentMessage"]:
+        if media_type and (media_type.lower().startswith("image") or media_type.lower().startswith("document") or media_type in ["image", "imageMessage", "document", "documentMessage"]):
             if message_id:
                 image_message_id = message_id
             if media_url:

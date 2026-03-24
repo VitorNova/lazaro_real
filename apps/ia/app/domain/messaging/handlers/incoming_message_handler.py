@@ -1,3 +1,6 @@
+# ╔══════════════════════════════════════════════════════════════╗
+# ║  MSG RECEBIDA — Tratar mensagem que chegou                   ║
+# ╚══════════════════════════════════════════════════════════════╝
 """
 Incoming message handler module.
 
@@ -77,6 +80,16 @@ def extract_message_data(webhook_data: Dict[str, Any]) -> Optional[ExtractedMess
             if media_type in ["audio", "ptt", "AudioMessage"]:
                 text = "[AUDIO]"  # Placeholder, sera substituido pela transcricao
 
+            # Se for imagem/documento, forcar placeholder (preservar caption)
+            # UAZAPI envia messageType="ImageMessage"/"DocumentMessage" (PascalCase)
+            # Leadbox envia mediaType="image"/"imageMessage"/"document"/"documentMessage"
+            elif media_type.lower().startswith("image") or media_type in ["image", "imageMessage"]:
+                caption = text.strip() if text else ""
+                text = "[Imagem recebida]" + (f" {caption}" if caption else "")
+            elif media_type.lower().startswith("document") or media_type in ["document", "documentMessage"]:
+                caption = text.strip() if text else ""
+                text = "[document recebido]" + (f" {caption}" if caption else "")
+
             # Se nao tem texto, verificar tipo de midia
             if not text:
                 if media_type:
@@ -90,10 +103,10 @@ def extract_message_data(webhook_data: Dict[str, Any]) -> Optional[ExtractedMess
             timestamp = msg.get("messageTimestamp", datetime.utcnow().timestamp() * 1000)
             push_name = msg.get("senderName", "")
 
-            # URL da midia (Leadbox envia diretamente, UAZAPI pode enviar em content)
+            # URL da midia (Leadbox envia diretamente, UAZAPI envia em content.URL)
             media_url = msg.get("mediaUrl", "")
             if not media_url and isinstance(content, dict):
-                media_url = content.get("url", "")
+                media_url = content.get("URL", "") or content.get("url", "")
 
             # Instance ID - UAZAPI usa 'instanceName' no root
             instance_id = webhook_data.get("instanceName", "")
