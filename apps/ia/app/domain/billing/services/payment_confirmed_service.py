@@ -1,13 +1,7 @@
 """
-Servico de processamento de pagamentos confirmados e recebidos.
+Servico de pagamentos confirmados/recebidos + envio de confirmacao WhatsApp.
 
-Responsavel por:
-- Processar PAYMENT_CONFIRMED
-- Processar PAYMENT_RECEIVED
-- Atualizar lead quando pagamento e recebido
-- Buscar telefone do cliente para match
-
-Extraido de: app/webhooks/pagamentos.py (Fase 3.8)
+Fluxo: webhook PAYMENT_CONFIRMED/RECEIVED → atualiza status → atualiza lead → envia msg → salva historico
 """
 
 import logging
@@ -15,246 +9,368 @@ import re
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from app.core.utils.phone import generate_phone_variants
 from app.core.utils.sql_escape import escape_ilike_pattern
-from app.domain.billing.services.payment_message_service import enviar_confirmacao_pagamento
+from app.services.leadbox_push import QUEUE_BILLING, leadbox_push_silent
+from app.services.whatsapp_api import UazapiService, sign_message
 
 logger = logging.getLogger(__name__)
 
 
-async def processar_pagamento_confirmado(
-    supabase: Any,
-    payment: Dict[str, Any],
-    agent_id: Optional[str],
-) -> None:
-    """
-    Processa PAYMENT_CONFIRMED.
+# ─── Busca de dados do cliente ──────────────────────────────────────────────
 
-    Pagamento confirmado mas saldo ainda nao disponivel.
-    Atualiza status para CONFIRMED.
-    """
-    now = datetime.utcnow().isoformat()
+async def buscar_telefone_cliente(
+    supabase: Any, customer_id: str, payment_id: str,
+) -> Optional[str]:
+    """Busca telefone normalizado (últimos 9 dígitos) para match flexível de lead."""
+    dados = await buscar_dados_cliente(supabase, customer_id, payment_id)
+    if dados and dados.get("phone"):
+        digits = re.sub(r"\D", "", str(dados["phone"]))
+        if len(digits) >= 9:
+            return digits[-9:]
+    return None
+
+
+async def buscar_dados_cliente(
+    supabase: Any, customer_id: str, payment_id: str,
+) -> Optional[Dict[str, Any]]:
+    """Busca phone e name do cliente em asaas_clientes → billing_notifications (fallback)."""
+    for strategy in ["asaas_clientes", "billing_notifications"]:
+        try:
+            if strategy == "asaas_clientes":
+                r = supabase.client.table("asaas_clientes").select(
+                    "name, mobile_phone, phone"
+                ).eq("id", customer_id).maybe_single().execute()
+                if r.data:
+                    phone = r.data.get("mobile_phone") or r.data.get("phone")
+                    if phone:
+                        phone = re.sub(r"\D", "", str(phone))
+                        if not phone.startswith("55") and len(phone) >= 10:
+                            phone = f"55{phone}"
+                        return {"phone": phone, "name": r.data.get("name")}
+            else:
+                r = supabase.client.table("billing_notifications").select(
+                    "phone, customer_name"
+                ).eq("payment_id", payment_id).limit(1).execute()
+                if r.data:
+                    phone = r.data[0].get("phone")
+                    if phone:
+                        phone = re.sub(r"\D", "", str(phone))
+                        if not phone.startswith("55") and len(phone) >= 10:
+                            phone = f"55{phone}"
+                        return {"phone": phone, "name": r.data[0].get("customer_name")}
+        except Exception as e:
+            logger.warning("[PAYMENT MSG] Erro ao buscar %s: %s", strategy, e)
+
+    logger.warning("[PAYMENT MSG] Telefone não encontrado para customer_id=%s", customer_id)
+    return None
+
+
+# ─── Duplicata e historico ──────────────────────────────────────────────────
+
+def _build_or_conditions(phone: str) -> str:
+    """Gera condição OR com variantes de telefone para query Supabase."""
+    variants = generate_phone_variants(phone)
+    return ",".join(f"remotejid.eq.{v}@s.whatsapp.net" for v in variants)
+
+
+async def ja_enviou_confirmacao(
+    supabase: Any, table_messages: str, phone: str, payment_id: str,
+) -> bool:
+    """Verifica se já enviou confirmação para esse payment_id (proteção duplicata)."""
+    try:
+        r = supabase.client.table(table_messages).select(
+            "id, conversation_history"
+        ).or_(_build_or_conditions(phone)).limit(1).execute()
+
+        if not r.data:
+            return False
+
+        history = r.data[0].get("conversation_history")
+        if not history:
+            return False
+
+        messages = history.get("messages", []) if isinstance(history, dict) else (history if isinstance(history, list) else [])
+        return any(
+            m.get("context") == "pagamento_confirmado" and m.get("payment_id") == payment_id
+            for m in messages
+        )
+    except Exception as e:
+        logger.warning("[PAYMENT MSG] Erro ao verificar duplicata: %s", e)
+        return False
+
+
+async def salvar_no_historico(
+    supabase: Any, table_messages: str, phone: str, mensagem: str, payment_id: str,
+) -> bool:
+    """Salva mensagem de confirmação no conversation_history do lead."""
+    try:
+        r = supabase.client.table(table_messages).select(
+            "id, conversation_history"
+        ).or_(_build_or_conditions(phone)).limit(1).execute()
+
+        if not r.data:
+            logger.debug("[PAYMENT MSG] Lead não encontrado para variantes de %s...", phone[-4:])
+            return False
+
+        lead = r.data[0]
+        raw = lead.get("conversation_history")
+        messages_list = raw.get("messages", []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
+
+        messages_list.append({
+            "role": "model",
+            "text": mensagem,
+            "timestamp": datetime.utcnow().isoformat(),
+            "context": "pagamento_confirmado",
+            "payment_id": payment_id,
+        })
+
+        supabase.client.table(table_messages).update({
+            "conversation_history": {"messages": messages_list},
+        }).eq("id", lead["id"]).execute()
+
+        logger.info("[PAYMENT MSG] Mensagem salva no conversation_history (lead_id=%s)", lead["id"])
+        return True
+    except Exception as e:
+        logger.warning("[PAYMENT MSG] Erro ao salvar no histórico: %s", e)
+        return False
+
+
+# ─── Formatacao e envio da mensagem ─────────────────────────────────────────
+
+def formatar_mensagem_confirmacao(nome_cliente: str, valor: float) -> str:
+    """Formata mensagem de confirmação de pagamento."""
+    primeiro_nome = nome_cliente.split()[0] if nome_cliente else "Cliente"
+    return (
+        f"Olá {primeiro_nome}! 😊\n\n"
+        f"Confirmamos o recebimento do seu pagamento de *R$ {valor:.2f}*.\n\n"
+        f"Obrigada pela confiança! Se precisar de algo, é só me chamar."
+    )
+
+
+async def enviar_confirmacao_pagamento(
+    supabase: Any, agent: Dict[str, Any], payment: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Envia confirmação de pagamento via Leadbox → UAZAPI fallback, salva no histórico."""
+    result = {"success": False, "message_sent": False, "history_updated": False, "reason": None, "error": None}
+
     payment_id = payment.get("id", "")
-    value = payment.get("value", 0)
+    customer_id = payment.get("customer", "")
+    valor = payment.get("value", 0)
+    agent_id = agent.get("id", "")
+    agent_name = agent.get("name", "Ana")
+    table_messages = agent.get("table_messages", "")
 
-    # Atualizar asaas_cobrancas
+    logger.info("[PAYMENT MSG] Iniciando confirmação: payment_id=%s, customer_id=%s", payment_id, customer_id)
+
+    # 1. Buscar telefone
+    dados = await buscar_dados_cliente(supabase, customer_id, payment_id)
+    if not dados or not dados.get("phone"):
+        logger.warning("[PAYMENT MSG] Cliente sem telefone: customer_id=%s", customer_id)
+        result["reason"] = "no_phone"
+        return result
+
+    phone = dados["phone"]
+    nome = dados.get("name") or "Cliente"
+
+    # 2. Duplicata
+    if table_messages and await ja_enviou_confirmacao(supabase, table_messages, phone, payment_id):
+        logger.info("[PAYMENT MSG] Confirmação já enviada: payment_id=%s", payment_id)
+        result["success"] = True
+        result["reason"] = "already_sent"
+        return result
+
+    # 3. Formatar e enviar
+    mensagem = sign_message(formatar_mensagem_confirmacao(nome, valor), agent_name)
+
+    try:
+        enviado = False
+        push = await leadbox_push_silent(phone, QUEUE_BILLING, agent_id, message=mensagem)
+
+        if push.get("success") and push.get("message_sent_via_push"):
+            enviado = True
+            logger.info("[PAYMENT MSG] Enviado via Leadbox PUSH: phone=%s", phone[-4:])
+        else:
+            url, token = agent.get("uazapi_base_url"), agent.get("uazapi_token")
+            if url and token:
+                uazapi_result = await UazapiService(base_url=url, api_key=token).send_text_message(phone, mensagem)
+                if uazapi_result.get("success"):
+                    enviado = True
+                    logger.info("[PAYMENT MSG] Enviado via UAZAPI fallback: phone=%s", phone[-4:])
+                else:
+                    result["error"] = uazapi_result.get("error", "Erro desconhecido")
+
+        if enviado:
+            result["success"] = True
+            result["message_sent"] = True
+            if table_messages:
+                result["history_updated"] = await salvar_no_historico(supabase, table_messages, phone, mensagem, payment_id)
+            logger.info("[PAYMENT MSG] Confirmação enviada: payment_id=%s, cliente=%s", payment_id, nome)
+        else:
+            result["success"] = False
+    except Exception as e:
+        logger.error("[PAYMENT MSG] Exceção ao enviar: %s", e)
+        result["error"] = str(e)
+
+    return result
+
+
+# ─── Processamento de eventos webhook ───────────────────────────────────────
+
+async def processar_pagamento_confirmado(
+    supabase: Any, payment: Dict[str, Any], agent_id: Optional[str],
+) -> None:
+    """Processa PAYMENT_CONFIRMED — atualiza status para CONFIRMED."""
+    payment_id = payment.get("id", "")
     if agent_id:
         try:
             supabase.client.table("asaas_cobrancas").update({
                 "status": "CONFIRMED",
                 "payment_date": payment.get("paymentDate"),
-                "updated_at": now,
+                "updated_at": datetime.utcnow().isoformat(),
             }).eq("id", payment_id).eq("agent_id", agent_id).execute()
         except Exception as e:
             logger.debug("[ASAAS WEBHOOK] Erro ao atualizar asaas_cobrancas: %s", e)
 
-    logger.debug("[ASAAS WEBHOOK] Pagamento confirmado: %s (R$ %.2f)", payment_id, value)
 
+async def processar_pagamento_recebido(
+    supabase: Any, payment: Dict[str, Any], agent_id: Optional[str],
+) -> None:
+    """Processa PAYMENT_RECEIVED — atualiza status, lead e envia confirmação."""
+    now = datetime.utcnow().isoformat()
+    payment_id = payment.get("id", "")
+    value = payment.get("value", 0)
 
-async def buscar_telefone_cliente(
-    supabase: Any,
-    customer_id: str,
-    payment_id: str,
-) -> Optional[str]:
-    """
-    Busca telefone do cliente para encontrar o lead.
+    # 1. Atualizar asaas_cobrancas
+    if agent_id:
+        try:
+            cobranca = supabase.client.table("asaas_cobrancas").select(
+                "ia_cobrou"
+            ).eq("id", payment_id).eq("agent_id", agent_id).limit(1).execute()
 
-    Prioridade:
-    1. asaas_clientes.mobile_phone
-    2. asaas_clientes.phone
-    3. billing_notifications.phone (fallback)
+            update = {"status": "RECEIVED", "payment_date": payment.get("paymentDate"), "updated_at": now}
 
-    Returns:
-        Telefone normalizado (ultimos 9 digitos) ou None se nao encontrar.
-    """
-    def normalizar_telefone(phone: str) -> Optional[str]:
-        """Remove nao-numericos e retorna ultimos 9 digitos."""
-        if not phone:
-            return None
-        digits = re.sub(r"\D", "", phone)
-        if len(digits) >= 9:
-            return digits[-9:]  # Ultimos 9 digitos para match flexivel
-        return None
+            if cobranca.data and cobranca.data[0].get("ia_cobrou"):
+                update["ia_recebeu"] = True
+                update["ia_recebeu_at"] = now
+                try:
+                    notif = supabase.client.table("billing_notifications").select(
+                        "notification_type, days_from_due"
+                    ).eq("payment_id", payment_id).eq("status", "sent").order(
+                        "sent_at", desc=True
+                    ).limit(1).execute()
+                    if notif.data:
+                        update["ia_recebeu_step"] = notif.data[0].get("notification_type")
+                        update["ia_recebeu_days_from_due"] = notif.data[0].get("days_from_due")
+                except Exception as e:
+                    logger.warning("[ASAAS WEBHOOK] Erro ao buscar step: %s", e)
 
-    # 1. Tentar asaas_clientes primeiro (cache local)
+            supabase.client.table("asaas_cobrancas").update(update).eq("id", payment_id).eq("agent_id", agent_id).execute()
+        except Exception as e:
+            logger.debug("[ASAAS WEBHOOK] Erro ao atualizar asaas_cobrancas: %s", e)
+
+    # 2. Marcar billing_notifications como paid
     try:
-        result = (
-            supabase.client.table("asaas_clientes")
-            .select("mobile_phone, phone")
-            .eq("id", customer_id)
-            .maybe_single()
-            .execute()
-        )
-        if result.data:
-            phone = result.data.get("mobile_phone") or result.data.get("phone")
-            normalized = normalizar_telefone(phone)
-            if normalized:
-                logger.debug("[ASAAS WEBHOOK] Telefone encontrado em asaas_clientes: %s", normalized[-4:])
-                return normalized
+        supabase.client.table("billing_notifications").update({
+            "status": "paid", "updated_at": now,
+        }).eq("payment_id", payment_id).execute()
     except Exception as e:
-        logger.warning("[ASAAS WEBHOOK] Erro ao buscar telefone em asaas_clientes: %s", e)
+        logger.debug("[ASAAS WEBHOOK] Erro ao atualizar billing_notifications: %s", e)
 
-    # 2. Fallback: billing_notifications
-    try:
-        result = (
-            supabase.client.table("billing_notifications")
-            .select("phone")
-            .eq("payment_id", payment_id)
-            .limit(1)
-            .execute()
-        )
-        if result.data and len(result.data) > 0:
-            phone = result.data[0].get("phone")
-            normalized = normalizar_telefone(phone)
-            if normalized:
-                logger.debug("[ASAAS WEBHOOK] Telefone encontrado em billing_notifications: %s", normalized[-4:])
-                return normalized
-    except Exception as e:
-        logger.warning("[ASAAS WEBHOOK] Erro ao buscar telefone em billing_notifications: %s", e)
+    # 3. Atualizar lead
+    customer_id = payment.get("customer", "")
+    if agent_id and customer_id:
+        try:
+            await atualizar_lead_pagamento(supabase, agent_id, customer_id, payment_id, payment_value=value)
+        except Exception as e:
+            logger.error("[ASAAS WEBHOOK] Erro ao atualizar lead: %s", e)
 
-    logger.warning("[ASAAS WEBHOOK] Telefone nao encontrado para customer_id=%s", customer_id)
-    return None
+    # 4. Enviar confirmação WhatsApp
+    if agent_id:
+        try:
+            agent_r = supabase.client.table("agents").select(
+                "id, name, uazapi_base_url, uazapi_token, table_leads, table_messages"
+            ).eq("id", agent_id).maybe_single().execute()
 
+            if agent_r.data:
+                confirm = await enviar_confirmacao_pagamento(supabase, agent_r.data, payment)
+                if confirm.get("message_sent"):
+                    logger.info("[ASAAS WEBHOOK] Confirmação enviada: payment_id=%s", payment_id)
+                elif confirm.get("reason") == "already_sent":
+                    logger.debug("[ASAAS WEBHOOK] Confirmação já enviada: payment_id=%s", payment_id)
+                else:
+                    logger.warning("[ASAAS WEBHOOK] Não enviou confirmação: payment_id=%s, reason=%s",
+                                   payment_id, confirm.get("reason") or confirm.get("error"))
+        except Exception as e:
+            logger.error("[ASAAS WEBHOOK] Erro ao enviar confirmação: %s", e)
+
+
+# ─── Atualização de lead ────────────────────────────────────────────────────
 
 async def atualizar_lead_pagamento(
-    supabase: Any,
-    agent_id: str,
-    customer_id: str,
-    payment_id: str,
-    payment_value: float = 0,
+    supabase: Any, agent_id: str, customer_id: str, payment_id: str, payment_value: float = 0,
 ) -> None:
-    """
-    Atualiza lead quando pagamento e recebido.
-
-    - Vincula asaas_customer_id ao lead (se ainda nao vinculado)
-    - Move para pipeline_step = 'cliente'
-    - Marca venda_realizada = 'true'
-    - Atualiza journey_stage = 'cliente'
-    - Registra first_payment_at no primeiro pagamento
-    - Registra converted_at se ainda nao definido
-
-    Estrategia de match:
-    1. Se lead ja tem asaas_customer_id == customer_id, atualiza direto
-    2. Senao, tenta match por CPF/CNPJ do cliente
-    3. Senao, tenta match por telefone
-    """
-    # Validacao inicial
+    """Atualiza lead quando pagamento é recebido (vincula customer, pipeline=cliente)."""
     if not agent_id or not customer_id:
-        logger.debug("[ASAAS WEBHOOK] agent_id ou customer_id nao informado, pulando atualizacao de lead")
         return
 
     now = datetime.utcnow().isoformat()
 
-    # 1. Buscar table_leads do agente
+    # Buscar table_leads
     try:
-        agent_result = (
-            supabase.client.table("agents")
-            .select("table_leads")
-            .eq("id", agent_id)
-            .maybe_single()
-            .execute()
-        )
-        if not agent_result.data or not agent_result.data.get("table_leads"):
-            logger.warning("[ASAAS WEBHOOK] table_leads nao encontrado para agent_id=%s", agent_id[:8])
+        agent_r = supabase.client.table("agents").select("table_leads").eq("id", agent_id).maybe_single().execute()
+        if not agent_r.data or not agent_r.data.get("table_leads"):
+            logger.warning("[ASAAS WEBHOOK] table_leads não encontrado: agent_id=%s", agent_id[:8])
             return
-        table_leads = agent_result.data["table_leads"]
+        table_leads = agent_r.data["table_leads"]
     except Exception as e:
         logger.error("[ASAAS WEBHOOK] Erro ao buscar table_leads: %s", e)
         return
 
-    # 2. Tentar encontrar lead por multiplas estrategias
     lead = None
 
-    # 2.1 - Buscar lead ja vinculado ao customer_id
+    # 1. Por asaas_customer_id
     try:
-        lead_result = (
-            supabase.client.table(table_leads)
-            .select("id, nome, pipeline_step, asaas_customer_id, converted_at, first_payment_at")
-            .eq("asaas_customer_id", customer_id)
-            .limit(1)
-            .execute()
-        )
-        if lead_result.data:
-            lead = lead_result.data[0]
-            logger.debug("[ASAAS WEBHOOK] Lead encontrado por asaas_customer_id: %s", customer_id)
-    except Exception as e:
-        logger.debug("[ASAAS WEBHOOK] Erro ao buscar lead por asaas_customer_id: %s", e)
+        r = supabase.client.table(table_leads).select(
+            "id, nome, pipeline_step, asaas_customer_id, converted_at, first_payment_at"
+        ).eq("asaas_customer_id", customer_id).limit(1).execute()
+        if r.data:
+            lead = r.data[0]
+    except Exception:
+        pass
 
-    # 2.2 - Se nao encontrou, buscar cliente para pegar CPF e telefone
+    # 2. Por CPF/telefone do cliente Asaas
     if not lead:
         try:
-            cliente_result = (
-                supabase.client.table("asaas_clientes")
-                .select("cpf_cnpj, mobile_phone")
-                .eq("id", customer_id)
-                .eq("agent_id", agent_id)
-                .maybe_single()
-                .execute()
-            )
+            cr = supabase.client.table("asaas_clientes").select(
+                "cpf_cnpj, mobile_phone"
+            ).eq("id", customer_id).eq("agent_id", agent_id).maybe_single().execute()
 
-            if cliente_result.data:
-                cpf_cnpj = cliente_result.data.get("cpf_cnpj")
-                mobile_phone = cliente_result.data.get("mobile_phone")
+            if cr.data:
+                cpf = re.sub(r'\D', '', cr.data.get("cpf_cnpj") or "")
+                if len(cpf) in [11, 14] and not lead:
+                    r = supabase.client.table(table_leads).select(
+                        "id, nome, pipeline_step, asaas_customer_id, converted_at, first_payment_at"
+                    ).eq("cpf_cnpj", cpf).limit(1).execute()
+                    if r.data:
+                        lead = r.data[0]
 
-                # 2.2.1 - Tentar match por CPF/CNPJ
-                if cpf_cnpj and not lead:
-                    cpf_limpo = re.sub(r'\D', '', cpf_cnpj)
-                    if len(cpf_limpo) in [11, 14]:
-                        lead_result = (
-                            supabase.client.table(table_leads)
-                            .select("id, nome, pipeline_step, asaas_customer_id, converted_at, first_payment_at")
-                            .eq("cpf_cnpj", cpf_limpo)
-                            .limit(1)
-                            .execute()
-                        )
-                        if lead_result.data:
-                            lead = lead_result.data[0]
-                            logger.debug("[ASAAS WEBHOOK] Lead encontrado por CPF: %s", cpf_limpo)
-
-                # 2.2.2 - Tentar match por telefone
-                if mobile_phone and not lead:
-                    phone_limpo = re.sub(r'\D', '', mobile_phone)
-                    if len(phone_limpo) >= 10:
-                        phone_suffix = phone_limpo[-11:] if len(phone_limpo) >= 11 else phone_limpo
-                        lead_result = (
-                            supabase.client.table(table_leads)
-                            .select("id, nome, pipeline_step, asaas_customer_id, converted_at, first_payment_at")
-                            .ilike("remotejid", f"%{escape_ilike_pattern(phone_suffix)}%")
-                            .limit(1)
-                            .execute()
-                        )
-                        if lead_result.data:
-                            lead = lead_result.data[0]
-                            logger.debug("[ASAAS WEBHOOK] Lead encontrado por telefone: %s", phone_suffix)
+                phone = re.sub(r'\D', '', cr.data.get("mobile_phone") or "")
+                if len(phone) >= 10 and not lead:
+                    suffix = phone[-11:] if len(phone) >= 11 else phone
+                    r = supabase.client.table(table_leads).select(
+                        "id, nome, pipeline_step, asaas_customer_id, converted_at, first_payment_at"
+                    ).ilike("remotejid", f"%{escape_ilike_pattern(suffix)}%").limit(1).execute()
+                    if r.data:
+                        lead = r.data[0]
         except Exception as e:
-            logger.warning("[ASAAS WEBHOOK] Erro ao buscar cliente/lead para match: %s", e)
-
-    # 2.3 - Fallback: buscar telefone via funcao existente
-    if not lead:
-        telefone = await buscar_telefone_cliente(supabase, customer_id, payment_id)
-        if telefone:
-            try:
-                lead_result = (
-                    supabase.client.table(table_leads)
-                    .select("id, nome, pipeline_step, asaas_customer_id, converted_at, first_payment_at")
-                    .ilike("telefone", f"%{escape_ilike_pattern(telefone)}%")
-                    .maybe_single()
-                    .execute()
-                )
-                if lead_result.data:
-                    lead = lead_result.data[0]
-                    logger.debug("[ASAAS WEBHOOK] Lead encontrado por telefone (fallback): %s", telefone[-4:])
-            except Exception as e:
-                logger.debug("[ASAAS WEBHOOK] Erro no fallback por telefone: %s", e)
+            logger.warning("[ASAAS WEBHOOK] Erro ao buscar cliente/lead: %s", e)
 
     if not lead:
-        logger.warning("[ASAAS WEBHOOK] Nenhum lead encontrado para customer_id=%s", customer_id)
+        logger.warning("[ASAAS WEBHOOK] Lead não encontrado para customer_id=%s", customer_id)
         return
 
-    # 3. Montar dados de atualizacao
-    lead_id = lead["id"]
-    lead_nome = lead.get("nome", "Desconhecido")
-    pipeline_atual = lead.get("pipeline_step", "")
-
+    # Atualizar
     update_data = {
         "asaas_customer_id": customer_id,
         "pipeline_step": "cliente",
@@ -262,161 +378,15 @@ async def atualizar_lead_pagamento(
         "journey_stage": "cliente",
         "updated_date": now,
     }
-
-    # Se ainda nao tem converted_at, definir agora
     if not lead.get("converted_at"):
         update_data["converted_at"] = now
-
-    # Se e o primeiro pagamento, registrar first_payment_at
     if not lead.get("first_payment_at"):
         update_data["first_payment_at"] = now
-        logger.info(
-            "[CONVERSAO] Primeiro pagamento! Lead %s -> R$ %.2f",
-            lead.get("id"), payment_value
-        )
+        logger.info("[CONVERSAO] Primeiro pagamento! Lead %s -> R$ %.2f", lead["id"], payment_value)
 
-    # 4. Atualizar lead
     try:
-        supabase.client.table(table_leads).update(update_data).eq("id", lead_id).execute()
-
-        logger.info(
-            "[ASAAS WEBHOOK] Lead atualizado apos pagamento: id=%s, nome=%s, pipeline: %s -> cliente",
-            lead_id, lead_nome[:20] if lead_nome else "?", pipeline_atual
-        )
+        supabase.client.table(table_leads).update(update_data).eq("id", lead["id"]).execute()
+        logger.info("[ASAAS WEBHOOK] Lead atualizado: id=%s, nome=%s, pipeline: %s -> cliente",
+                     lead["id"], (lead.get("nome") or "?")[:20], lead.get("pipeline_step", ""))
     except Exception as e:
-        logger.error("[ASAAS WEBHOOK] Erro ao atualizar lead id=%s: %s", lead_id, e)
-
-
-async def processar_pagamento_recebido(
-    supabase: Any,
-    payment: Dict[str, Any],
-    agent_id: Optional[str],
-) -> None:
-    """
-    Processa PAYMENT_RECEIVED.
-
-    Pagamento recebido/pago (saldo disponivel).
-    Atualiza status para RECEIVED e marca como pago em billing_notifications.
-    Se a IA cobrou este pagamento (ia_cobrou = true), marca ia_recebeu = true.
-    """
-    now = datetime.utcnow().isoformat()
-    payment_id = payment.get("id", "")
-    value = payment.get("value", 0)
-
-    # Atualizar asaas_cobrancas
-    if agent_id:
-        try:
-            # Primeiro, buscar se ia_cobrou = true para marcar ia_recebeu
-            cobranca_res = (
-                supabase.client.table("asaas_cobrancas")
-                .select("ia_cobrou")
-                .eq("id", payment_id)
-                .eq("agent_id", agent_id)
-                .limit(1)
-                .execute()
-            )
-
-            update_data = {
-                "status": "RECEIVED",
-                "payment_date": payment.get("paymentDate"),
-                "updated_at": now,
-            }
-
-            # Se IA cobrou, buscar step da ultima notificacao e marcar ia_recebeu
-            if cobranca_res.data and cobranca_res.data[0].get("ia_cobrou"):
-                try:
-                    notif_res = (
-                        supabase.client.table("billing_notifications")
-                        .select("notification_type, days_from_due")
-                        .eq("payment_id", payment_id)
-                        .eq("status", "sent")
-                        .order("sent_at", desc=True)
-                        .limit(1)
-                        .execute()
-                    )
-                    if notif_res.data:
-                        update_data["ia_recebeu"] = True
-                        update_data["ia_recebeu_at"] = now
-                        update_data["ia_recebeu_step"] = notif_res.data[0].get("notification_type")
-                        update_data["ia_recebeu_days_from_due"] = notif_res.data[0].get("days_from_due")
-                        logger.info(
-                            "[ASAAS WEBHOOK] Pagamento %s: IA cobrou e recebeu! Step=%s, Days=%s",
-                            payment_id,
-                            update_data.get("ia_recebeu_step"),
-                            update_data.get("ia_recebeu_days_from_due"),
-                        )
-                    else:
-                        # ia_cobrou mas sem notificacao encontrada (raro)
-                        update_data["ia_recebeu"] = True
-                        update_data["ia_recebeu_at"] = now
-                except Exception as e:
-                    logger.warning("[ASAAS WEBHOOK] Erro ao buscar step de notificacao: %s", e)
-                    update_data["ia_recebeu"] = True
-                    update_data["ia_recebeu_at"] = now
-
-            supabase.client.table("asaas_cobrancas").update(
-                update_data
-            ).eq("id", payment_id).eq("agent_id", agent_id).execute()
-        except Exception as e:
-            logger.debug("[ASAAS WEBHOOK] Erro ao atualizar asaas_cobrancas: %s", e)
-
-    # Atualizar billing_notifications (tabela unificada)
-    try:
-        supabase.client.table("billing_notifications").update({
-            "status": "paid",
-            "updated_at": now,
-        }).eq("payment_id", payment_id).execute()
-    except Exception as e:
-        logger.debug("[ASAAS WEBHOOK] Erro ao atualizar billing_notifications: %s", e)
-
-    logger.debug("[ASAAS WEBHOOK] Pagamento recebido: %s (R$ %.2f)", payment_id, value)
-
-    # Atualizar lead (pipeline_step, venda_realizada, etc.)
-    customer_id = payment.get("customer", "")
-    if agent_id and customer_id:
-        try:
-            await atualizar_lead_pagamento(
-                supabase, agent_id, customer_id, payment_id,
-                payment_value=value
-            )
-        except Exception as e:
-            logger.error("[ASAAS WEBHOOK] Erro ao atualizar lead apos pagamento: %s", e)
-
-    # Enviar mensagem de confirmação via WhatsApp
-    if agent_id:
-        try:
-            # Buscar dados do agente
-            agent_result = (
-                supabase.client.table("agents")
-                .select("id, name, uazapi_base_url, uazapi_token, table_leads, table_messages")
-                .eq("id", agent_id)
-                .maybe_single()
-                .execute()
-            )
-
-            if agent_result.data:
-                agent = agent_result.data
-                confirm_result = await enviar_confirmacao_pagamento(
-                    supabase=supabase,
-                    agent=agent,
-                    payment=payment,
-                )
-                if confirm_result.get("message_sent"):
-                    logger.info(
-                        "[ASAAS WEBHOOK] Confirmação de pagamento enviada: payment_id=%s",
-                        payment_id
-                    )
-                elif confirm_result.get("reason") == "already_sent":
-                    logger.debug(
-                        "[ASAAS WEBHOOK] Confirmação já enviada anteriormente: payment_id=%s",
-                        payment_id
-                    )
-                else:
-                    logger.warning(
-                        "[ASAAS WEBHOOK] Não foi possível enviar confirmação: payment_id=%s, reason=%s",
-                        payment_id, confirm_result.get("reason") or confirm_result.get("error")
-                    )
-            else:
-                logger.warning("[ASAAS WEBHOOK] Agente não encontrado para envio de confirmação: %s", agent_id[:8])
-        except Exception as e:
-            logger.error("[ASAAS WEBHOOK] Erro ao enviar confirmação de pagamento: %s", e)
+        logger.error("[ASAAS WEBHOOK] Erro ao atualizar lead id=%s: %s", lead["id"], e)
