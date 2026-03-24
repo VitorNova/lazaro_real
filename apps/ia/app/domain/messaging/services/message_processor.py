@@ -525,8 +525,10 @@ async def process_buffered_messages(
             media_label = "documento" if is_document else "imagem"
             logger.info(f"[MEDIA] Detectado {media_label} - url={image_url[:50] if image_url else None}, message_id={image_message_id}")
 
-            # PRIORIDADE 1: Usar URL direta (Leadbox envia URL completa)
-            if image_url:
+            # PRIORIDADE 1: Usar URL direta (apenas URLs publicas - Leadbox)
+            # URLs do WhatsApp (mmg.whatsapp.net) sao criptografadas e precisam
+            # do mediaKey para descriptografar — usar UAZAPI download (prioridade 2)
+            if image_url and "mmg.whatsapp.net" not in image_url:
                 try:
                     import httpx
                     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -559,8 +561,8 @@ async def process_buffered_messages(
                 except Exception as e:
                     logger.error(f"[MEDIA] Erro ao baixar via URL direta: {e}")
 
-            # PRIORIDADE 2: Usar UAZAPI download (se nao tem URL direta)
-            elif image_message_id:
+            # PRIORIDADE 2: Usar UAZAPI download (descriptografa midia do WhatsApp)
+            if not image_data and image_message_id:
                 try:
                     media_result = await uazapi.download_media(
                         message_id=image_message_id,
