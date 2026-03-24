@@ -13,7 +13,7 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch, call
 
 # Imports que serão criados
-from app.domain.billing.services.payment_confirmed_service import (
+from app.domain.billing.services.confirmacao_pagamento import (
     enviar_confirmacao_pagamento,
     buscar_dados_cliente,
     ja_enviou_confirmacao,
@@ -111,8 +111,8 @@ class TestFluxoPrincipal:
         # Arrange
         mock_supabase.client.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = cliente_asaas
 
-        with patch("app.domain.billing.services.payment_confirmed_service.UazapiService") as mock_uazapi_class, \
-             patch("app.domain.billing.services.payment_confirmed_service.leadbox_push_silent") as mock_push:
+        with patch("app.domain.billing.services.confirmacao_pagamento.UazapiService") as mock_uazapi_class, \
+             patch("app.domain.billing.services.confirmacao_pagamento.leadbox_push_silent") as mock_push:
 
             mock_push.return_value = {"success": False, "ticket_check_failed": True}
             mock_uazapi_instance = AsyncMock()
@@ -173,8 +173,8 @@ class TestFluxoPrincipal:
 
         mock_supabase.client.table = table_router
 
-        with patch("app.domain.billing.services.payment_confirmed_service.UazapiService") as mock_uazapi_class, \
-             patch("app.domain.billing.services.payment_confirmed_service.leadbox_push_silent") as mock_push:
+        with patch("app.domain.billing.services.confirmacao_pagamento.UazapiService") as mock_uazapi_class, \
+             patch("app.domain.billing.services.confirmacao_pagamento.leadbox_push_silent") as mock_push:
 
             mock_push.return_value = {"success": True, "message_sent_via_push": True}
             mock_uazapi_class.return_value = AsyncMock()
@@ -369,8 +369,8 @@ class TestProtecaoDuplicata:
 
         mock_supabase.client.table = table_router
 
-        with patch("app.domain.billing.services.payment_confirmed_service.UazapiService") as mock_uazapi_class, \
-             patch("app.domain.billing.services.payment_confirmed_service.leadbox_push_silent") as mock_push:
+        with patch("app.domain.billing.services.confirmacao_pagamento.UazapiService") as mock_uazapi_class, \
+             patch("app.domain.billing.services.confirmacao_pagamento.leadbox_push_silent") as mock_push:
 
             mock_uazapi_class.return_value = AsyncMock()
 
@@ -404,8 +404,8 @@ class TestFalhas:
         mock_supabase.client.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = cliente_asaas
         mock_supabase.client.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = []
 
-        with patch("app.domain.billing.services.payment_confirmed_service.UazapiService") as mock_uazapi_class, \
-             patch("app.domain.billing.services.payment_confirmed_service.leadbox_push_silent") as mock_push:
+        with patch("app.domain.billing.services.confirmacao_pagamento.UazapiService") as mock_uazapi_class, \
+             patch("app.domain.billing.services.confirmacao_pagamento.leadbox_push_silent") as mock_push:
 
             mock_push.return_value = {"success": False, "ticket_check_failed": True}
             mock_uazapi_instance = AsyncMock()
@@ -437,8 +437,8 @@ class TestFalhas:
         mock_table.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = []
         mock_supabase.client.table.return_value = mock_table
 
-        with patch("app.domain.billing.services.payment_confirmed_service.UazapiService") as mock_uazapi_class, \
-             patch("app.domain.billing.services.payment_confirmed_service.leadbox_push_silent") as mock_push:
+        with patch("app.domain.billing.services.confirmacao_pagamento.UazapiService") as mock_uazapi_class, \
+             patch("app.domain.billing.services.confirmacao_pagamento.leadbox_push_silent") as mock_push:
 
             # Act - NÃO deve lançar exceção
             result = await enviar_confirmacao_pagamento(
@@ -475,8 +475,8 @@ class TestFalhas:
 
         mock_supabase.client.table = table_router
 
-        with patch("app.domain.billing.services.payment_confirmed_service.UazapiService") as mock_uazapi_class, \
-             patch("app.domain.billing.services.payment_confirmed_service.leadbox_push_silent") as mock_push:
+        with patch("app.domain.billing.services.confirmacao_pagamento.UazapiService") as mock_uazapi_class, \
+             patch("app.domain.billing.services.confirmacao_pagamento.leadbox_push_silent") as mock_push:
 
             # Leadbox falha
             mock_push.return_value = {"success": False, "ticket_check_failed": True}

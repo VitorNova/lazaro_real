@@ -11,7 +11,7 @@ import pytest
 from unittest.mock import MagicMock, AsyncMock
 
 # Módulo sob teste
-from app.domain.billing.services.payment_confirmed_service import (
+from app.domain.billing.services.confirmacao_pagamento import (
     salvar_no_historico,
     ja_enviou_confirmacao,
 )

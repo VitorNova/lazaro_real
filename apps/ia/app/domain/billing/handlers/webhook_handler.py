@@ -20,7 +20,7 @@ from app.domain.billing.services.payment_sync_service import (
     sincronizar_cobranca,
     processar_cobranca_deletada,
 )
-from app.domain.billing.services.payment_confirmed_service import (
+from app.domain.billing.services.confirmacao_pagamento import (
     processar_pagamento_confirmado,
     processar_pagamento_recebido,
 )

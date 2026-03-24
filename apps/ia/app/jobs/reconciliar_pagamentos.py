@@ -21,7 +21,7 @@ from app.services.gateway_pagamento import AsaasService, create_asaas_service
 from app.services.redis import get_redis_service
 from app.services.supabase import get_supabase_service
 from app.core.utils.dias_uteis import get_today_brasilia
-from app.domain.billing.services.payment_confirmed_service import enviar_confirmacao_pagamento
+from app.domain.billing.services.confirmacao_pagamento import enviar_confirmacao_pagamento
 
 logger = logging.getLogger(__name__)
 
