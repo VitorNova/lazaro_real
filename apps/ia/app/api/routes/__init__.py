@@ -37,7 +37,7 @@ def register_routes(app: FastAPI) -> None:
     from app.webhooks.mensagens import router as whatsapp_router
     app.include_router(whatsapp_router, prefix="/api", tags=["webhooks"])
 
-    # Dashboard API
+    # Dashboard API (split into dashboard/stats.py, dashboard/categories.py)
     from app.api.routes.dashboard import router as dashboard_router
     app.include_router(dashboard_router, tags=["dashboard"])
 
@@ -49,8 +49,8 @@ def register_routes(app: FastAPI) -> None:
     from app.api.routes.auth import router as auth_router
     app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 
-    # Agents CRUD
-    from app.api.routes.agentes import agents_router
+    # Agents CRUD (split into agents/crud.py, agents/connection.py, agents/metrics.py)
+    from app.api.routes.agents import agents_router
     app.include_router(agents_router, prefix="/api", tags=["agents"])
 
     # Dynamic webhook
@@ -70,6 +70,30 @@ def register_routes(app: FastAPI) -> None:
     # REMOVIDO: Athena Oraculo - Analytics (desativado na refatoração)
     # from app.api.routes.athena import router as athena_router
     # app.include_router(athena_router, prefix="/api/athena", tags=["athena"])
+
+    # ERP API (split into erp/customers.py, erp/products.py, erp/orders.py, etc.)
+    from app.api.routes.erp import router as erp_router
+    app.include_router(erp_router, prefix="/api/erp", tags=["erp"])
+
+    # ERP Users/SaaS API
+    from app.api.routes.erp_users import router as erp_users_router
+    app.include_router(erp_users_router, prefix="/api/erp", tags=["erp-users"])
+
+    # Asaas Dashboard (proxy para agnes-agent por enquanto)
+    from app.api.routes.asaas_dashboard import router as asaas_dashboard_router
+    app.include_router(asaas_dashboard_router, tags=["asaas-dashboard"])
+
+    # Manutenções Dashboard (proxy para agnes-agent por enquanto)
+    from app.api.routes.manutencoes_dashboard import router as manutencoes_dashboard_router
+    app.include_router(manutencoes_dashboard_router, tags=["manutencoes-dashboard"])
+
+    # Athena Oráculo (proxy para agnes-agent por enquanto)
+    from app.api.routes.athena import router as athena_router
+    app.include_router(athena_router, tags=["athena"])
+
+    # Agents-leads (migrado de proxy_agnes, agora implementacao nativa)
+    from app.api.routes.agents_leads import router as agents_leads_router
+    app.include_router(agents_leads_router, tags=["agents-leads"])
 
     # Extracted routes
     app.include_router(uploads_router)
