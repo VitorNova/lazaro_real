@@ -55,6 +55,10 @@
     </script>
     <!-- CSS (extracted from inline style block) -->
     <link rel="stylesheet" href="/css/all.css">
+
+    <!-- JS Modules (extracted from inline) -->
+    <script src="/js/api.js"></script>
+    <script src="/js/toast.js"></script>
 </head>
 <body>
 
@@ -1968,25 +1972,8 @@ REGRAS:
             }
         });
 
-        var API_URL = window.location.hostname === 'localhost' ? 'http://localhost:3002' : window.location.origin;
 
-        // Toast notification function
-        function showToast(message, type) {
-            type = type || 'info';
-            var toast = document.createElement('div');
-            toast.className = 'toast-notification toast-' + type;
-            toast.textContent = message;
-            toast.style.cssText = 'position:fixed;bottom:20px;right:20px;padding:12px 24px;border-radius:8px;color:#fff;font-size:14px;z-index:99999;animation:fadeIn 0.3s ease;box-shadow:0 4px 12px rgba(0,0,0,0.15);';
-            if (type === 'error') toast.style.background = '#ff3b30';
-            else if (type === 'warning') toast.style.background = '#ff9500';
-            else if (type === 'success') toast.style.background = '#34c759';
-            else toast.style.background = '#0071e3';
-            document.body.appendChild(toast);
-            setTimeout(function() {
-                toast.style.animation = 'fadeOut 0.3s ease';
-                setTimeout(function() { toast.remove(); }, 300);
-            }, 3000);
-        }
+        // showToast() moved to /js/toast.js
 
         // Page navigation
         // Flag to prevent infinite loop when navigating via hash
@@ -6030,9 +6017,6 @@ REGRAS:
                 payload.observer_prompt = observerPromptEl.value.trim();
             }
 
-            var API_URL = window.location.hostname === 'localhost'
-                ? 'http://localhost:3002'
-                : window.location.origin;
 
             var token = localStorage.getItem('crm_token');
             if (!token) { alert('Sessão expirada. Faça login novamente.'); return; }
@@ -6092,9 +6076,6 @@ REGRAS:
                 return;
             }
 
-            var API_URL = window.location.hostname === 'localhost'
-                ? 'http://localhost:3002'
-                : window.location.origin;
 
             var token = localStorage.getItem('crm_token');
             if (!token) { alert('Sessão expirada. Faça login novamente.'); return; }
@@ -6171,9 +6152,6 @@ REGRAS:
                 return;
             }
 
-            var API_URL = window.location.hostname === 'localhost'
-                ? 'http://localhost:3002'
-                : window.location.origin;
             var token = localStorage.getItem('crm_token');
             console.log('[DIANA QR] API_URL:', API_URL, 'token exists:', !!token);
 
@@ -6405,9 +6383,6 @@ REGRAS:
     <!-- ==================== AUTH LOGIC ==================== -->
     <script>
     (function() {
-        var API_URL = window.location.hostname === 'localhost'
-            ? 'http://localhost:3002'
-            : window.location.origin;
 
         var loginScreen = document.getElementById('login-screen');
         var appContent = document.getElementById('app-content');
@@ -10512,7 +10487,6 @@ function normalizeColor(color) {
 
 function editAgent(agentId) {
     var modal = document.getElementById('edit-agent-modal');
-    var API_URL = window.location.hostname === 'localhost' ? 'http://localhost:3002' : window.location.origin;
     var token = localStorage.getItem('crm_token');
 
     // Show modal with loading state
@@ -11118,7 +11092,6 @@ function closeEditAgentModal() {
 
 function saveAgentEdit() {
     var agentId = document.getElementById('edit-agent-id').value;
-    var API_URL = window.location.hostname === 'localhost' ? 'http://localhost:3002' : window.location.origin;
     var token = localStorage.getItem('crm_token');
     var saveBtn = document.getElementById('edit-agent-save-btn');
 
@@ -11229,7 +11202,6 @@ function confirmDeleteAgent() {
         return;
     }
 
-    var API_URL = window.location.hostname === 'localhost' ? 'http://localhost:3002' : window.location.origin;
     var token = localStorage.getItem('crm_token');
 
     fetch(API_URL + '/api/agents/' + agentId, {
@@ -11582,7 +11554,6 @@ function openAgentWizard(agentName) {
         if (empty) empty.style.display = 'none';
 
         var token = localStorage.getItem('crm_token');
-        var API_URL = window.location.hostname === 'localhost' ? 'http://localhost:3002' : window.location.origin;
 
         fetch(API_URL + '/api/dashboard/asaas/contratos-encerrados', {
             headers: { 'Authorization': 'Bearer ' + token }
@@ -11681,7 +11652,6 @@ function openAgentWizard(agentName) {
         setTimeout(function() {
             var token = localStorage.getItem('crm_token');
             if (!token) return;
-            var API_URL = window.location.hostname === 'localhost' ? 'http://localhost:3002' : window.location.origin;
             fetch(API_URL + '/api/dashboard/asaas/contratos-encerrados', {
                 headers: { 'Authorization': 'Bearer ' + token }
             })
@@ -11802,7 +11772,6 @@ function openAgentWizard(agentName) {
 
         try {
             var token = localStorage.getItem('crm_token');
-            var API_URL = window.location.hostname === 'localhost' ? 'http://localhost:3002' : window.location.origin;
 
             var response = await fetch(API_URL + '/api/dashboard/asaas/encerrar-contrato', {
                 method: 'POST',
