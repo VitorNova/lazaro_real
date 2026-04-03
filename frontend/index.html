@@ -65,7 +65,7 @@
     <!-- ==================== LOADING SCREEN ==================== -->
     <div id="loading-screen" style="display:flex; align-items:center; justify-content:center; min-height:100vh; background:var(--bg-white);">
         <div style="text-align:center;">
-            <img src="/uploads/fc4b99e2_lb_ia.png" alt="PHANT" style="height:48px; margin-bottom:24px;">
+            <img src="/assets/uploads/fc4b99e2_lb_ia.png" alt="Lazaro" style="height:48px; margin-bottom:24px;">
             <div style="width:32px;height:32px;border:3px solid #e5e5e7;border-top-color:#1d1d1f;border-radius:50%;margin:0 auto;animation:spin 0.8s linear infinite;"></div>
             <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
         </div>
@@ -74,7 +74,7 @@
     <!-- ==================== LOGIN SCREEN ==================== -->
     <div id="login-screen" style="display:none; align-items:center; justify-content:center; min-height:100vh; background:var(--bg-white); padding:22px;">
         <div style="width:100%; max-width:340px; text-align:center;">
-            <img src="/uploads/fc4b99e2_lb_ia.png" alt="PHANT" style="height:48px; margin-bottom:32px;">
+            <img src="/assets/uploads/fc4b99e2_lb_ia.png" alt="Lazaro" style="height:48px; margin-bottom:32px;">
             <h1 style="font-size:28px; font-weight:600; letter-spacing:-0.03em; color:var(--text-primary); margin-bottom:4px;">Login</h1>
             <p style="font-size:15px; color:var(--text-secondary); margin-bottom:32px;">Entre com suas credenciais.</p>
             <div id="login-error" style="display:none; background:#fff2f2; color:#ff3b30; font-size:13px; padding:10px 16px; border-radius:10px; margin-bottom:16px; text-align:left;"></div>
@@ -211,7 +211,7 @@
                 <span></span>
             </button>
             <ul class="nav-menu">
-                <li><a class="nav-logo" href="#"><img src="/uploads/fc4b99e2_lb_ia.png" alt="Leadbox IA"></a></li>
+                <li><a class="nav-logo" href="#"><img src="/assets/uploads/fc4b99e2_lb_ia.png" alt="Leadbox IA"></a></li>
                 <li><a class="active" href="#" data-nav="dashboard">Dashboard</a></li>
                 <li><a href="#" data-nav="agentes">Agentes</a></li>
                 <li><a href="#" data-nav="leads">Pipeline</a></li>
@@ -408,7 +408,7 @@
                 <h3 class="agent-apple-name">Salvador</h3>
                 <div class="agent-apple-avatar">
                     <div class="agent-apple-avatar-circle" style="background: linear-gradient(135deg, #34c759 0%, #30d158 100%);">
-                        <img src="https://phant.com.br/uploads/Gemini_Generated_Image_n5230kn5230kn523_20260130_211637_ab433871.png" alt="Salvador">
+                        <img src="/assets/uploads/salvador.png" alt="Salvador">
                     </div>
                 </div>
                 <div class="agent-apple-status">
@@ -447,7 +447,7 @@
                 <h3 class="agent-apple-name">Agnes Leadbox</h3>
                 <div class="agent-apple-avatar">
                     <div class="agent-apple-avatar-circle" style="background: linear-gradient(135deg, #0071e3 0%, #007aff 100%);">
-                        <img src="/uploads/1769744126908-WhatsAppImage2025-12-27at20.31.17.jpeg" alt="Agnes">
+                        <img src="/assets/uploads/1769744126908-WhatsAppImage2025-12-27at20.31.17.jpeg" alt="Agnes">
                     </div>
                 </div>
                 <div class="agent-apple-status">
@@ -1053,17 +1053,17 @@
                 <p class="wizard-picker-sub">Selecione o tipo de agente que deseja criar.</p>
                 <div class="wizard-picker-grid">
                     <div class="wizard-picker-card" onclick="pickAgent('agnes')">
-                        <img src="/uploads/1769744126908-WhatsAppImage2025-12-27at20.31.17.jpeg" alt="Agnes">
+                        <img src="/assets/uploads/1769744126908-WhatsAppImage2025-12-27at20.31.17.jpeg" alt="Agnes">
                         <h3>Agnes</h3>
                         <p>Qualifica leads e agenda reuniões automaticamente.</p>
                     </div>
                     <div class="wizard-picker-card" onclick="pickAgent('salvador')">
-                        <img src="https://phant.com.br/uploads/Gemini_Generated_Image_n5230kn5230kn523_20260130_211637_ab433871.png" alt="Salvador">
+                        <img src="/assets/uploads/salvador.png" alt="Salvador">
                         <h3>Salvador</h3>
                         <p>Recupera leads que não respondem com follow-ups inteligentes.</p>
                     </div>
                     <div class="wizard-picker-card diana-card" onclick="pickAgent('diana')">
-                        <img src="https://phant.com.br/uploads/WhatsApp_Image_2025_12_27_at_203053_1_20260204_014331_22a6de4d.jpg" alt="Diana" style="border-radius:50%;">
+                        <img src="/assets/uploads/diana.jpg" alt="Diana" style="border-radius:50%;">
                         <h3>Diana</h3>
                         <p>Dispara campanhas em massa e responde com IA automaticamente.</p>
                     </div>
@@ -1075,7 +1075,7 @@
         <div class="wizard-intro" id="wizardIntro" style="display:none;">
             <div class="wizard-intro-content">
                 <span class="wizard-intro-label">Sua Agente</span>
-                <img class="wizard-intro-photo" src="/uploads/1769744126908-WhatsAppImage2025-12-27at20.31.17.jpeg" alt="Ana">
+                <img class="wizard-intro-photo" src="/assets/uploads/1769744126908-WhatsAppImage2025-12-27at20.31.17.jpeg" alt="Ana">
                 <h1 class="wizard-intro-name">Agnes</h1>
                 <p class="wizard-intro-text" id="wizardIntroText"></p>
                 <div class="wizard-intro-actions" style="opacity:0;" id="wizardIntroActions">
@@ -1099,7 +1099,7 @@
                 <div class="step-content active" id="wz-step-1">
                     <!-- Agent Logo Header (shown for all agent types) -->
                     <div class="agent-logo-header" id="wz-step1-agent-header" style="text-align:center;margin-bottom:24px;">
-                        <img id="wz-step1-agent-img" src="/uploads/1769744126908-WhatsAppImage2025-12-27at20.31.17.jpeg" alt="Agente" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #1d1d1f;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+                        <img id="wz-step1-agent-img" src="/assets/uploads/1769744126908-WhatsAppImage2025-12-27at20.31.17.jpeg" alt="Agente" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #1d1d1f;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
                         <div id="wz-step1-agent-etapa" style="margin-top:12px;font-size:13px;font-weight:600;color:#1d1d1f;text-transform:uppercase;letter-spacing:0.05em;">Etapa 1 de 4</div>
                     </div>
 
@@ -1173,7 +1173,7 @@
                 <div class="step-content" id="wz-step-2">
                     <!-- Agent Logo Header -->
                     <div class="agent-logo-header" id="wz-step2-agent-header" style="text-align:center;margin-bottom:24px;">
-                        <img id="wz-step2-agent-img" src="/uploads/1769744126908-WhatsAppImage2025-12-27at20.31.17.jpeg" alt="Agente" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #1d1d1f;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+                        <img id="wz-step2-agent-img" src="/assets/uploads/1769744126908-WhatsAppImage2025-12-27at20.31.17.jpeg" alt="Agente" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #1d1d1f;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
                         <div id="wz-step2-agent-etapa" style="margin-top:12px;font-size:13px;font-weight:600;color:#1d1d1f;text-transform:uppercase;letter-spacing:0.05em;">Etapa 2 de 4</div>
                     </div>
                     <div class="wizard-form-header">
@@ -1209,7 +1209,7 @@
                 <div class="step-content" id="wz-step-3">
                     <!-- Agent Logo Header -->
                     <div class="agent-logo-header" id="wz-step3-agent-header" style="text-align:center;margin-bottom:24px;">
-                        <img id="wz-step3-agent-img" src="/uploads/1769744126908-WhatsAppImage2025-12-27at20.31.17.jpeg" alt="Agente" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #1d1d1f;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+                        <img id="wz-step3-agent-img" src="/assets/uploads/1769744126908-WhatsAppImage2025-12-27at20.31.17.jpeg" alt="Agente" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #1d1d1f;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
                         <div id="wz-step3-agent-etapa" style="margin-top:12px;font-size:13px;font-weight:600;color:#1d1d1f;text-transform:uppercase;letter-spacing:0.05em;">Etapa 3 de 4</div>
                     </div>
                     <div class="wizard-form-header">
@@ -1295,7 +1295,7 @@
                 <div class="step-content" id="wz-step-7">
                     <!-- Agent Logo Header -->
                     <div class="agent-logo-header" id="wz-step7-agent-header" style="text-align:center;margin-bottom:24px;">
-                        <img id="wz-step7-agent-img" src="/uploads/1769744126908-WhatsAppImage2025-12-27at20.31.17.jpeg" alt="Agnes" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #1d1d1f;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+                        <img id="wz-step7-agent-img" src="/assets/uploads/1769744126908-WhatsAppImage2025-12-27at20.31.17.jpeg" alt="Agnes" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #1d1d1f;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
                         <div id="wz-step7-agent-etapa" style="margin-top:12px;font-size:13px;font-weight:600;color:#1d1d1f;text-transform:uppercase;letter-spacing:0.05em;">Etapa 4 de 4</div>
                     </div>
                     <div class="wizard-form-header">
@@ -1380,7 +1380,7 @@
                 <div class="step-content" id="wz-step-10">
                     <!-- Agent Logo Header -->
                     <div class="agent-logo-header" id="wz-step10-agent-header" style="text-align:center;margin-bottom:24px;">
-                        <img id="wz-step10-agent-img" src="/uploads/1769744126908-WhatsAppImage2025-12-27at20.31.17.jpeg" alt="Agente" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #1d1d1f;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+                        <img id="wz-step10-agent-img" src="/assets/uploads/1769744126908-WhatsAppImage2025-12-27at20.31.17.jpeg" alt="Agente" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #1d1d1f;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
                         <div id="wz-step10-agent-etapa" style="margin-top:12px;font-size:13px;font-weight:600;color:#1d1d1f;text-transform:uppercase;letter-spacing:0.05em;">Etapa 6 de 7</div>
                     </div>
 
@@ -1426,7 +1426,7 @@ EXTRACAO DE ANUNCIOS:
                 <div class="step-content" id="wz-step-4">
                     <!-- Agent Logo Header (shown for all agent types) -->
                     <div class="agent-logo-header" id="wz-step4-agent-header" style="text-align:center;margin-bottom:24px;">
-                        <img id="wz-step4-agent-img" src="/uploads/1769744126908-WhatsAppImage2025-12-27at20.31.17.jpeg" alt="Agente" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #1d1d1f;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+                        <img id="wz-step4-agent-img" src="/assets/uploads/1769744126908-WhatsAppImage2025-12-27at20.31.17.jpeg" alt="Agente" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #1d1d1f;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
                         <div id="wz-step4-agent-etapa" style="margin-top:12px;font-size:13px;font-weight:600;color:#1d1d1f;text-transform:uppercase;letter-spacing:0.05em;">Etapa 4 de 4</div>
                     </div>
 
@@ -1573,7 +1573,7 @@ Regras:
                 <div class="step-content" id="wz-step-6">
                     <!-- Agent Logo Header -->
                     <div class="agent-logo-header" id="wz-step6-agent-header" style="text-align:center;margin-bottom:24px;">
-                        <img id="wz-step6-agent-img" src="https://phant.com.br/uploads/Gemini_Generated_Image_n5230kn5230kn523_20260130_211637_ab433871.png" alt="Salvador" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #1d1d1f;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+                        <img id="wz-step6-agent-img" src="/assets/uploads/salvador.png" alt="Salvador" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #1d1d1f;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
                         <div id="wz-step6-agent-etapa" style="margin-top:12px;font-size:13px;font-weight:600;color:#1d1d1f;text-transform:uppercase;letter-spacing:0.05em;">Etapa 3 de 3</div>
                     </div>
                     <div class="wizard-form-header">
@@ -1621,7 +1621,7 @@ Regras:
                 <div class="step-content" id="wz-step-8">
                     <!-- Agent Logo Header -->
                     <div class="agent-logo-header" id="wz-step8-agent-header" style="text-align:center;margin-bottom:24px;">
-                        <img id="wz-step8-agent-img" src="https://phant.com.br/uploads/WhatsApp_Image_2025_12_27_at_203053_1_20260204_014331_22a6de4d.jpg" alt="Diana" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #1d1d1f;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+                        <img id="wz-step8-agent-img" src="/assets/uploads/diana.jpg" alt="Diana" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #1d1d1f;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
                         <div id="wz-step8-agent-etapa" style="margin-top:12px;font-size:13px;font-weight:600;color:#1d1d1f;text-transform:uppercase;letter-spacing:0.05em;">Etapa 2 de 3</div>
                     </div>
 
@@ -5074,7 +5074,7 @@ REGRAS:
                 ]
             },
             salvador: {
-                photo: 'https://phant.com.br/uploads/Gemini_Generated_Image_n5230kn5230kn523_20260130_211637_ab433871.png',
+                photo: '/assets/uploads/salvador.png',
                 nameHtml: 'Salvador',
                 label: 'Seu Agente',
                 segments: [
@@ -5093,7 +5093,7 @@ REGRAS:
                 ]
             },
             diana: {
-                photo: 'https://phant.com.br/uploads/WhatsApp_Image_2025_12_27_at_203053_1_20260204_014331_22a6de4d.jpg',
+                photo: '/assets/uploads/diana.jpg',
                 nameHtml: 'Diana',
                 label: 'Sua Agente',
                 segments: [
