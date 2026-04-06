@@ -1,3 +1,6 @@
+# ╔════════════════════════════════════════════════════════════╗
+# ║  RECONCILIAR — Sincronizar status de pagamentos            ║
+# ╚════════════════════════════════════════════════════════════╝
 """
 Billing Reconciliation Job - Sincronizacao diaria Asaas -> Supabase.
 
@@ -350,9 +353,14 @@ async def reconcile_agent(agent: Dict[str, Any]) -> Dict[str, int]:
     try:
         asaas_service = create_asaas_service(api_key=asaas_api_key)
 
-        # Buscar ultimos 60 dias de pagamentos
-        end_date = get_today_brasilia()
-        start_date = end_date - timedelta(days=60)
+        # Buscar 60 dias atras ate fim do mes atual
+        hoje = get_today_brasilia()
+        start_date = hoje - timedelta(days=60)
+        # Cobrir o mes inteiro (ate dia 30/31)
+        if hoje.month == 12:
+            end_date = hoje.replace(year=hoje.year + 1, month=1, day=1) - timedelta(days=1)
+        else:
+            end_date = hoje.replace(month=hoje.month + 1, day=1) - timedelta(days=1)
 
         # Buscar todos os status relevantes
         statuses = ["PENDING", "OVERDUE", "RECEIVED", "CONFIRMED"]
@@ -381,10 +389,22 @@ async def reconcile_agent(agent: Dict[str, Any]) -> Dict[str, int]:
                     logger.error(f"[RECONCILIAR PAGAMENTOS] Erro ao processar payment {payment.get('id', 'unknown')}: {e}")
                     stats["errors"] += 1
 
-        _log(
+        logger.info(
             f"Agente {agent_name}: {stats['payments_synced']} synced, "
             f"{stats['divergences_fixed']} divergencias, {stats['errors']} erros"
         )
+
+        # Reconciliar itens deletados no Asaas (amostragem rotativa)
+        try:
+            from app.domain.billing.services.deletion_reconciler import reconcile_deletions
+            from app.services.supabase import get_supabase_service
+            supabase = get_supabase_service()
+            del_stats = await reconcile_deletions(supabase, asaas_service, agent_id)
+            total_del = del_stats.get("payments_deleted", 0) + del_stats.get("contracts_deleted", 0) + del_stats.get("customers_deleted", 0)
+            if total_del > 0:
+                logger.info(f"Agente {agent_name}: {total_del} itens deletados detectados na reconciliação")
+        except Exception as e:
+            logger.warning(f"[RECONCILIAR PAGAMENTOS] Erro na reconciliação de deletados: {e}")
 
     except Exception as e:
         logger.error(f"[RECONCILIAR PAGAMENTOS] Erro ao reconciliar agente {agent_name}: {e}")
@@ -445,7 +465,7 @@ async def reconcile_billing_data() -> Dict[str, Any]:
             # Pausa entre agentes para nao sobrecarregar API
             await asyncio.sleep(2)
 
-        _log(
+        logger.info(
             f"Reconciliacao concluida: {total_stats['agents_processed']} agentes, "
             f"{total_stats['payments_synced']} payments, "
             f"{total_stats['divergences_fixed']} divergencias corrigidas, "
