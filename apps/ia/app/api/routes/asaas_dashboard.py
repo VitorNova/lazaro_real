@@ -81,7 +81,26 @@ async def get_asaas_dashboard(
             "proxima_manutencao, maintenance_status, endereco_instalacao"
         ).eq("agent_id", AGENT_ID).execute()
         details = details_resp.data or []
-        details_by_sub = {d["subscription_id"]: d for d in details if d.get("subscription_id")}
+        # Agregar múltiplos contract_details por subscription (ex: 3 contratos na mesma sub)
+        details_by_sub = {}
+        for d in details:
+            sub_id = d.get("subscription_id")
+            if not sub_id:
+                continue
+            if sub_id not in details_by_sub:
+                details_by_sub[sub_id] = d
+            else:
+                # Merge: concatenar equipamentos de contratos adicionais
+                existing = details_by_sub[sub_id]
+                existing_eqs = existing.get("equipamentos") or []
+                new_eqs = d.get("equipamentos") or []
+                if isinstance(existing_eqs, list) and isinstance(new_eqs, list):
+                    existing["equipamentos"] = existing_eqs + new_eqs
+                    existing["qtd_ars"] = len(existing["equipamentos"])
+                    existing["valor_comercial_total"] = (
+                        (existing.get("valor_comercial_total") or 0)
+                        + (d.get("valor_comercial_total") or 0)
+                    )
 
         # ── Calcular cards ──
         hoje = date.today()

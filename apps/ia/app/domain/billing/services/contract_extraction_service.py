@@ -1,3 +1,6 @@
+# ╔══════════════════════════════════════════════════════════════╗
+# ║  EXTRAIR CONTRATO — Ler PDF e dados do contrato              ║
+# ╚══════════════════════════════════════════════════════════════╝
 """
 Servico de extracao de dados de contratos via PDF/Imagem + Gemini.
 
@@ -171,6 +174,8 @@ async def processar_customer_created_background(
                         if contract_data:
                             # Corrigir valores que parecem errados (2.70 -> 2700.00)
                             contract_data = corrigir_valores_comerciais(contract_data)
+                            # Validar e normalizar patrimonios
+                            contract_data = validar_patrimonios(contract_data)
                             all_contract_data.append(contract_data)
                             all_pdf_data.append({
                                 "payment_id": payment_id,
@@ -344,6 +349,8 @@ async def processar_subscription_created_background(
                     if contract_data:
                         # Corrigir valores que parecem errados (2.70 -> 2700.00)
                         contract_data = corrigir_valores_comerciais(contract_data)
+                        # Validar e normalizar patrimonios
+                        contract_data = validar_patrimonios(contract_data)
                         all_contract_data.append(contract_data)
                         all_pdf_data.append({
                             "payment_id": payment_id,
@@ -566,6 +573,76 @@ async def extract_contract_from_image(image_bytes: bytes, filename: str) -> Opti
         return None
 
 
+def validar_patrimonios(contract_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Valida e normaliza patrimonios extraidos pelo Gemini.
+
+    Regras:
+    1. Patrimonio deve ser numerico (rejeita PRD00xxx, PATRIxx etc)
+    2. Normaliza para 4 digitos (196 -> 0196, 5 -> 0005)
+    3. Codigos de 5-6 digitos (000196) sao normalizados removendo zeros extras
+    4. Patrimonio deve estar entre 1 e 999 (range real dos equipamentos)
+    5. Se nenhum equipamento, marca com warning
+    """
+    if not contract_data:
+        return contract_data
+
+    equipamentos = contract_data.get("equipamentos", [])
+
+    if not equipamentos:
+        contract_data["_warning_no_equipamentos"] = True
+        logger.warning("[VALIDACAO] Contrato sem equipamentos extraidos")
+        return contract_data
+
+    validos = []
+    for eq in equipamentos:
+        pat = str(eq.get("patrimonio", "")).strip()
+
+        # Rejeitar vazio
+        if not pat:
+            logger.warning("[VALIDACAO] Patrimonio vazio, ignorando equipamento")
+            continue
+
+        # Rejeitar não-numérico (PRD00xxx, PATRIxx, etc)
+        pat_digits = pat.lstrip("0") or "0"
+        if not pat.replace("0", "").replace("1", "").replace("2", "").replace(
+            "3", ""
+        ).replace("4", "").replace("5", "").replace("6", "").replace(
+            "7", ""
+        ).replace("8", "").replace("9", "").replace("0", "") == "":
+            # Forma mais simples: checar se é só dígitos
+            pass
+
+        if not pat.isdigit():
+            logger.warning(
+                "[VALIDACAO] Patrimonio '%s' nao e numerico, rejeitando", pat
+            )
+            continue
+
+        # Normalizar: remover zeros à esquerda e repad para 4 dígitos
+        num = int(pat)
+        if num < 1 or num > 999:
+            logger.warning(
+                "[VALIDACAO] Patrimonio '%s' fora do range (1-999), rejeitando", pat
+            )
+            continue
+
+        pat_normalizado = str(num).zfill(4)
+        eq["patrimonio"] = pat_normalizado
+        validos.append(eq)
+
+    removidos = len(equipamentos) - len(validos)
+    if removidos > 0:
+        logger.warning(
+            "[VALIDACAO] %d patrimonio(s) invalido(s) removido(s) de %d total",
+            removidos,
+            len(equipamentos),
+        )
+
+    contract_data["equipamentos"] = validos
+    return contract_data
+
+
 def corrigir_valores_comerciais(contract_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Corrige valores comerciais que parecem estar errados devido a confusao de separador decimal.
@@ -759,7 +836,7 @@ Exemplo: "000307  PATRIMONIO 0540 - AR CONDICIONADO VG 12.000 BTUS INVERTER   18
 - BTUS: Extraia da descricao do item (ex: "12.000 BTUS" -> 12000)
 - Cada linha = 1 equipamento
 
-=== TIPO 2: Tabela com coluna "MARCA" contendo patrimonios ===
+=== TIPO 2: Tabela com coluna "MARCA" contendo patrimonios (em uma linha) ===
 Colunas: MARCA | MODELO | BTUS | VALOR COMERCIAL
 Exemplo: "SPRINGER MIDEA, Patrimonios 0329/ 0330/ 0331/ 0332 0333/ 0334  |  CONVENCIONAL  |  9.000 CADA  |  R$2.500,00"
 - A marca e "SPRINGER MIDEA"
@@ -768,11 +845,43 @@ Exemplo: "SPRINGER MIDEA, Patrimonios 0329/ 0330/ 0331/ 0332 0333/ 0334  |  CONV
 - CADA patrimonio = 1 equipamento separado no JSON
 - Se ha 11 patrimonios, gere 11 objetos no array "equipamentos" (todos com mesmo btus)
 
+=== TIPO 2B: MARCA e Patrimonio na mesma linha, colunas em linhas separadas ===
+Neste formato, as colunas MARCA/MODELO/BTUS/VALOR aparecem como ROTULOS seguidos de valores em LINHAS separadas:
+Exemplo real:
+  "MARCA
+   BRAVOLT Patrimonio 0566
+   VG Patrimonio 0518
+   MODELO
+   INVERTER cada
+   BTUS
+   12.000 cada
+   VALOR COMERCIAL
+   R$2.700,00 cada"
+- Patrimonio vem JUNTO da marca na mesma linha
+- Separar marca ("BRAVOLT") do patrimonio ("0566")
+- Se diz "12.000 cada", todos os equipamentos tem 12000 BTUs
+- Se diz "R$2.700,00 cada", todos tem esse valor comercial
+- Gere 1 objeto por patrimonio
+
+=== TIPO 2C: Patrimonios com quantidades e enderecos multiplos ===
+Exemplo real:
+  "7 - BRAVOLT 12.000BTUS Inverter Patrimonios 0559/ 0560/ 0561/ 0562/ 0563/ 0564 e 0565
+   1- LG 22.000BTUS Inverter Patrimonio 0037"
+- O numero antes do "-" indica quantidade (7, 1)
+- Patrimonios separados por "/" ou "e"
+- CADA patrimonio = 1 equipamento com os BTUs da sua linha
+- Pode haver MULTIPLOS blocos com enderecos diferentes no mesmo contrato.
+  Exemplo: "6 aparelhos, sendo os patrimonios 0571/0572/0573/0574/0575/0576"
+  seguido de "4 aparelhos, sendo os patrimonios 0577/0578/0579/0580"
+- Extraia TODOS os patrimonios de TODOS os blocos/enderecos
+
 REGRAS GERAIS:
-- Patrimonio e sempre um codigo numerico de 3-4 digitos (ex: "0540", "0329", "155")
-- Se aparecer "PATRI", "Patrimonio" ou "Patrimonios", extraia os numeros que seguem
-- Nunca use o "codigo" da primeira coluna como patrimonio
+- Patrimonio e sempre um codigo numerico de 1-4 digitos (ex: "0540", "0329", "155", "37")
+- Se aparecer "PATRI", "Patrimonio", "Patrimonios" ou "patrimonio", extraia os numeros que seguem
+- Nunca use o "codigo" da primeira coluna como patrimonio (ex: PRD00628, PATRI55 NAO sao patrimonios)
+- O patrimonio e o numero APOS a palavra "PATRIMONIO" ou "Patrimonio", nao o codigo REF antes
 - BTUS: Sempre extrair como numero inteiro (9.000 -> 9000, 12.000 -> 12000)
+- Se o contrato menciona multiplos enderecos com diferentes equipamentos, extraia TODOS
 
 Texto do contrato:
 ---

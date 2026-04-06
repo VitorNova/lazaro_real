@@ -1,3 +1,6 @@
+# ╔════════════════════════════════════════════════════════════╗
+# ║  REPROCESSAR CONTRATOS — Reler todos os PDFs               ║
+# ╚════════════════════════════════════════════════════════════╝
 #!/usr/bin/env python3
 """
 Job para reprocessar TODOS os contratos e atualizar equipamentos.
@@ -98,7 +101,7 @@ Exemplo: "000307  PATRIMONIO 0540 - AR CONDICIONADO VG 12.000 BTUS INVERTER   18
 - BTUS: Extraia da descricao do item (ex: "12.000 BTUS" -> 12000)
 - Cada linha = 1 equipamento
 
-=== TIPO 2: Tabela com coluna "MARCA" contendo patrimonios ===
+=== TIPO 2: Tabela com coluna "MARCA" contendo patrimonios (em uma linha) ===
 Colunas: MARCA | MODELO | BTUS | VALOR COMERCIAL
 Exemplo: "SPRINGER MIDEA, Patrimonios 0329/ 0330/ 0331/ 0332 0333/ 0334  |  CONVENCIONAL  |  9.000 CADA  |  R$2.500,00"
 - A marca e "SPRINGER MIDEA"
@@ -107,11 +110,43 @@ Exemplo: "SPRINGER MIDEA, Patrimonios 0329/ 0330/ 0331/ 0332 0333/ 0334  |  CONV
 - CADA patrimonio = 1 equipamento separado no JSON
 - Se ha 11 patrimonios, gere 11 objetos no array "equipamentos" (todos com mesmo btus)
 
+=== TIPO 2B: MARCA e Patrimonio na mesma linha, colunas em linhas separadas ===
+Neste formato, as colunas MARCA/MODELO/BTUS/VALOR aparecem como ROTULOS seguidos de valores em LINHAS separadas:
+Exemplo real:
+  "MARCA
+   BRAVOLT Patrimonio 0566
+   VG Patrimonio 0518
+   MODELO
+   INVERTER cada
+   BTUS
+   12.000 cada
+   VALOR COMERCIAL
+   R$2.700,00 cada"
+- Patrimonio vem JUNTO da marca na mesma linha
+- Separar marca ("BRAVOLT") do patrimonio ("0566")
+- Se diz "12.000 cada", todos os equipamentos tem 12000 BTUs
+- Se diz "R$2.700,00 cada", todos tem esse valor comercial
+- Gere 1 objeto por patrimonio
+
+=== TIPO 2C: Patrimonios com quantidades e enderecos multiplos ===
+Exemplo real:
+  "7 - BRAVOLT 12.000BTUS Inverter Patrimonios 0559/ 0560/ 0561/ 0562/ 0563/ 0564 e 0565
+   1- LG 22.000BTUS Inverter Patrimonio 0037"
+- O numero antes do "-" indica quantidade (7, 1)
+- Patrimonios separados por "/" ou "e"
+- CADA patrimonio = 1 equipamento com os BTUs da sua linha
+- Pode haver MULTIPLOS blocos com enderecos diferentes no mesmo contrato.
+  Exemplo: "6 aparelhos, sendo os patrimonios 0571/0572/0573/0574/0575/0576"
+  seguido de "4 aparelhos, sendo os patrimonios 0577/0578/0579/0580"
+- Extraia TODOS os patrimonios de TODOS os blocos/enderecos
+
 REGRAS GERAIS:
-- Patrimonio e sempre um codigo numerico de 3-4 digitos (ex: "0540", "0329", "155")
-- Se aparecer "PATRI", "Patrimonio" ou "Patrimonios", extraia os numeros que seguem
-- Nunca use o "codigo" da primeira coluna como patrimonio
+- Patrimonio e sempre um codigo numerico de 1-4 digitos (ex: "0540", "0329", "155", "37")
+- Se aparecer "PATRI", "Patrimonio", "Patrimonios" ou "patrimonio", extraia os numeros que seguem
+- Nunca use o "codigo" da primeira coluna como patrimonio (ex: PRD00628, PATRI55 NAO sao patrimonios)
+- O patrimonio e o numero APOS a palavra "PATRIMONIO" ou "Patrimonio", nao o codigo REF antes
 - BTUS: Sempre extrair como numero inteiro (9.000 -> 9000, 12.000 -> 12000)
+- Se o contrato menciona multiplos enderecos com diferentes equipamentos, extraia TODOS
 
 Texto do contrato:
 ---
@@ -387,6 +422,10 @@ async def process_contract(
             result["status"] = "error"
             result["erro"] = "Gemini nao extraiu dados"
             return result
+
+        # 2b. Validar e normalizar patrimonios
+        from app.domain.billing.services.contract_extraction_service import validar_patrimonios
+        contract_data = validar_patrimonios(contract_data)
 
         # 3. Processar equipamentos
         equipamentos = contract_data.get("equipamentos", [])
