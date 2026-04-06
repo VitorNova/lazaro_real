@@ -96,8 +96,7 @@ async def get_asaas_dashboard(
                 new_eqs = d.get("equipamentos") or []
                 if isinstance(existing_eqs, list) and isinstance(new_eqs, list):
                     existing_eqs.extend(new_eqs)
-                    existing["equipamentos"] = existing_eqs
-                    existing["qtd_ars"] = len(existing["equipamentos"])
+                    existing["qtd_ars"] = len(existing_eqs)
                     existing["valor_comercial_total"] = (
                         (existing.get("valor_comercial_total") or 0)
                         + (d.get("valor_comercial_total") or 0)

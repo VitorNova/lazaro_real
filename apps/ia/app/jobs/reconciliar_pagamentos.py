@@ -356,11 +356,9 @@ async def reconcile_agent(agent: Dict[str, Any]) -> Dict[str, int]:
         # Buscar 60 dias atras ate fim do mes atual
         hoje = get_today_brasilia()
         start_date = hoje - timedelta(days=60)
-        # Cobrir o mes inteiro (ate dia 30/31)
-        if hoje.month == 12:
-            end_date = hoje.replace(year=hoje.year + 1, month=1, day=1) - timedelta(days=1)
-        else:
-            end_date = hoje.replace(month=hoje.month + 1, day=1) - timedelta(days=1)
+        import calendar
+        last_day = calendar.monthrange(hoje.year, hoje.month)[1]
+        end_date = hoje.replace(day=last_day)
 
         # Buscar todos os status relevantes
         statuses = ["PENDING", "OVERDUE", "RECEIVED", "CONFIRMED"]
