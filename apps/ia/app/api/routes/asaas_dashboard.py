@@ -95,7 +95,8 @@ async def get_asaas_dashboard(
                 existing_eqs = existing.get("equipamentos") or []
                 new_eqs = d.get("equipamentos") or []
                 if isinstance(existing_eqs, list) and isinstance(new_eqs, list):
-                    existing["equipamentos"] = existing_eqs + new_eqs
+                    existing_eqs.extend(new_eqs)
+                    existing["equipamentos"] = existing_eqs
                     existing["qtd_ars"] = len(existing["equipamentos"])
                     existing["valor_comercial_total"] = (
                         (existing.get("valor_comercial_total") or 0)
@@ -551,3 +552,121 @@ async def listar_contratos_encerrados_endpoint(
     supabase = SupabaseClient()
     result = await listar_contratos_encerrados(supabase=supabase)
     return JSONResponse(content=result)
+
+
+# ============================================================================
+# Lógica pura — remover equipamentos de contract_details
+# ============================================================================
+
+def remove_equipamentos_from_contract(
+    detail: Dict[str, Any],
+    patrimonios_to_remove: List[str],
+) -> Dict[str, Any]:
+    """
+    Remove patrimônios do array de equipamentos e recalcula totais.
+
+    Args:
+        detail: registro de contract_details (com campo equipamentos)
+        patrimonios_to_remove: lista de patrimônios a remover
+
+    Returns:
+        detail atualizado com equipamentos filtrados e totais recalculados
+
+    Raises:
+        ValueError: se algum patrimônio não existe no contrato
+    """
+    equipamentos = detail.get("equipamentos") or []
+    existing_pats = {e.get("patrimonio") for e in equipamentos}
+
+    for pat in patrimonios_to_remove:
+        if pat not in existing_pats:
+            raise ValueError(f"Patrimônio {pat} não encontrado no contrato")
+
+    remove_set = set(patrimonios_to_remove)
+    new_equipamentos = [e for e in equipamentos if e.get("patrimonio") not in remove_set]
+
+    detail["equipamentos"] = new_equipamentos
+    detail["qtd_ars"] = len(new_equipamentos)
+    detail["valor_comercial_total"] = sum(
+        float(e.get("valor_comercial") or 0) for e in new_equipamentos
+    )
+    return detail
+
+
+# ============================================================================
+# PATCH /api/dashboard/asaas/remove-equipamento
+# ============================================================================
+
+@router.patch("/remove-equipamento")
+async def remove_equipamento_endpoint(
+    request: Request,
+    user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Remove patrimônio(s) de um contrato. Aceita 1 ou vários."""
+    body = await request.json()
+    subscription_id = body.get("subscription_id")
+    patrimonios = body.get("patrimonios", [])
+
+    if not subscription_id:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "subscription_id obrigatório"},
+        )
+    if not patrimonios or not isinstance(patrimonios, list):
+        return JSONResponse(
+            status_code=400,
+            content={"error": "patrimonios deve ser uma lista não vazia"},
+        )
+
+    try:
+        supabase = get_supabase_service()
+        sb = supabase.client
+
+        # Buscar contract_details
+        resp = sb.table("contract_details").select(
+            "id, subscription_id, equipamentos, qtd_ars, valor_comercial_total"
+        ).eq("subscription_id", subscription_id).eq(
+            "agent_id", AGENT_ID
+        ).limit(1).execute()
+
+        if not resp.data:
+            return JSONResponse(
+                status_code=404,
+                content={"error": "Contrato não encontrado"},
+            )
+
+        detail = resp.data[0]
+        detail_id = detail["id"]
+
+        try:
+            updated = remove_equipamentos_from_contract(detail, patrimonios)
+        except ValueError as e:
+            return JSONResponse(status_code=400, content={"error": str(e)})
+
+        # Salvar no banco
+        sb.table("contract_details").update({
+            "equipamentos": updated["equipamentos"],
+            "qtd_ars": updated["qtd_ars"],
+            "valor_comercial_total": updated["valor_comercial_total"],
+        }).eq("id", detail_id).execute()
+
+        logger.info(
+            "equipamentos_removed",
+            subscription_id=subscription_id,
+            patrimonios=patrimonios,
+            remaining=updated["qtd_ars"],
+        )
+
+        return JSONResponse(content={
+            "status": "success",
+            "removed": patrimonios,
+            "remaining": updated["qtd_ars"],
+            "valor_comercial_total": updated["valor_comercial_total"],
+        })
+
+    except Exception as e:
+        logger.exception("remove_equipamento_error", error=str(e))
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)},
+        )

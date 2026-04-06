@@ -24,6 +24,12 @@ sys.modules.setdefault("app.services.gateway_pagamento", MagicMock())
 sys.modules.setdefault("app.services.supabase", MagicMock())
 sys.modules.setdefault("app.services.redis", MagicMock())
 sys.modules.setdefault("app.core.utils.dias_uteis", MagicMock())
+sys.modules.setdefault("app.integrations.asaas.client", MagicMock())
+sys.modules.setdefault("app.integrations.asaas.rate_limiter", MagicMock())
+sys.modules.setdefault("app.integrations.asaas.types", MagicMock())
+sys.modules.setdefault("app.domain.billing.services.customer_sync_service", MagicMock())
+sys.modules.setdefault("app.integrations.supabase.repositories.asaas_customers", MagicMock())
+sys.modules.setdefault("app.integrations.supabase.repositories.asaas_contracts", MagicMock())
 
 
 def test_lock_key_defined():

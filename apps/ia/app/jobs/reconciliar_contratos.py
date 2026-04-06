@@ -15,9 +15,10 @@ Frequencia: 1x ao dia, 5h30 BRT (antes do reconciliar_pagamentos das 6h)
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
-from app.services.gateway_pagamento import create_asaas_service
+from app.integrations.asaas.client import AsaasClient
+from app.domain.billing.services.customer_sync_service import resolve_customer_name
 from app.services.redis import get_redis_service
 from app.services.supabase import get_supabase_service
 
@@ -27,42 +28,6 @@ CONTRACT_RECONCILIATION_LOCK_KEY = "lock:contract_reconciliation:global"
 CONTRACT_RECONCILIATION_LOCK_TTL = 3600  # 1 hora
 
 AGENT_ID = "14e6e5ce-4627-4e38-aac8-f0191669ff53"
-
-
-async def _resolve_customer_name(
-    supabase, customer_id: str, asaas_service=None
-) -> str:
-    """Resolve nome do cliente com fallback chain."""
-    # 1. Buscar na tabela asaas_clientes
-    try:
-        r = supabase.client.table("asaas_clientes").select(
-            "name"
-        ).eq("id", customer_id).limit(1).execute()
-        if r.data and r.data[0].get("name"):
-            return r.data[0]["name"]
-    except Exception:
-        pass
-
-    # 2. Buscar em outro contrato do mesmo cliente
-    try:
-        r = supabase.client.table("asaas_contratos").select(
-            "customer_name"
-        ).eq("customer_id", customer_id).limit(1).execute()
-        if r.data and r.data[0].get("customer_name"):
-            return r.data[0]["customer_name"]
-    except Exception:
-        pass
-
-    # 3. API Asaas
-    if asaas_service:
-        try:
-            customer = await asaas_service.get_customer(customer_id)
-            if customer and customer.get("name"):
-                return customer["name"]
-        except Exception:
-            pass
-
-    return "Desconhecido"
 
 
 async def reconcile_contracts() -> Dict[str, Any]:
@@ -88,7 +53,6 @@ async def reconcile_contracts() -> Dict[str, Any]:
         supabase = get_supabase_service()
         sb = supabase.client
 
-        # Buscar API key do agente
         agent_resp = sb.table("agents").select(
             "asaas_api_key"
         ).eq("id", AGENT_ID).limit(1).execute()
@@ -98,7 +62,7 @@ async def reconcile_contracts() -> Dict[str, Any]:
             return {"status": "error", "reason": "no_api_key"}
 
         api_key = agent_resp.data[0]["asaas_api_key"]
-        asaas = create_asaas_service(api_key=api_key)
+        asaas = AsaasClient(api_key=api_key)
 
         stats = {
             "inserted": 0,
@@ -109,38 +73,9 @@ async def reconcile_contracts() -> Dict[str, Any]:
         }
         divergencias = []
 
-        # 1. Buscar TODAS subscriptions ativas no Asaas (paginado)
+        # Buscar subscriptions ativas via AsaasClient (com rate limiter)
         logger.info("[RECONCILIAR CONTRATOS] Buscando subscriptions no Asaas...")
-        asaas_subs = []
-        offset = 0
-        max_pages = 10
-
-        for _ in range(max_pages):
-            result = await asaas.list_payments(
-                status=None, offset=offset, limit=100,
-            )
-            # Na verdade preciso usar a API de subscriptions diretamente
-            break
-
-        # Usar httpx direto para subscriptions (AsaasService não tem list_subscriptions)
-        import httpx
-        async with httpx.AsyncClient(timeout=30) as client:
-            asaas_subs = []
-            offset = 0
-            for _ in range(max_pages):
-                resp = await client.get(
-                    f"https://api.asaas.com/v3/subscriptions",
-                    params={"status": "ACTIVE", "offset": offset, "limit": 100},
-                    headers={
-                        "access_token": api_key,
-                        "User-Agent": "lazaro-ia",
-                    },
-                )
-                data = resp.json()
-                asaas_subs.extend(data.get("data", []))
-                if not data.get("hasMore", False):
-                    break
-                offset += 100
+        asaas_subs = await asaas.list_all_subscriptions(status="ACTIVE")
 
         logger.info(
             "[RECONCILIAR CONTRATOS] Asaas: %d subscriptions ativas",
@@ -149,7 +84,7 @@ async def reconcile_contracts() -> Dict[str, Any]:
 
         asaas_map = {s["id"]: s for s in asaas_subs}
 
-        # 2. Buscar contratos locais ativos
+        # Buscar contratos locais ativos
         local_resp = sb.table("asaas_contratos").select(
             "id, customer_id, customer_name, value, status"
         ).eq("agent_id", AGENT_ID).eq("status", "ACTIVE").execute()
@@ -162,16 +97,15 @@ async def reconcile_contracts() -> Dict[str, Any]:
             len(local_contracts),
         )
 
-        # 3. Comparar: Asaas → Local
+        # Comparar: Asaas → Local
         now = datetime.utcnow().isoformat()
         for sub_id, sub in asaas_map.items():
             try:
                 local = local_map.get(sub_id)
 
                 if not local:
-                    # NOVO — inserir
-                    customer_name = await _resolve_customer_name(
-                        supabase, sub["customer"], asaas
+                    customer_name = await resolve_customer_name(
+                        supabase, sub["customer"], None, AGENT_ID,
                     )
                     sb.table("asaas_contratos").upsert({
                         "id": sub_id,
@@ -192,7 +126,6 @@ async def reconcile_contracts() -> Dict[str, Any]:
                         f"INSERIDO: {sub_id} | {customer_name} | R${sub['value']}"
                     )
                 else:
-                    # EXISTENTE — verificar divergências
                     changes = {}
                     local_value = float(local.get("value") or 0)
                     asaas_value = float(sub.get("value") or 0)
@@ -219,7 +152,7 @@ async def reconcile_contracts() -> Dict[str, Any]:
                 )
                 stats["errors"] += 1
 
-        # 4. Comparar: Local → Asaas (detectar cancelados)
+        # Detectar cancelados (no banco mas não no Asaas)
         for sub_id, local in local_map.items():
             if sub_id not in asaas_map:
                 try:
@@ -239,7 +172,6 @@ async def reconcile_contracts() -> Dict[str, Any]:
                     )
                     stats["errors"] += 1
 
-        # 5. Log resultado
         logger.info(
             "[RECONCILIAR CONTRATOS] Concluido: "
             "inserted=%d updated=%d inactivated=%d unchanged=%d errors=%d",
