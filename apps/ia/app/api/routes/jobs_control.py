@@ -1,3 +1,6 @@
+# ╔══════════════════════════════════════════════════════════════╗
+# ║  CONTROLE DE JOBS — Rodar e monitorar jobs                 ║
+# ╚══════════════════════════════════════════════════════════════╝
 """
 Job control endpoints for scheduled tasks.
 
@@ -35,12 +38,15 @@ async def run_billing_charge_manually(
     Executa o job de cobranca manualmente.
     Roda em background para nao bloquear a request.
     """
-    from app.jobs.cobrar_clientes import run_billing_charge_job, is_billing_charge_running
+    from app.cobranca.job_cobranca import run_billing_v2
+    from app.cobranca.modelos import BILLING_JOB_LOCK_KEY
+    from app.services.redis import get_redis_service
 
-    if await is_billing_charge_running():
+    redis = await get_redis_service()
+    if await redis.client.exists(BILLING_JOB_LOCK_KEY):
         return {"status": "error", "message": "Job ja esta em execucao"}
 
-    background_tasks.add_task(run_billing_charge_job)
+    background_tasks.add_task(run_billing_v2)
     return {"status": "started", "message": "Billing charge job iniciado em background"}
 
 
@@ -53,12 +59,15 @@ async def run_billing_charge_force(
     Executa o job de cobranca FORCANDO execucao (ignora verificacoes de horario/dia util).
     APENAS PARA DEBUG/TESTES.
     """
-    from app.jobs.cobrar_clientes import is_billing_charge_running, _force_run_billing_charge
+    from app.cobranca.job_cobranca import run_billing_v2
+    from app.cobranca.modelos import BILLING_JOB_LOCK_KEY
+    from app.services.redis import get_redis_service
 
-    if await is_billing_charge_running():
+    redis = await get_redis_service()
+    if await redis.client.exists(BILLING_JOB_LOCK_KEY):
         return {"status": "error", "message": "Job ja esta em execucao"}
 
-    background_tasks.add_task(_force_run_billing_charge)
+    background_tasks.add_task(run_billing_v2)
     return {"status": "started", "message": "Billing charge job FORCADO iniciado em background"}
 
 
@@ -67,12 +76,39 @@ async def billing_charge_status(
     _user: dict = Depends(get_current_user),  # SECURITY: Require auth
 ) -> Dict[str, Any]:
     """Retorna o status do job de cobranca."""
-    from app.jobs.cobrar_clientes import is_billing_charge_running
+    from app.cobranca.modelos import BILLING_JOB_LOCK_KEY
+    from app.services.redis import get_redis_service
 
+    redis = await get_redis_service()
     return {
-        "running": await is_billing_charge_running(),
+        "running": bool(await redis.client.exists(BILLING_JOB_LOCK_KEY)),
         "scheduler_active": app_state.scheduler is not None,
     }
+
+
+# =============================================================================
+# CONTRACT RECONCILIATION JOB
+# =============================================================================
+
+@router.post("/contract-reconciliation/run")
+async def run_contract_reconciliation_manually(
+    background_tasks: BackgroundTasks,
+    _admin: dict = Depends(require_admin),
+) -> Dict[str, Any]:
+    """
+    Executa o job de reconciliacao de contratos manualmente.
+    Sincroniza asaas_contratos com API Asaas (fonte da verdade).
+    """
+    from app.jobs.reconciliar_contratos import (
+        run_contract_reconciliation_job,
+        is_contract_reconciliation_running,
+    )
+
+    if await is_contract_reconciliation_running():
+        return {"status": "error", "message": "Job ja esta em execucao"}
+
+    background_tasks.add_task(run_contract_reconciliation_job)
+    return {"status": "started", "message": "Contract reconciliation job iniciado em background"}
 
 
 # =============================================================================

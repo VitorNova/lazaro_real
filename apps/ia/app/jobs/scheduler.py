@@ -1,3 +1,6 @@
+# ╔════════════════════════════════════════════════════════════╗
+# ║  SCHEDULER — Agenda de todos os jobs automaticos           ║
+# ╚════════════════════════════════════════════════════════════╝
 """
 APScheduler configuration and job registration.
 
@@ -44,12 +47,22 @@ def register_jobs(scheduler: Any) -> None:
     """
     from apscheduler.triggers.cron import CronTrigger
 
-    from app.jobs.billing_job_v2 import run_billing_v2
+    from app.cobranca.job_cobranca import run_billing_v2
+    from app.jobs.reconciliar_contratos import run_contract_reconciliation_job
     from app.jobs.reconciliar_pagamentos import run_billing_reconciliation_job
     from app.jobs.notificar_manutencoes import run_maintenance_notifier_job
     from app.jobs.retry_deferred_job import retry_deferred_dispatches
 
-    # Reconciliacao: 6h horario de Brasilia, seg-sex (ANTES do billing charge)
+    # Reconciliacao contratos: 5h30, seg-sex (ANTES da reconciliacao de pagamentos)
+    scheduler.add_job(
+        run_contract_reconciliation_job,
+        CronTrigger(hour=5, minute=30, day_of_week="mon-fri", timezone="America/Sao_Paulo"),
+        id="contract_reconciliation",
+        name="Contract Reconciliation Job",
+        replace_existing=True,
+    )
+
+    # Reconciliacao pagamentos: 6h horario de Brasilia, seg-sex (ANTES do billing charge)
     scheduler.add_job(
         run_billing_reconciliation_job,
         CronTrigger(hour=6, minute=0, day_of_week="mon-fri", timezone="America/Sao_Paulo"),

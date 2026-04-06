@@ -1,3 +1,6 @@
+# ╔════════════════════════════════════════════════════════════╗
+# ║  CLIENTE ASAAS — Chamadas HTTP para API de pagamentos      ║
+# ╚════════════════════════════════════════════════════════════╝
 # apps/ia/app/integrations/asaas/client.py
 """
 AsaasClient - Cliente HTTP para a API Asaas.
@@ -412,6 +415,30 @@ class AsaasClient:
             if e.response.status_code == 404:
                 return
             raise
+
+    async def list_all_subscriptions(
+        self,
+        status: str = "ACTIVE",
+        max_pages: int = 10,
+        limit: int = 100,
+    ) -> List[AsaasSubscription]:
+        """Lista todas as subscriptions com paginação automática."""
+        all_subs: List[AsaasSubscription] = []
+        offset = 0
+
+        for _ in range(max_pages):
+            result = await self._get(
+                "/subscriptions",
+                params={"status": status, "offset": offset, "limit": limit},
+            )
+            all_subs.extend(result.get("data", []))
+
+            if not result.get("hasMore", False):
+                break
+
+            offset += limit
+
+        return all_subs
 
     async def list_subscriptions_by_customer(
         self, customer_id: str
