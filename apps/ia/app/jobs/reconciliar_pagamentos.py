@@ -353,9 +353,10 @@ async def reconcile_agent(agent: Dict[str, Any]) -> Dict[str, int]:
     try:
         asaas_service = create_asaas_service(api_key=asaas_api_key)
 
-        # Buscar 60 dias atras ate fim do mes atual
+        # Buscar desde a primeira cobrança até fim do mês atual
+        # (espelho completo do Asaas, não apenas janela parcial)
         hoje = get_today_brasilia()
-        start_date = hoje - timedelta(days=60)
+        start_date = hoje.replace(year=2025, month=1, day=1)
         import calendar
         last_day = calendar.monthrange(hoje.year, hoje.month)[1]
         end_date = hoje.replace(day=last_day)

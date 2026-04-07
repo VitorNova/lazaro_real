@@ -1,3 +1,6 @@
+# ╔════════════════════════════════════════════════════════════╗
+# ║  LIMITE ASAAS — Maximo 30 requests por minuto              ║
+# ╚════════════════════════════════════════════════════════════╝
 # apps/ia/app/integrations/asaas/rate_limiter.py
 """
 Rate limiter para a API Asaas.
@@ -9,7 +12,7 @@ Baseado em apps/api/src/services/asaas/client.ts RateLimiter.
 import asyncio
 import logging
 import time
-from typing import List
+from typing import List, Optional
 
 from .types import RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_S
 
@@ -106,7 +109,7 @@ class RateLimiter:
 
 
 # Singleton global para uso compartilhado
-_global_rate_limiter: RateLimiter | None = None
+_global_rate_limiter: Optional[RateLimiter] = None
 
 
 def get_rate_limiter() -> RateLimiter:

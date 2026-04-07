@@ -29,6 +29,21 @@ logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/api/dashboard/asaas", tags=["asaas-dashboard"])
 
 AGENT_ID = "14e6e5ce-4627-4e38-aac8-f0191669ff53"
+PAGE_SIZE = 1000
+
+
+def _fetch_all_rows(query_builder, page_size: int = PAGE_SIZE) -> list:
+    """Pagina query Supabase para buscar mais de 1000 rows."""
+    all_rows: list = []
+    offset = 0
+    while True:
+        resp = query_builder.range(offset, offset + page_size - 1).execute()
+        rows = resp.data or []
+        all_rows.extend(rows)
+        if len(rows) < page_size:
+            break
+        offset += page_size
+    return all_rows
 
 MONTH_NAMES = {
     1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
@@ -58,13 +73,13 @@ async def get_asaas_dashboard(
         clientes = clientes_resp.data or []
         cliente_map = {c["id"]: c for c in clientes}
 
-        # ── Cobranças (todas, não deletadas) ──
-        cobrancas_resp = sb.table("asaas_cobrancas").select(
+        # ── Cobranças (todas, não deletadas — paginado para >1000 rows) ──
+        cobrancas_query = sb.table("asaas_cobrancas").select(
             "id, customer_id, customer_name, subscription_id, value, status, "
             "due_date, payment_date, dias_atraso, billing_type, invoice_url, "
             "bank_slip_url, updated_at, ia_cobrou, ia_recebeu, ia_recebeu_at"
-        ).eq("agent_id", AGENT_ID).is_("deleted_at", "null").execute()
-        cobrancas_raw = cobrancas_resp.data or []
+        ).eq("agent_id", AGENT_ID).is_("deleted_at", "null")
+        cobrancas_raw = _fetch_all_rows(cobrancas_query)
 
         # ── Contratos Asaas (subscriptions) ──
         contratos_resp = sb.table("asaas_contratos").select(

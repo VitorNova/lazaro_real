@@ -71,6 +71,15 @@ def register_jobs(scheduler: Any) -> None:
         replace_existing=True,
     )
 
+    # Reconciliacao pagamentos: 14h — captura mudanças do período da manhã
+    scheduler.add_job(
+        run_billing_reconciliation_job,
+        CronTrigger(hour=14, minute=0, day_of_week="mon-fri", timezone="America/Sao_Paulo"),
+        id="billing_reconciliation_afternoon",
+        name="Billing Reconciliation Job - Tarde",
+        replace_existing=True,
+    )
+
     # Cobranca: 9h horario de Brasilia, seg-sex (DEPOIS da reconciliacao)
     scheduler.add_job(
         run_billing_v2,
@@ -112,7 +121,7 @@ def register_jobs(scheduler: Any) -> None:
 
     jobs_msg = (
         "APScheduler jobs registered: "
-        "billing_reconciliation (6h seg-sex), "
+        "billing_reconciliation (6h,14h seg-sex), "
         "billing_charge (9h seg-sex), "
     )
     if BILLING_AFTERNOON_ENABLED:
