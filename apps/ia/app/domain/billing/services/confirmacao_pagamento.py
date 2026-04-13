@@ -1,3 +1,6 @@
+# ╔══════════════════════════════════════════════════════════════╗
+# ║  CONFIRMACAO PAGAMENTO — Cliente pagou, avisar               ║
+# ╚══════════════════════════════════════════════════════════════╝
 """
 Servico de pagamentos confirmados/recebidos + envio de confirmacao WhatsApp.
 
@@ -9,10 +12,18 @@ import re
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+import httpx
+import os
+
 from app.core.utils.phone import generate_phone_variants
 from app.core.utils.sql_escape import escape_ilike_pattern
-from app.services.leadbox_push import QUEUE_BILLING, leadbox_push_silent
-from app.services.whatsapp_api import UazapiService, sign_message
+from app.integrations.leadbox import QUEUE_BILLING
+from app.services.whatsapp_api import sign_message
+
+# Credenciais Leadbox da Ana (canal ativo de WhatsApp)
+_ANA_LEADBOX_URL = os.environ.get("ANA_LEADBOX_URL", "https://enterprise-135api.leadbox.app.br")
+_ANA_LEADBOX_UUID = os.environ.get("ANA_LEADBOX_UUID", "")
+_ANA_LEADBOX_TOKEN = os.environ.get("ANA_LEADBOX_TOKEN", "")
 
 logger = logging.getLogger(__name__)
 
@@ -180,36 +191,41 @@ async def enviar_confirmacao_pagamento(
         result["reason"] = "already_sent"
         return result
 
-    # 3. Formatar e enviar
+    # 3. Formatar e enviar via Leadbox da Ana (canal ativo)
     mensagem = sign_message(formatar_mensagem_confirmacao(nome, valor), agent_name)
 
+    if not _ANA_LEADBOX_UUID or not _ANA_LEADBOX_TOKEN:
+        logger.error("[PAYMENT MSG] ANA_LEADBOX_UUID/TOKEN não configurados — não é possível enviar")
+        result["reason"] = "no_leadbox_config"
+        return result
+
     try:
-        enviado = False
-        push = await leadbox_push_silent(phone, QUEUE_BILLING, agent_id, message=mensagem)
+        external_url = f"{_ANA_LEADBOX_URL}/v1/api/external/{_ANA_LEADBOX_UUID}/"
+        payload = {
+            "body": mensagem,
+            "number": phone,
+            "externalKey": phone,
+            "queueId": QUEUE_BILLING,
+            "forceTicketToDepartment": True,
+        }
 
-        if push.get("success") and push.get("message_sent_via_push"):
-            enviado = True
-            logger.info("[PAYMENT MSG] Enviado via Leadbox PUSH: phone=%s", phone[-4:])
-        else:
-            url, token = agent.get("uazapi_base_url"), agent.get("uazapi_token")
-            if url and token:
-                uazapi_result = await UazapiService(base_url=url, api_key=token).send_text_message(phone, mensagem)
-                if uazapi_result.get("success"):
-                    enviado = True
-                    logger.info("[PAYMENT MSG] Enviado via UAZAPI fallback: phone=%s", phone[-4:])
-                else:
-                    result["error"] = uazapi_result.get("error", "Erro desconhecido")
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                external_url,
+                params={"token": _ANA_LEADBOX_TOKEN},
+                headers={"Content-Type": "application/json"},
+                json=payload,
+            )
+            resp.raise_for_status()
 
-        if enviado:
-            result["success"] = True
-            result["message_sent"] = True
-            if table_messages:
-                result["history_updated"] = await salvar_no_historico(supabase, table_messages, phone, mensagem, payment_id)
-            logger.info("[PAYMENT MSG] Confirmação enviada: payment_id=%s, cliente=%s", payment_id, nome)
-        else:
-            result["success"] = False
+        result["success"] = True
+        result["message_sent"] = True
+        if table_messages:
+            result["history_updated"] = await salvar_no_historico(supabase, table_messages, phone, mensagem, payment_id)
+        logger.info("[PAYMENT MSG] Confirmação enviada via Leadbox Ana: payment_id=%s, cliente=%s, phone=%s",
+                     payment_id, nome, phone[-4:])
     except Exception as e:
-        logger.error("[PAYMENT MSG] Exceção ao enviar: %s", e)
+        logger.error("[PAYMENT MSG] Erro ao enviar via Leadbox Ana: %s", e)
         result["error"] = str(e)
 
     return result
